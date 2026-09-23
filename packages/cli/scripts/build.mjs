@@ -1,4 +1,5 @@
 import { build } from "esbuild";
+import { realpathSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -26,6 +27,7 @@ export async function buildCli(outfile = path.join(pkgDir, "dist", "kh.mjs")) {
   return outfile;
 }
 
-if (process.argv[1] === fileURLToPath(import.meta.url)) {
+// 直接执行本脚本时才打包；argv[1] 可能是符号链接路径，而 import.meta.url 已解析为真实路径
+if (process.argv[1] && realpathSync(process.argv[1]) === fileURLToPath(import.meta.url)) {
   await buildCli();
 }

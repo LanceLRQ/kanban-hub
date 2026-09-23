@@ -23,6 +23,7 @@ kanban-hub 是一个自托管的多项目进度看板服务：AI 编码助手通
 ## 技术栈
 
 - **服务端 + 网页**：Next.js（App Router，standalone 输出）、TypeScript、zod
+  - Next.js 16 与多数模型的训练数据差异较大：写 Next 相关代码前，先读 `node_modules/next/dist/docs/` 里对应的文档。`next.config.ts` 设置了 `agentRules: false`，`next dev` 不会自动生成 `AGENTS.md` / `CLAUDE.md`。
 - **UI**：shadcn/ui + Tailwind CSS + lucide 图标、next-intl
 - **命令行**：`kh`，TypeScript，esbuild 打包成单文件，要求 Node 22 及以上
 - **工程**：pnpm monorepo、Vitest
@@ -32,11 +33,11 @@ kanban-hub 是一个自托管的多项目进度看板服务：AI 编码助手通
 
 - [x] 调研：同类项目评估完成，确定自建
 - [x] 设计定稿：见上方规格
-- [ ] 实施：尚无代码
+- [ ] 实施：进行中（M0 工程骨架已完成）
 
 ## 仓库结构
 
-规划中的结构（尚未创建的目录会在实施时建立）：
+仓库结构：
 
 ```
 kanban-hub/
@@ -44,9 +45,10 @@ kanban-hub/
 ├── README.md              # 项目介绍（面向外部读者）
 ├── LICENSE                # MIT
 ├── apps/web/              # Next.js：API 处理函数 + 网页
-├── packages/core/         # zod schema 与纯逻辑，不做 IO
-├── packages/cli/          # kh 命令行 + 通用 SKILL.md
-├── Dockerfile
+├── packages/core/         # zod schema 与纯逻辑，不做 IO；版本号的唯一来源
+├── packages/cli/          # kh 命令行（esbuild 打包成单文件）
+├── Dockerfile             # deps / build / dev / runtime 四阶段
+├── docker/                # 容器入口脚本
 ├── docker-compose.dev.yml # 开发：挂载源码，热更新
 ├── deploy/                # 生产：docker-compose.yml、.env.example
 └── docs/
@@ -58,5 +60,18 @@ kanban-hub/
 ## 常用命令
 
 ```bash
-# 暂无，实施阶段搭好工程骨架后补充
+pnpm install                     # 安装依赖（pnpm 11；新增的构建脚本要在 pnpm-workspace.yaml 的 allowBuilds 里放行）
+pnpm test                        # 全部测试（Vitest，按包拆成多个项目）
+pnpm typecheck                   # 类型检查（web 会先执行 next typegen）
+pnpm lint                        # eslint
+pnpm dev                         # 在本机直接启动开发服务：http://127.0.0.1:28970
+pnpm -F @kanban-hub/cli build    # 把 kh 打包到 packages/cli/dist/kh.mjs
+
+# Docker 开发（挂载源码热更新）
+mkdir -p dev-data/data dev-data/backups
+PUID=$(id -u) PGID=$(id -g) docker compose -f docker-compose.dev.yml up --build
+
+# Docker 生产
+cd deploy && cp .env.example .env    # 填写 KH_ADMIN_PASSWORD、PUID、PGID
+mkdir -p data backups && docker compose up -d --build
 ```

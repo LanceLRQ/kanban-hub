@@ -10,6 +10,9 @@ const nextConfig: NextConfig = {
   turbopack: { root: monorepoRoot },
   // packages/core 直接以 TS 源码导出，需要由 Next 编译
   transpilePackages: ["@kanban-hub/core"],
+  // 不让 next dev 在 apps/web 下自动生成 AGENTS.md / CLAUDE.md：
+  // AGENTS.md 按仓库的文档治理规则属于私有文件，“先读 node_modules/next/dist/docs”的提示写在根 CLAUDE.md 里
+  agentRules: false,
 };
 
 export default nextConfig;

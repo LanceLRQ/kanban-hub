@@ -16,10 +16,11 @@ dev-data
 deploy/data
 deploy/backups
 deploy/.env
-CLAUDE.md
-CLAUDE.local.md
-AGENTS.md
+# 以下规则加 **/ 前缀匹配任意层级：Next 的 standalone 构建会把 apps/web 下的 .env、.env.production 复制进产物
+**/CLAUDE.md
+**/CLAUDE.local.md
+**/AGENTS.md
 README.md
-.env
-.env.*
-*.log
+**/.env
+**/.env.*
+**/*.log

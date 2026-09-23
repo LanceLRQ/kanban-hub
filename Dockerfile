@@ -4,14 +4,14 @@
 FROM node:22-bookworm-slim AS deps
 ARG HTTP_PROXY=
 ARG HTTPS_PROXY=
-ENV http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY}
 WORKDIR /app
-RUN npm install -g pnpm@11.15.0
+# 代理只在需要联网的 RUN 里临时注入，不用 ENV：ENV 会写进中间镜像与构建缓存
+RUN http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} npm install -g pnpm@11.15.0
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY apps/web/package.json apps/web/
 COPY packages/core/package.json packages/core/
 COPY packages/cli/package.json packages/cli/
-RUN pnpm install --frozen-lockfile
+RUN http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} pnpm install --frozen-lockfile
 
 # ---------- build：next build（standalone 产物） ----------
 FROM deps AS build

@@ -64,7 +64,7 @@ pnpm install                     # 安装依赖（pnpm 11；新增的构建脚�
 pnpm test                        # 全部测试（Vitest，按包拆成多个项目）
 pnpm typecheck                   # 类型检查（web 会先执行 next typegen）
 pnpm lint                        # eslint
-pnpm dev                         # 在本机直接启动开发服务：http://127.0.0.1:28970
+pnpm dev                         # 在本机直接启动开发服务：http://127.0.0.1:28970，数据写在 dev-data/
 pnpm -F @kanban-hub/cli build    # 把 kh 打包到 packages/cli/dist/kh.mjs
 
 # Docker 开发（挂载源码热更新）

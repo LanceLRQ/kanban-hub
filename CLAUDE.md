@@ -4,41 +4,53 @@
 
 ## 项目一句话定义
 
-kanban-hub 是一个常驻在本机或内网服务器上的轻量服务，把多个代码仓库的开发进度汇总到一个网页里，并且可以直接浏览各仓库里的设计文档和 HTML demo。
+kanban-hub 是一个自托管的多项目进度看板服务：AI 编码助手通过命令行工具 `kh` 上报各项目“做到哪个阶段、哪个任务、什么状态”，人在一个网页里查看所有项目的进度，并浏览各仓库的设计文档和 HTML demo。
 
-- 是：多项目进度总览 + 仓库文档浏览器。进度数据存放在各仓库的文件里，Claude Code 在终端干活时直接编辑这些文件。
-- 不是：AI 编码工作区（不负责拉起 agent 执行任务），也不是带自有数据库的通用项目管理系统。
+- 是：多项目进度总览 + 跨机器的仓库文档浏览器。
+- 不是：AI 编码工作区（不负责拉起 agent 执行任务），也不是通用项目管理系统。
+
+完整设计见 [`docs/superpowers/specs/2026-09-23-kanban-hub-design.md`](docs/superpowers/specs/2026-09-23-kanban-hub-design.md)。
 
 ## 核心设计要点
 
-- **常驻服务**：由 systemd 管理，监听内网，局域网内用浏览器访问，必须带鉴权。
-- **多项目总览**：项目清单放在仓库外的全局注册表（暂定 `~/.config/kanban-hub/projects.yaml`），服务按注册表读取各仓库的进度并汇总显示。
-- **进度存文件、进 git**：进度数据是仓库里的文件，AI 直接改文件即可，改动能 diff、能回滚、能和代码放进同一个提交。具体格式待定（沿用 Markdown `TASKS.md`，或结构化任务文件）。
-- **不侵入被管理的仓库**：不往仓库里装依赖、不改 agent 指令文件、不装 git hook；最多只使用 `.kanban/` 这类点目录存放数据（目录名暂定）。
-- **文档浏览**：渲染仓库内的 `docs/**/*.md`，`*.html` demo 在独立路径下原样打开；所有文件访问都要做路径穿越校验。
+- **服务端统一管理进度**：AI 通过 `kh` 调 API 上报结构化状态，不解析仓库里的 Markdown 进度文件。进度不在仓库里，开源项目不会因此暴露开发进度。
+- **存储用文件 + git，不用数据库**：数据是 YAML / JSONL 文件，数据目录本身是一个 git 仓库；支持手动打包 AES-256 加密备份。存储细节封装在单一的存储模块里。
+- **`kh` 是唯一接触仓库的组件**：它把仓库里的文档增量推送到服务端保存快照，服务端不读任何仓库磁盘，所以能跨多台机器使用。
+- **不侵入被管理的仓库**：`kh` 只在仓库里写 `.kanban-hub/`（默认通过 `.git/info/exclude` 本地排除），其余一律只读。
+- **看板模型**：项目（周期、健康度、当前焦点）→ 容器（阶段 / 特性 / 杂项）→ 任务（状态、待你处理、分组标签、清单、日期），另有事件时间线。
+- **通用 AI 接入**：Agent Skills 标准格式的 skill 加上 `kh` 命令行，任何 agent 都能用；Claude Code 另有 hook 自动同步文档、注入进度。
 
 ## 技术栈
 
-- **服务端**：待定（Python / Node 二选一，待 brainstorming 定稿）
-- **前端**：待定
-- **其他**：部署方式为 systemd 常驻服务；命令短别名暂定 `kh`
+- **服务端 + 网页**：Next.js（App Router，standalone 输出）、TypeScript、zod
+- **UI**：shadcn/ui + Tailwind CSS + lucide 图标、next-intl
+- **命令行**：`kh`，TypeScript，esbuild 打包成单文件，要求 Node 22 及以上
+- **工程**：pnpm monorepo、Vitest
+- **部署**：Docker Compose（生产用构建好的镜像，开发时挂载源码热更新）
 
 ## 实现现状
 
 - [x] 调研：同类项目评估完成，确定自建
-- [ ] 形态定稿：进度格式、网页端是否可写回、AI 接入方式、技术栈
+- [x] 设计定稿：见上方规格
 - [ ] 实施：尚无代码
 
 ## 仓库结构
+
+规划中的结构（尚未创建的目录会在实施时建立）：
 
 ```
 kanban-hub/
 ├── CLAUDE.md              # 本文件：项目定义与约定（面向 AI 会话）
 ├── README.md              # 项目介绍（面向外部读者）
 ├── LICENSE                # MIT
-├── docs/                  # 面向使用者的文档
-│   └── superpowers/specs/ # 定稿后可公开的设计规格
-└── .gitignore
+├── apps/web/              # Next.js：API 处理函数 + 网页
+├── packages/core/         # zod schema 与纯逻辑，不做 IO
+├── packages/cli/          # kh 命令行 + 通用 SKILL.md
+├── Dockerfile
+├── docker-compose.dev.yml # 开发：挂载源码，热更新
+├── deploy/                # 生产：docker-compose.yml、.env.example
+└── docs/
+    └── superpowers/specs/ # 定稿后可公开的设计规格
 ```
 
 `docs/_internal/`、`CLAUDE.local.md`、`.claude/` 是本地私有的开发过程资料，已被 `.gitignore` 排除，不入库。新增文档时，过程性内容（讨论、计划、审查、原型）放 `docs/_internal/`，不要写进公开文档。
@@ -46,5 +58,5 @@ kanban-hub/
 ## 常用命令
 
 ```bash
-# 暂无，技术栈定案后补充
+# 暂无，实施阶段搭好工程骨架后补充
 ```

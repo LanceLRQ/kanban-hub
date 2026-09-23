@@ -1,0 +1,11 @@
+packages:
+  - apps/*
+  - packages/*
+
+# node_modules 用扁平的真实目录，而不是 pnpm 默认的符号链接布局：
+# Next standalone 的文件追踪和 Dockerfile 里按固定路径 COPY 都假设这里是真实目录。
+nodeLinker: hoisted
+
+# pnpm 11 默认拦截依赖的构建脚本，需要放行的在这里列出。
+allowBuilds:
+  esbuild: true

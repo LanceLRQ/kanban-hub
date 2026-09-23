@@ -26,3 +26,21 @@ docs/_internal/
 .claude/
 CLAUDE.local.md
 AGENTS.md
+
+# ============================================================
+# Node / Next.js
+# ============================================================
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+# Next 官方建议不入库，由 next dev / build / typegen 生成
+next-env.d.ts
+
+# ============================================================
+# Docker 本地数据
+# ============================================================
+dev-data/
+deploy/data/
+deploy/backups/

@@ -1,0 +1,25 @@
+# 构建上下文只需要源码和锁文件。内部资料一律挡在外面：
+# Next 16 的 Turbopack 构建不认 outputFileTracingExcludes，镜像里不含内部资料只能靠这里。
+# docs 整个排除；以后确实需要把某个公开子目录放进镜像时，用 !docs/<子目录> 单独放行。
+.git
+.claude
+.kanban-hub
+# AI 工作流的本地工作区（含计划摘录等私有内容）
+.superpowers
+**/node_modules
+**/.next
+**/dist
+**/coverage
+**/*.tsbuildinfo
+docs
+dev-data
+deploy/data
+deploy/backups
+deploy/.env
+CLAUDE.md
+CLAUDE.local.md
+AGENTS.md
+README.md
+.env
+.env.*
+*.log

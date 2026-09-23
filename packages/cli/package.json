@@ -1,0 +1,24 @@
+{
+  "name": "@kanban-hub/cli",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "kh": "dist/kh.mjs"
+  },
+  "files": [
+    "dist"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@kanban-hub/core": "workspace:*",
+    "commander": "^15.0.0",
+    "esbuild": "^0.28.2"
+  }
+}

@@ -1,0 +1,42 @@
+# 开发编排：挂载源码，改代码即热更新。
+# 首次使用：mkdir -p dev-data/data dev-data/backups
+# 启动：PUID=$(id -u) PGID=$(id -g) docker compose -f docker-compose.dev.yml up --build
+# node_modules 与 .next 放在命名卷里：宿主机（macOS）和容器（Linux）的原生依赖不能混用，
+# 构建产物也不会以容器身份写进源码目录。
+services:
+  kanban-hub-dev:
+    build:
+      context: .
+      target: dev
+      args:
+        HTTP_PROXY: ${HTTP_PROXY:-}
+        HTTPS_PROXY: ${HTTPS_PROXY:-}
+    user: "${PUID:-1000}:${PGID:-1000}"
+    working_dir: /app
+    command: >
+      sh -c "umask ${UMASK:-022}
+      && pnpm install --frozen-lockfile --store-dir /pnpm-store
+      && pnpm -F @kanban-hub/web exec next dev -H 0.0.0.0 -p 28970"
+    ports:
+      - "127.0.0.1:${KH_DEV_PORT:-28970}:28970"
+    volumes:
+      - .:/app
+      - kh-dev-root-modules:/app/node_modules
+      - kh-dev-web-modules:/app/apps/web/node_modules
+      - kh-dev-core-modules:/app/packages/core/node_modules
+      - kh-dev-cli-modules:/app/packages/cli/node_modules
+      - kh-dev-next:/app/apps/web/.next
+      - kh-dev-pnpm-store:/pnpm-store
+      - ./dev-data/data:/data
+      - ./dev-data/backups:/backups
+    environment:
+      - KH_ADMIN_PASSWORD=dev
+      - KH_PUBLIC_URL=http://127.0.0.1:${KH_DEV_PORT:-28970}
+
+volumes:
+  kh-dev-root-modules:
+  kh-dev-web-modules:
+  kh-dev-core-modules:
+  kh-dev-cli-modules:
+  kh-dev-next:
+  kh-dev-pnpm-store:

@@ -18,6 +18,33 @@ FROM deps AS build
 COPY . .
 RUN pnpm -F @kanban-hub/web build
 
+# ---------- dev：开发环境（挂载源码热更新，由 docker-compose.dev.yml 使用） ----------
+FROM node:22-bookworm-slim AS dev
+ARG HTTP_PROXY=
+ARG HTTPS_PROXY=
+RUN http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} apt-get update \
+ && http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} apt-get install -y --no-install-recommends git ca-certificates \
+ && rm -rf /var/lib/apt/lists/* \
+ && git config --system --add safe.directory /data \
+ && http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} npm install -g pnpm@11.15.0
+# 这些路径会挂成命名卷。容器以任意 PUID 运行，命名卷第一次创建时会继承镜像里这些目录的权限，
+# 所以这里预先建好并放开权限（仅用于开发镜像）。
+RUN mkdir -p /app/node_modules /app/apps/web/node_modules /app/apps/web/.next \
+             /app/packages/core/node_modules /app/packages/cli/node_modules \
+             /pnpm-store /tmp/kh-home \
+ && chmod 777 /app/node_modules /app/apps/web/node_modules /app/apps/web/.next \
+              /app/packages/core/node_modules /app/packages/cli/node_modules \
+              /pnpm-store /tmp/kh-home
+WORKDIR /app
+# 不设 WATCHPACK_POLLING：它只对 webpack 生效，Next 16 的开发服务用 Turbopack。
+# 热更新靠挂载目录的原生文件事件（Docker Desktop 会转发，Linux 宿主是 inotify）。
+ENV HOME=/tmp/kh-home \
+    KH_IN_CONTAINER=1 \
+    KH_DATA_DIR=/data \
+    KH_BACKUP_DIR=/backups \
+    GIT_COMMITTER_NAME=kanban-hub \
+    GIT_COMMITTER_EMAIL=kanban-hub@localhost
+
 # ---------- runtime：非 root 精简运行时 ----------
 FROM node:22-bookworm-slim AS runtime
 ARG HTTP_PROXY=

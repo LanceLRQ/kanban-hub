@@ -89,7 +89,8 @@ kanban-hub/
 ├── packages/core/         # zod schema 与纯逻辑，不做任何 IO
 ├── packages/cli/          # kh 命令行，esbuild 打包成单文件
 │   └── assets/skill/      # 通用 SKILL.md
-├── Dockerfile             # 多阶段构建：deps / build / runtime
+├── Dockerfile             # 多阶段构建：deps / build / dev / runtime
+├── docker/                # 容器入口脚本
 ├── docker-compose.dev.yml # 开发：挂载源码，热更新
 └── deploy/                # 生产：docker-compose.yml、.env.example
 ```
@@ -575,7 +576,7 @@ skill 里只写 `kh` 命令和规则，不引用任何一家 agent 特有的工�
 
 - 挂载源码，运行 `pnpm dev`，改代码就能热更新。
 - `node_modules` 和 `apps/web/.next` 放在命名卷里，构建产物不会写进源码目录。
-- 设置 `WATCHPACK_POLLING=true`，解决宿主机的文件变化传不进容器的问题。
+- 热更新依赖挂载目录的原生文件事件（Docker Desktop 会转发宿主机的文件变化，Linux 宿主是 inotify）。不设 `WATCHPACK_POLLING`：它只对 webpack 生效，Next 16 的开发服务用 Turbopack。
 - 同样设置 `user: "${PUID}:${PGID}"`。
 - 数据目录挂载到 `./dev-data`（不入库）。
 

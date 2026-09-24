@@ -1,0 +1,76 @@
+# ============================================================
+# 通用（跨语言）
+# ============================================================
+.DS_Store
+*.log
+.env
+.env.*
+!.env.example
+.idea/
+.vscode/
+
+# 语言/框架相关的忽略段待技术栈定案后追加
+# （可用 https://www.toptal.com/developers/gitignore 或 https://github.com/github/gitignore 生成后合并）
+
+# ============================================================
+# 文档治理
+# ============================================================
+
+# --- 内部设计讨论与调研记录（不进开源/公开仓库）---
+# 存放决策记录、阶段计划、审查报告、界面原型等设计过程产物，
+# 属于内部资料。定稿后需公开的设计规格另放
+# docs/superpowers/specs/，并单独决定是否入库（此目录不在此排除）。
+docs/_internal/
+
+# --- Claude Code / AI 编辑器相关（不入库）---
+.claude/
+CLAUDE.local.md
+AGENTS.md
+
+# ============================================================
+# Node / Next.js
+# ============================================================
+node_modules/
+.next/
+dist/
+coverage/
+*.tsbuildinfo
+# Next 官方建议不入库，由 next dev / build / typegen 生成
+next-env.d.ts
+
+# ============================================================
+# Docker 本地数据
+# ============================================================
+dev-data/
+deploy/data/
+deploy/backups/
+
+# ===== ↑ 以上同步自 .gitignore（「从 .gitignore 同步」只重写以上部分）=====
+.git/
+.hg/
+.svn/
+bower_components/
+jspm_packages/
+__pycache__/
+site-packages/
+venv/
+htmlcov/
+lcov-report/
+cmakefiles/
+cmake-build-*/
+bazel-*/
+pods/
+deriveddata/
+storybook-static/
+playwright-report/
+test-results/
+allure-results/
+allure-report/
+cdk.out/
+*.egg-info/
+*.dist-info/
+eggs/
+pip-wheel-metadata/
+wheels/
+# ----- ↑ 以上为 ZCode 默认排除规则（自定义规则请写在本行下方，不会被同步/恢复改动）-----
+# 自定义规则写在下方（本行提示可删除）

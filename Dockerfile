@@ -49,12 +49,15 @@ ENV HOME=/tmp/kh-home \
 FROM node:22-bookworm-slim AS runtime
 ARG HTTP_PROXY=
 ARG HTTPS_PROXY=
+# NEXT_MANUAL_SIG_HANDLE：关机由应用处理（先提交未提交的改动再退出），Next 不再注册 SIGTERM/SIGINT；
+# 否则它会等所有连接关闭才退出，长连接会让关机一直卡到 SIGKILL。见 apps/web/src/server/shutdown.ts
 ENV NODE_ENV=production \
     PORT=28970 \
     HOSTNAME=0.0.0.0 \
     KH_DATA_DIR=/data \
     KH_BACKUP_DIR=/backups \
-    KH_IN_CONTAINER=1
+    KH_IN_CONTAINER=1 \
+    NEXT_MANUAL_SIG_HANDLE=1
 # 代理只用于这一步安装，不写进最终镜像的环境变量
 RUN http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} apt-get update \
  && http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} apt-get install -y --no-install-recommends git ca-certificates \

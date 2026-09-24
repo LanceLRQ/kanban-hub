@@ -286,10 +286,11 @@ kanban-hub/
 
 | 对象 | 机制 |
 |---|---|
-| 管理员密码 | `KH_ADMIN_PASSWORD` 是唯一来源。启动时和保存的哈希比对，不一致就更新哈希，并让 `sessionVersion` 加 1，所有会话失效 |
-| 网页会话 | 用 `session-secret` 签名的 cookie，内容包含 `userId` 和 `sessionVersion`。设置 `HttpOnly`、`SameSite=Strict`；写操作额外校验 `Origin` |
-| 配对码 | 在网页上生成，6 位，形如 `K7Q-4MZ`，一次性使用，10 分钟有效，只保存在内存里。`POST /api/v1/pair` 同一个 IP 每分钟最多失败 5 次 |
-| 机器令牌 | 32 字节随机数，编码成 `kh_` 开头的 base64url 字符串。服务端只存 SHA-256，可以在网页上吊销 |
+| 管理员密码 | `KH_ADMIN_PASSWORD` 是唯一来源。启动时和保存的哈希比对，不一致就更新哈希，并让 `sessionVersion` 加 1，网页会话全部失效（机器令牌不受影响，只有吊销才会失效） |
+| 网页会话 | 用 `session-secret` 签名的 cookie，内容包含 `userId` 和 `sessionVersion`，有效期 30 天，不续期。设置 `HttpOnly`、`SameSite=Strict`；写操作额外校验 `Origin` |
+| 配对码 | 在网页上生成，6 位，形如 `K7Q-4MZ`，一次性使用，10 分钟有效，只保存在内存里 |
+| 机器令牌 | 32 字节随机数，编码成 `kh_` 开头的 base64url 字符串。服务端只存 SHA-256，长期有效、不设过期时间，只有在网页上吊销才会失效 |
+| 登录与配对限流 | `POST /api/v1/auth/login`、`POST /api/v1/pair` 共用同一个限流器：同一个 IP 每分钟最多失败 5 次，另外有全局每分钟最多失败 30 次的上限（两个接口共用）。客户端 IP 只能从 `X-Forwarded-For` 等请求头读取，这些头可以伪造，只按 IP 限流挡不住换着 IP 尝试 |
 | `/raw` 文件 | 用能力 URL 访问：`/raw/<签名令牌>/<路径>`。令牌是对“项目、机器、过期时间”做的 HMAC，有效期 12 小时，由网页在渲染时签发。**不依赖 cookie**，因为在沙箱里运行的 demo 页面属于不透明来源，它加载的 css、js、图片等子资源拿不到 `SameSite=Strict` 的 cookie |
 
 部署建议放在 HTTPS 反向代理之后。在局域网里直接用 HTTP 时，令牌和备份密码都以明文传输，这个风险由部署者自行评估。
@@ -446,13 +447,13 @@ YAML，顶层写 `format: kanban-hub/v1`，包含 `project`（周期、健康度
 
 ## 11. API
 
-统一前缀 `/api/v1`，请求和响应都用 JSON，并用 `packages/core` 里的 zod schema 校验。`kh` 每次请求都带 `X-KH-Version` 头，服务端判断不兼容时返回 426。
+统一前缀 `/api/v1`，请求和响应都用 JSON，并用 `packages/core` 里的 zod schema 校验。`kh` 每次请求都带 `X-KH-Version` 头，服务端判断不兼容时返回 426；所有响应都带 `X-KH-Version`，标明服务端版本。令牌请求可以另外带 `X-KH-Agent`（不超过 50 个字符）标识自己，会写进对应事件的操作者。
 
 | 用途 | 接口 |
 |---|---|
 | 健康检查 | `GET /api/health`（无需鉴权） |
 | 配对 | `POST /pair`：`{ code, machineName, os }` → `{ token, machineId }` |
-| 会话 | `POST /auth/login`、`POST /auth/logout` |
+| 会话 | `POST /auth/login`、`POST /auth/logout`、`GET /me`（当前用户与服务端版本；令牌鉴权时还带上本机信息） |
 | 机器 | `GET /machines`、`POST /machines/:id/revoke`、`POST /pairing-codes` |
 | 项目 | `GET /projects`、`GET /projects?fingerprint=…`、`POST /projects`、`GET /projects/:id`、`PATCH /projects/:id`、`PUT /projects/:id/locations/:machineId` |
 | 容器 | `POST /projects/:id/containers`、`PATCH /projects/:id/containers/:cid` |

@@ -303,6 +303,63 @@ describe("git 提交", () => {
   });
 });
 
+describe("登记位置", () => {
+  it("登记后写入 project.yaml、记一条事件，并通知订阅者", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, actor);
+    const changes: StoreChange[] = [];
+    store.subscribe((change) => changes.push(change));
+    const updated = await store.setLocation(project.id, actor.machineId!, { path: "/repo" }, actor);
+    expect(updated.locations).toEqual([
+      { machineId: actor.machineId, path: "/repo", lastSyncAt: null, sync: null, git: null, skippedFiles: [] },
+    ]);
+    expect(await fs.readFile(path.join(dir, "projects", project.id, "project.yaml"), "utf8")).toContain("path: /repo");
+    const events = await readEventLines(project.id, "2026-09");
+    expect(events.map((e) => e.type)).toEqual(["project.created", "project.updated"]);
+    expect(changes.at(-1)?.events.map((e) => e.type)).toEqual(["project.updated"]);
+  });
+
+  it("项目不存在时报 not_found", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const err = await rejection(store.setLocation("zzzzzzzzzz", actor.machineId!, { path: "/repo" }, actor));
+    expect((err as KhError).code).toBe("not_found");
+  });
+
+  it("机器不存在时报 not_found", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, actor);
+    const err = await rejection(store.setLocation(project.id, "zzzzzzzzzz", { path: "/repo" }, actor));
+    expect((err as KhError).code).toBe("not_found");
+  });
+
+  it("重复登记同样的内容，不写文件、不记事件", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, actor);
+    await store.setLocation(project.id, actor.machineId!, { path: "/repo" }, actor);
+    const changes: StoreChange[] = [];
+    store.subscribe((change) => changes.push(change));
+    const updated = await store.setLocation(project.id, actor.machineId!, { path: "/repo" }, actor);
+    expect(updated.version).toBe(2);
+    expect(changes).toEqual([]);
+    expect(await readEventLines(project.id, "2026-09")).toHaveLength(2);
+  });
+});
+
+describe("只读查询", () => {
+  it("getProject 的返回值不能被当作可写对象直接修改（编译期检查）", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, actor);
+    const got = store.getProject(project.id)!;
+    // @ts-expect-error 查询返回的是只读类型
+    got.name = "改名";
+  });
+});
+
 describe("查询事件", () => {
   it("按时间倒序，可以按项目筛选、用游标翻页", async () => {
     const store = await open();

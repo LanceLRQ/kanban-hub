@@ -6,12 +6,14 @@ import {
   createLogEvent,
   createProject,
   createTask,
+  setLocation,
   transitionTask,
   updateContainer,
   updateProject,
   updateTask,
 } from "./mutations";
 import {
+  MACHINE_ID,
   T0,
   cliActor,
   fixtureId,
@@ -134,6 +136,53 @@ describe("updateProject", () => {
 
   it("拒绝未知字段", () => {
     expect(thrown(() => updateProject(makeProject(), { fingerprint: "x" } as never, ctx())).code).toBe("invalid");
+  });
+});
+
+describe("setLocation", () => {
+  const M = MACHINE_ID;
+
+  it("新登记会产出事件，from 为 null", () => {
+    const r = setLocation(makeProject(), M, { path: "/repo" }, ctx());
+    expect(r.project.locations).toEqual([{ machineId: M, path: "/repo", lastSyncAt: null, sync: null, git: null, skippedFiles: [] }]);
+    expect(r.project.version).toBe(2);
+    expect(r.events).toMatchObject([
+      { type: "project.updated", change: { location: { from: null, to: { machineId: M, path: "/repo", sync: null } } } },
+    ]);
+  });
+
+  it("修改 path 会产出事件", () => {
+    const project = makeProject({
+      locations: [{ machineId: M, path: "/old", lastSyncAt: T0, sync: null, git: null, skippedFiles: [] }],
+    });
+    const r = setLocation(project, M, { path: "/new" }, ctx());
+    expect(r.project.locations[0]).toMatchObject({ path: "/new", lastSyncAt: T0 });
+    expect(r.events[0]?.change).toEqual({
+      location: { from: { machineId: M, path: "/old", sync: null }, to: { machineId: M, path: "/new", sync: null } },
+    });
+  });
+
+  it("内容相同时不产出事件，项目的版本不变", () => {
+    const project = makeProject({
+      locations: [{ machineId: M, path: "/repo", lastSyncAt: T0, sync: null, git: null, skippedFiles: [] }],
+    });
+    const r = setLocation(project, M, { path: "/repo" }, ctx());
+    expect(r.project).toBe(project);
+    expect(r.events).toEqual([]);
+  });
+
+  it("已有的 git、lastSyncAt、skippedFiles 被保留", () => {
+    const git = { branch: "main", head: "a".repeat(40), headSubject: "x", headAt: T0, dirtyCount: 0, ahead: 0, behind: 0 };
+    const project = makeProject({
+      locations: [{ machineId: M, path: "/old", lastSyncAt: T0, sync: null, git, skippedFiles: [{ path: "a.bin", size: 10 }] }],
+    });
+    const r = setLocation(project, M, { path: "/new" }, ctx());
+    expect(r.project.locations[0]).toMatchObject({ lastSyncAt: T0, git, skippedFiles: [{ path: "a.bin", size: 10 }] });
+  });
+
+  it("输入非法（空路径、未知字段）时报 invalid", () => {
+    expect(thrown(() => setLocation(makeProject(), M, { path: "" }, ctx())).code).toBe("invalid");
+    expect(thrown(() => setLocation(makeProject(), M, { path: "/x", extra: 1 } as never, ctx())).code).toBe("invalid");
   });
 });
 

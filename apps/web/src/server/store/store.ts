@@ -10,7 +10,9 @@ import {
   type Container,
   type ContainerCreateInput,
   type ContainerPatchInput,
+  type DeepReadonly,
   type Event,
+  type LocationInput,
   type LogInput,
   type Project,
   type ProjectCreateInput,
@@ -126,19 +128,19 @@ export class Store {
 
   // ---------- 查询（读内存，同步） ----------
 
-  listProjects(): Project[] {
+  listProjects(): DeepReadonly<Project[]> {
     return [...this.projects.values()].map((s) => s.project);
   }
 
-  getProject(id: string): Project | undefined {
+  getProject(id: string): DeepReadonly<Project> | undefined {
     return this.projects.get(id)?.project;
   }
 
-  getBoard(projectId: string): Board | undefined {
+  getBoard(projectId: string): DeepReadonly<Board> | undefined {
     return this.projects.get(projectId)?.board;
   }
 
-  findProjectsByFingerprint(fingerprint: string): Project[] {
+  findProjectsByFingerprint(fingerprint: string): DeepReadonly<Project[]> {
     return this.listProjects().filter((p) => p.fingerprint === fingerprint);
   }
 
@@ -160,7 +162,7 @@ export class Store {
   }
 
   /** 按时间倒序列出事件；内存里不够时，再按月份从新到旧读更早的文件（规格 6.2） */
-  async listEvents(query: EventQuery): Promise<Event[]> {
+  async listEvents(query: EventQuery): Promise<DeepReadonly<Event[]>> {
     // 项目不存在时拒绝，且必须在内存过滤和读文件之前：query.projectId 不检查就拼进文件路径，
     // 会把不存在的（或路径穿越的）ID 拼出数据目录外的路径去读（M2 把 not_found 映射成 404）
     if (query.projectId !== undefined && !this.projects.has(query.projectId)) {
@@ -202,6 +204,15 @@ export class Store {
   updateProject(projectId: string, patch: ProjectPatchInput, actor: Actor, opts: MutationOptions = {}): Promise<Project> {
     return this.mutate(actor, (ctx) => {
       const r = ops.updateProject(this.requireProject(projectId).project, patch, ctx, opts.expectedVersion);
+      return { projectId, project: r.project, events: r.events, value: r.project };
+    });
+  }
+
+  setLocation(projectId: string, machineId: string, input: LocationInput, actor: Actor): Promise<Project> {
+    return this.mutate(actor, (ctx) => {
+      const state = this.requireProject(projectId);
+      if (!this.auth.getMachine(machineId)) throw new KhError("not_found", `机器 ${machineId} 不存在`);
+      const r = ops.setLocation(state.project, machineId, input, ctx);
       return { projectId, project: r.project, events: r.events, value: r.project };
     });
   }

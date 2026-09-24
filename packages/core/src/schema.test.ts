@@ -5,6 +5,7 @@ import {
   containerSchema,
   eventSchema,
   isRepoRelativePath,
+  locationInput,
   projectCreateInput,
   taskPatchInput,
   taskSchema,
@@ -135,5 +136,18 @@ describe("变更输入", () => {
 
   it("修改任务的字段都可以省略，写 null 表示清空", () => {
     expect(taskPatchInput.safeParse({ human: null, dueDate: null }).success).toBe(true);
+  });
+
+  it("登记位置只需要路径，sync 可以省略或为 null", () => {
+    expect(locationInput.safeParse({ path: "/repo" }).success).toBe(true);
+    expect(locationInput.safeParse({ path: "/repo", sync: null }).success).toBe(true);
+  });
+
+  it("登记位置：路径为空时拒绝", () => {
+    expect(locationInput.safeParse({ path: "" }).success).toBe(false);
+  });
+
+  it("登记位置：拒绝未知字段", () => {
+    expect(locationInput.safeParse({ path: "/repo", machineId: "m1" }).success).toBe(false);
   });
 });

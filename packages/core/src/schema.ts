@@ -28,6 +28,15 @@ export const repoPathSchema = z
   .max(500)
   .refine(isRepoRelativePath, "必须是仓库内的相对路径（POSIX 形式，不含 ..）");
 
+// ---------- 工具类型 ----------
+
+/** 深度只读：给查询接口的返回值用，约束调用方不能直接改内部状态；只做编译期检查，不做深拷贝 */
+export type DeepReadonly<T> = T extends readonly (infer U)[]
+  ? readonly DeepReadonly<U>[]
+  : T extends object
+    ? { readonly [K in keyof T]: DeepReadonly<T[K]> }
+    : T;
+
 // ---------- 枚举（规格 5.3） ----------
 
 export const CYCLES = ["design", "development", "iteration", "maintenance", "archived"] as const;
@@ -371,3 +380,12 @@ export const logInput = z
   })
   .strict();
 export type LogInput = z.input<typeof logInput>;
+
+/** 登记项目在某台机器上的位置；lastSyncAt、git、skippedFiles 由服务端在 M5 维护，不经这个输入设置 */
+export const locationInput = z
+  .object({
+    path: z.string().min(1).max(1000),
+    sync: syncScopeSchema.nullable().optional(),
+  })
+  .strict();
+export type LocationInput = z.input<typeof locationInput>;

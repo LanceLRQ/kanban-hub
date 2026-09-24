@@ -7,6 +7,8 @@ import {
   type ContainerPatchInput,
   type Event,
   type EventType,
+  type Location,
+  type LocationInput,
   type LogInput,
   type Project,
   type ProjectCreateInput,
@@ -18,6 +20,7 @@ import {
   containerCreateInput,
   containerPatchInput,
   containerSchema,
+  locationInput,
   logInput,
   projectCreateInput,
   projectPatchInput,
@@ -146,6 +149,27 @@ export function updateProject(
   if (!change) return { project, events: [] };
   const next = parseInput(projectSchema, { ...merged, version: project.version + 1, updatedAt: ctx.now });
   return { project: next, events: [makeEvent(ctx, project.id, "project.updated", { change })] };
+}
+
+/**
+ * 登记项目在某台机器上的位置。已有位置时只替换 path 和 sync，lastSyncAt、git、skippedFiles
+ * 由服务端在 M5 维护，这里原样保留。change 的 "location" 键不是 Project 的实际字段名，
+ * 只是这条事件约定的记法（见 M2 计划）。
+ */
+export function setLocation(project: Project, machineId: string, input: LocationInput, ctx: MutationContext): ProjectResult {
+  const data = parseInput(locationInput, input);
+  const sync = data.sync ?? null;
+  const current = project.locations.find((l) => l.machineId === machineId);
+  const from = current ? { machineId, path: current.path, sync: current.sync } : null;
+  const to = { machineId, path: data.path, sync };
+  if (from && JSON.stringify(from) === JSON.stringify(to)) return { project, events: [] };
+
+  const location: Location = current
+    ? { ...current, path: data.path, sync }
+    : { machineId, path: data.path, lastSyncAt: null, sync, git: null, skippedFiles: [] };
+  const locations = current ? replaceLocation(project.locations, location) : [...project.locations, location];
+  const next = parseInput(projectSchema, { ...project, locations, version: project.version + 1, updatedAt: ctx.now });
+  return { project: next, events: [makeEvent(ctx, project.id, "project.updated", { change: { location: { from, to } } })] };
 }
 
 export function createContainer(
@@ -370,4 +394,8 @@ function assertTaskCodeFree(board: Board, task: Task): void {
 
 function replaceById<T extends { id: string }>(items: readonly T[], next: T): T[] {
   return items.map((item) => (item.id === next.id ? next : item));
+}
+
+function replaceLocation(locations: readonly Location[], next: Location): Location[] {
+  return locations.map((l) => (l.machineId === next.machineId ? next : l));
 }

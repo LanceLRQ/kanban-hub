@@ -89,6 +89,22 @@ describe("GET /api/v1/stream", () => {
     await reader.cancel();
   });
 
+  it("请求在 start() 执行前就已经中止时，不订阅、不启动心跳定时器", async () => {
+    api = await setupTestApi();
+    vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
+    const subscribeSpy = vi.spyOn(api.store, "subscribe");
+
+    // Next 在响应已经销毁的情况下既不会读这个流，也不会调用 cancel()：req.signal
+    // 建好时已经是 aborted 状态，模拟这种"起步就已中止"的场景
+    const req = new Request(api.request("/api/v1/stream", { cookie: api.sessionCookie() }), {
+      signal: AbortSignal.abort(),
+    });
+    await GET(req);
+
+    expect(subscribeSpy).not.toHaveBeenCalled();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it("中止请求后，取消订阅被调用", async () => {
     api = await setupTestApi();
     const unsubscribeSpy = vi.fn();

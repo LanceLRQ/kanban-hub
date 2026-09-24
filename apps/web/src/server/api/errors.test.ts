@@ -89,6 +89,35 @@ describe("toErrorResponse：其他异常", () => {
   });
 });
 
+describe("toErrorResponse：跨模块实例", () => {
+  // Turbopack 把同一份源码在 instrumentation 和 app-route 两个上下文里编译成不同的模块实例：
+  // 用 vi.resetModules() 强制下一次 import 拿到一份全新的模块实例，模拟这个场景，
+  // 证明 toErrorResponse 不能只靠 instanceof 判断（会落进 500 分支）。
+  it("另一份模块实例的 KhError 仍然映射到 404/409，而不是 500", async () => {
+    vi.resetModules();
+    const otherErrorsModule = await import("@kanban-hub/core/errors");
+    const OtherKhError = otherErrorsModule.KhError;
+    expect(OtherKhError).not.toBe(KhError); // 确认拿到的确实是不同的类，不是测试本身写错了
+
+    const notFound = toErrorResponse(new OtherKhError("not_found", "找不到项目"), vi.fn());
+    expect(notFound.status).toBe(404);
+
+    const conflict = toErrorResponse(new OtherKhError("conflict", "已被更新", { currentVersion: 5 }), vi.fn());
+    expect(conflict.status).toBe(409);
+    expect(await body(conflict)).toEqual({ error: { code: "conflict", message: "已被更新", details: { currentVersion: 5 } } });
+  });
+
+  it("另一份模块实例的 ApiError 仍然映射到对应状态码，而不是 500", async () => {
+    vi.resetModules();
+    const otherErrorsModule = await import("./errors");
+    const OtherApiError = otherErrorsModule.ApiError;
+    expect(OtherApiError).not.toBe(ApiError);
+
+    const res = toErrorResponse(new OtherApiError("forbidden", "禁止访问"), vi.fn());
+    expect(res.status).toBe(403);
+  });
+});
+
 describe("响应头", () => {
   it("所有响应都带 X-KH-Version", () => {
     const responses = [

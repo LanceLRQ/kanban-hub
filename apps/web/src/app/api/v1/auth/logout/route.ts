@@ -1,13 +1,7 @@
 import { clearSessionCookie } from "@/server/auth/session";
 import { ApiError } from "@/server/api/errors";
-import { isSameOrigin } from "@/server/api/http";
+import { isHttps, isSameOrigin } from "@/server/api/http";
 import { apiRoute } from "@/server/api/route";
-
-/** 反向代理终结 TLS 后两边协议可能不同，登录和登出都按这个规则判断原始请求是否为 https */
-function isHttps(req: Request): boolean {
-  const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
-  return forwarded === "https" || new URL(req.url).protocol === "https:";
-}
 
 export const POST = apiRoute({ auth: "none" }, ({ req, services }) => {
   if (!isSameOrigin(req, services.publicUrl)) {

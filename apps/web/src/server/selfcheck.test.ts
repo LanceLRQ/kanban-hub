@@ -2,7 +2,14 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { checkAbsolutePath, checkAdminPassword, checkGitAvailable, checkWritableDir, runSelfCheck } from "./selfcheck";
+import {
+  checkAbsolutePath,
+  checkAdminPassword,
+  checkGitAvailable,
+  checkPublicUrl,
+  checkWritableDir,
+  runSelfCheck,
+} from "./selfcheck";
 
 // 除了专门测 KH_ADMIN_PASSWORD 的用例，其余用例都带上这个有效值，避免被这项新检查干扰
 const VALID_ENV = { KH_ADMIN_PASSWORD: "dev" };
@@ -129,6 +136,50 @@ describe("runSelfCheck 的路径检查", () => {
     expect(errors[0]).toContain("KH_DATA_DIR");
     await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
     await expect(fs.stat(path.join(tmp, "backups"))).rejects.toThrow();
+  });
+});
+
+describe("checkPublicUrl", () => {
+  it("未设置时通过", () => {
+    expect(checkPublicUrl(undefined)).toBeNull();
+  });
+
+  it("合法的 http/https 地址通过", () => {
+    expect(checkPublicUrl("https://kanban.example.com")).toBeNull();
+    expect(checkPublicUrl("http://127.0.0.1:28970")).toBeNull();
+  });
+
+  it("非法协议被拒绝", () => {
+    const msg = checkPublicUrl("ftp://kanban.example.com");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("KH_PUBLIC_URL");
+  });
+
+  it("无法解析的值被拒绝", () => {
+    const msg = checkPublicUrl("不是一个地址");
+    expect(msg).not.toBeNull();
+    expect(msg).toContain("KH_PUBLIC_URL");
+  });
+});
+
+describe("runSelfCheck 的 KH_PUBLIC_URL 检查", () => {
+  it("KH_PUBLIC_URL 非法时自检失败，不创建任何目录", async () => {
+    const errors = await runSelfCheck(
+      { dataDir: path.join(tmp, "data"), backupDir: path.join(tmp, "backups"), inContainer: false },
+      "git",
+      { ...VALID_ENV, KH_PUBLIC_URL: "不合法" },
+    );
+    expect(errors.some((e) => e.includes("KH_PUBLIC_URL"))).toBe(true);
+    await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
+  });
+
+  it("未设置 KH_PUBLIC_URL 时不受影响", async () => {
+    const errors = await runSelfCheck(
+      { dataDir: path.join(tmp, "data"), backupDir: path.join(tmp, "backups"), inContainer: false },
+      "git",
+      VALID_ENV,
+    );
+    expect(errors).toEqual([]);
   });
 });
 

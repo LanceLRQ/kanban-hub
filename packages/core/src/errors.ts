@@ -3,10 +3,20 @@ import type { z } from "zod";
 export type KhErrorCode = "invalid" | "not_found" | "conflict" | "unavailable";
 
 /**
+ * 跨模块实例识别用的品牌标记。Turbopack 把同一份源码在 instrumentation 和 app-route
+ * 两个上下文里编译成不同的模块实例：Store 在 instrumentation 一侧创建，它抛出的 KhError
+ * 和路由那一侧 import 到的 KhError 不是同一个类对象，`instanceof` 会失败。Symbol.for
+ * 用的是引擎全局的 symbol 注册表，两个模块实例拿到的是同一个 symbol，可以跨实例识别。
+ */
+const KH_ERROR_BRAND = Symbol.for("kanban-hub.KhError");
+
+/**
  * 存储层与 API 共用的业务错误。M2 按 code 映射 HTTP 状态码：
  * invalid → 400，not_found → 404，conflict → 409，unavailable → 503。
  */
 export class KhError extends Error {
+  readonly [KH_ERROR_BRAND] = true;
+
   constructor(
     readonly code: KhErrorCode,
     message: string,
@@ -15,6 +25,12 @@ export class KhError extends Error {
     super(message);
     this.name = "KhError";
   }
+}
+
+/** 判断是否为 KhError：先 instanceof，跨模块实例时退化到品牌标记 */
+export function isKhError(e: unknown): e is KhError {
+  if (e instanceof KhError) return true;
+  return typeof e === "object" && e !== null && (e as Record<PropertyKey, unknown>)[KH_ERROR_BRAND] === true;
 }
 
 /** 字段路径写成 tasks[0].title 的形式 */

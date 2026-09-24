@@ -30,7 +30,7 @@ export async function boot(): Promise<void> {
     pairing: new PairingRegistry({ now }),
     limiter: new FailureLimiter({ now }),
     seen: new LastSeenTracker({ now, log }),
-    publicUrl: resolvePublicUrlOrExit(),
+    publicUrl: readPublicUrl(),
     now,
     log,
   };
@@ -77,18 +77,7 @@ async function syncAdminPasswordOrExit(store: Store): Promise<void> {
   }
 }
 
-/** KH_PUBLIC_URL 没设置时返回 null；设置了但不是合法的 http/https 地址就拒绝启动 */
-function resolvePublicUrlOrExit(): string | null {
-  const raw = process.env.KH_PUBLIC_URL;
-  if (!raw) return null;
-  try {
-    const url = new URL(raw);
-    if (url.protocol !== "http:" && url.protocol !== "https:") throw new Error("协议必须是 http 或 https");
-    return raw;
-  } catch (e) {
-    console.error(
-      `[kanban-hub] 启动失败：KH_PUBLIC_URL 不是合法的 http/https 地址（当前为“${raw}”）：${e instanceof Error ? e.message : String(e)}`,
-    );
-    process.exit(1);
-  }
+/** 值已经在 enforceSelfCheck 里校验过了（selfcheck.ts 的 checkPublicUrl），这里只读取 */
+function readPublicUrl(): string | null {
+  return process.env.KH_PUBLIC_URL ?? null;
 }

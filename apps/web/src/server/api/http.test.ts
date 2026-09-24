@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { ApiError } from "./errors";
-import { checkClientVersion, isSameOrigin, json, readJson } from "./http";
+import { checkClientVersion, isHttps, isSameOrigin, json, readJson } from "./http";
 
 function req(url: string, init?: RequestInit): Request {
   return new Request(url, init);
@@ -139,5 +139,25 @@ describe("isSameOrigin", () => {
   it("Origin 为 null（字面量字符串）时不算同源", () => {
     const r = req("http://localhost/x", { headers: { origin: "null", host: "kanban.example.com" } });
     expect(isSameOrigin(r)).toBe(false);
+  });
+});
+
+describe("isHttps", () => {
+  it("请求本身协议是 https 时为 true", () => {
+    expect(isHttps(req("https://kanban.example.com/x"))).toBe(true);
+  });
+
+  it("请求本身协议是 http 且没有 X-Forwarded-Proto 时为 false", () => {
+    expect(isHttps(req("http://kanban.example.com/x"))).toBe(false);
+  });
+
+  it("X-Forwarded-Proto 为 https 时为 true，即使请求本身是 http（反向代理终结 TLS 的场景）", () => {
+    const r = req("http://kanban.example.com/x", { headers: { "x-forwarded-proto": "https" } });
+    expect(isHttps(r)).toBe(true);
+  });
+
+  it("X-Forwarded-Proto 有多段时取第一段", () => {
+    const r = req("http://kanban.example.com/x", { headers: { "x-forwarded-proto": "https,http" } });
+    expect(isHttps(r)).toBe(true);
   });
 });

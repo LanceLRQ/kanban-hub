@@ -7,13 +7,17 @@ import { apiRoute } from "@/server/api/route";
 
 // 调用方是 kh，不是浏览器，不做同源校验
 export const POST = apiRoute({ auth: "none" }, async ({ req, services }) => {
+  // 先读请求体（非法请求体照旧 400，不计入失败次数），再 check；check、consume、
+  // 失败时的 recordFailure 全程同步、中间不能有 await——否则并发请求会在都
+  // await 请求体的时候一起通过 check，限流形同虚设（scrypt 不存在但 consume
+  // 本身也不便宜，同样的并发绕过风险）
+  const input = await readJson(req, pairInput);
+
   const key = `pair:${clientKey(req.headers)}`;
   const limit = services.limiter.check(key);
   if (limit.blocked) {
     throw new ApiError("rate_limited", "配对尝试过于频繁，请稍后再试", { retryAfterSeconds: limit.retryAfterSec });
   }
-
-  const input = await readJson(req, pairInput);
 
   const grant = services.pairing.consume(input.code);
   if (!grant) {

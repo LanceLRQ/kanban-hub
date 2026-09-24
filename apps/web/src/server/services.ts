@@ -8,6 +8,9 @@ import type { Store } from "./store/store";
  * 进程内共享的服务容器：存储加上 M2 新增的内存状态（配对码、限流、lastSeenAt 节流）。
  * 与 store/instance.ts 的单例一样挂在 globalThis 上——Next 把每个路由编译成独立的模块实例，
  * 模块级变量互不相通，只有 globalThis 上的引用能在它们之间共享。
+ *
+ * 服务容器在 boot() 里由 instrumentation 一侧创建一次：改了 server/auth/、server/store/
+ * 下的代码，要重启 pnpm dev 才会生效；路由代码（app/api/ 下）本身会正常热更新。
  */
 export interface Services {
   store: Store;

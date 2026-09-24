@@ -127,7 +127,7 @@ async function resolvePrincipal(req: Request, auth: ApiAuthMode, services: Servi
 
   const principal = await authenticate(req, { auth: services.store.auth, now: services.now, seen: services.seen });
   if (!principal) {
-    // 带了令牌但校验不通过：令牌本身失效/被吊销，恢复手段是重新配对（规格 9 节的 kh login），
+    // 带了令牌但校验不通过：令牌本身失效/被吊销，恢复手段是重新配对（规格 10.2 节的 kh login），
     // 不是 kh setup（那只装 skill/hook，规格 12.1），提示错了会让人以为跑 kh setup 就能恢复
     if (isTokenAttempt) {
       throw new ApiError("unauthorized", "机器令牌无效或已被吊销，请到网页的 /setup 页面获取配对码，再执行 kh login 重新接入");

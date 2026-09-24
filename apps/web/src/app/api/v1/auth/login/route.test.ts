@@ -79,7 +79,30 @@ describe("POST /api/v1/auth/login", () => {
 
   it("请求体非法时返回 400，且不计入失败次数", async () => {
     api = await setupTestApi();
-    const res = await POST(api.request("/api/v1/auth/login", { method: "POST", json: { password: "" } }));
-    expect(res.status).toBe(400);
+    const invalid = await POST(api.request("/api/v1/auth/login", { method: "POST", json: { password: "" } }));
+    expect(invalid.status).toBe(400);
+
+    // 不计入失败次数：紧接着还是要连续失败满 5 次才会被限流，不多不少
+    for (let i = 0; i < 5; i++) {
+      const res = await POST(api.request("/api/v1/auth/login", { method: "POST", json: { password: "wrong" } }));
+      expect(res.status).toBe(401);
+    }
+    const blocked = await POST(
+      api.request("/api/v1/auth/login", { method: "POST", json: { password: api.adminPassword } }),
+    );
+    expect(blocked.status).toBe(429);
   });
+
+  it("并发 10 次错误密码：check 与 recordFailure 之间没有 await，限流恰好拦下超出上限的那部分", async () => {
+    api = await setupTestApi();
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        POST(api.request("/api/v1/auth/login", { method: "POST", json: { password: "wrong" } })),
+      ),
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(5);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(5);
+  });
+
 });

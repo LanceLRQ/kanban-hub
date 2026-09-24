@@ -70,6 +70,24 @@ export function checkAdminPassword(env: Record<string, string | undefined>): str
   return null;
 }
 
+/**
+ * KH_PUBLIC_URL 没设置时返回 null；设置了但不是合法的 http/https 地址就拒绝启动。
+ * 它同时是网页写操作校验同源时信任的来源，值不合法会悄悄让所有写请求都被当成跨站请求拒绝，
+ * 所以放进无副作用的早期检查，启动时就发现，而不是等用户在网页上操作时才发现。
+ */
+export function checkPublicUrl(raw: string | undefined): string | null {
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (url.protocol !== "http:" && url.protocol !== "https:") {
+      return `环境变量 KH_PUBLIC_URL 必须是 http 或 https 地址（当前为“${raw}”）`;
+    }
+    return null;
+  } catch {
+    return `环境变量 KH_PUBLIC_URL 不是合法的地址（当前为“${raw}”）`;
+  }
+}
+
 /** 运行全部自检项，返回错误信息列表；空数组表示全部通过。 */
 export async function runSelfCheck(
   paths: ServerPaths,
@@ -81,6 +99,7 @@ export async function runSelfCheck(
     checkAbsolutePath("KH_DATA_DIR", paths.dataDir),
     checkAbsolutePath("KH_BACKUP_DIR", paths.backupDir),
     checkAdminPassword(env),
+    checkPublicUrl(env.KH_PUBLIC_URL),
   ].filter((r): r is string => r !== null);
   if (earlyErrors.length > 0) return earlyErrors;
 

@@ -73,8 +73,22 @@ export const GET = apiRoute({ auth: "session" }, ({ req, services }) => {
       controllerRef = controller;
       req.signal.addEventListener("abort", cleanup);
 
+      // 客户端可能在这次 start() 执行之前就已经断开：这种情况下 Next 既不会读这个流，
+      // 也不会调用下面的 cancel()（响应已经被销毁），req.signal 此时已经是 aborted 状态，
+      // 上面刚加的监听器也不会再触发一次（不会对已中止的信号重新派发事件）。这里主动查
+      // 一次，避免订阅和心跳定时器一直挂到会话失效才被清理
+      if (req.signal.aborted) {
+        cleanup();
+        closeController();
+        return;
+      }
+
       enqueue("retry: 3000\n");
       enqueue(`event: ready\ndata: ${JSON.stringify({ version: KH_VERSION })}\n\n`);
+
+      // enqueue 出错时会触发上面的 cleanup：流可能在这两次 enqueue 之间就已经被判定关闭。
+      // 不重新检查的话，下面的订阅和定时器会绕过 cleanup 造成同样的泄漏
+      if (closed) return;
 
       unsubscribe = services.store.subscribe((change: StoreChange) => {
         // change 里的事件可能不全：写入时事件追加失败也照常通知（M1 的语义，修改本身已经生效）。

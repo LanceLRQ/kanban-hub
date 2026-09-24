@@ -112,6 +112,36 @@ describe("PATCH /api/v1/projects/:id", () => {
     expect(res.status).toBe(404);
   });
 
+  it("会话请求 Origin 跨域时返回 403（写看板接口自己也要挡住跨站请求，不能只靠外壳没被改坏）", async () => {
+    api = await setupTestApi();
+    const { project } = await createProject(api);
+    const res = await PATCH(
+      api.request(`/api/v1/projects/${project.id}`, {
+        method: "PATCH",
+        cookie: api.sessionCookie(),
+        origin: "https://evil.example.com",
+        json: { focus: "x" },
+      }),
+      api.ctx({ id: project.id }),
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it("会话请求缺少 Origin 时返回 403", async () => {
+    api = await setupTestApi();
+    const { project } = await createProject(api);
+    const res = await PATCH(
+      api.request(`/api/v1/projects/${project.id}`, {
+        method: "PATCH",
+        cookie: api.sessionCookie(),
+        origin: null,
+        json: { focus: "x" },
+      }),
+      api.ctx({ id: project.id }),
+    );
+    expect(res.status).toBe(403);
+  });
+
   it("事件里的操作者：令牌请求 via 为 cli，带 machineId 和 agent；会话请求 via 为 web", async () => {
     api = await setupTestApi();
     const { project } = await createProject(api);

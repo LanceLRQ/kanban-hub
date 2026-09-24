@@ -105,3 +105,9 @@ export function isSameOrigin(req: Request, publicUrl?: string | null): boolean {
 
   return false;
 }
+
+/** 反向代理终结 TLS 后两边协议可能不同，登录和登出都按这个规则判断原始请求是否为 https */
+export function isHttps(req: Request): boolean {
+  const forwarded = req.headers.get("x-forwarded-proto")?.split(",")[0]?.trim();
+  return forwarded === "https" || new URL(req.url).protocol === "https:";
+}

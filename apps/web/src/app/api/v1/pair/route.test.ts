@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { PairingRegistry } from "@/server/auth/pairing";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import { GET as ME } from "../me/route";
+import { POST as LOGIN } from "../auth/login/route";
 import { POST } from "./route";
 
 describe("POST /api/v1/pair", () => {
@@ -88,6 +89,51 @@ describe("POST /api/v1/pair", () => {
     api = await setupTestApi();
     const res = await POST(api.request("/api/v1/pair", { method: "POST", origin: null, json: { code: "" } }));
     expect(res.status).toBe(400);
+  });
+
+  it("并发 10 次错误配对码：check 与 recordFailure 之间没有 await，限流恰好拦下超出上限的那部分", async () => {
+    api = await setupTestApi();
+    const results = await Promise.all(
+      Array.from({ length: 10 }, () =>
+        POST(
+          api.request("/api/v1/pair", {
+            method: "POST",
+            origin: null,
+            json: { code: "XXX-XXX", machineName: "机器 A", os: "darwin" },
+          }),
+        ),
+      ),
+    );
+    const statuses = results.map((r) => r.status);
+    expect(statuses.filter((s) => s === 401)).toHaveLength(5);
+    expect(statuses.filter((s) => s === 429)).toHaveLength(5);
+  });
+
+  it("同一个 IP 配对失败 5 次后，登录仍然可以成功（限流键按接口区分前缀）", async () => {
+    api = await setupTestApi();
+    for (let i = 0; i < 5; i++) {
+      const res = await POST(
+        api.request("/api/v1/pair", {
+          method: "POST",
+          origin: null,
+          json: { code: "XXX-XXX", machineName: "机器 A", os: "darwin" },
+        }),
+      );
+      expect(res.status).toBe(401);
+    }
+    const blocked = await POST(
+      api.request("/api/v1/pair", {
+        method: "POST",
+        origin: null,
+        json: { code: "XXX-XXX", machineName: "机器 A", os: "darwin" },
+      }),
+    );
+    expect(blocked.status).toBe(429);
+
+    const loginRes = await LOGIN(
+      api.request("/api/v1/auth/login", { method: "POST", json: { password: api.adminPassword } }),
+    );
+    expect(loginRes.status).toBe(200);
   });
 
   it("创建机器失败后，配对码仍然可以用", async () => {

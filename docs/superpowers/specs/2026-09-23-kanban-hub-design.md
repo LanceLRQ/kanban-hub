@@ -178,6 +178,7 @@ kanban-hub/
 
 | 字段 | 说明 |
 |---|---|
+| `id` | 事件 ID；时间线翻页时与 `ts` 一起作为游标 |
 | `ts` | 事件时间 |
 | `projectId` | 所属项目 |
 | `actor` | `{ userId, machineId, via: web / cli, agent }`。`agent` 由 `kh` 从环境变量识别（比如 Claude Code 设置的 `CLAUDECODE=1`），也可以用 `--agent <名称>` 显式指定；识别不出来时为空 |
@@ -207,8 +208,8 @@ kanban-hub/
 **容器状态**，按顺序判断，命中即停：
 
 1. 有 `manualStatus`，就用它。
-2. 没有任务，或者全部任务都是 `todo`，为“待开始”。
-3. 排除 `cancelled` 后剩下的任务全部是 `done`，而且至少有一个，为“已完成”。
+2. 排除 `cancelled` 后，没有任务或者剩下的全部是 `todo`，为“待开始”。
+3. 排除 `cancelled` 后，剩下的全部是 `done`（至少一个），为“已完成”。
 4. 其余情况为“进行中”。
 
 杂项容器不参与推算，只显示未完成任务的数量。

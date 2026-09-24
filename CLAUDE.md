@@ -33,7 +33,7 @@ kanban-hub 是一个自托管的多项目进度看板服务：AI 编码助手通
 
 - [x] 调研：同类项目评估完成，确定自建
 - [x] 设计定稿：见上方规格
-- [ ] 实施：进行中（M0 工程骨架已完成）
+- [ ] 实施：进行中（M0 工程骨架、M1 核心模型与存储已完成）
 
 ## 仓库结构
 
@@ -44,8 +44,8 @@ kanban-hub/
 ├── CLAUDE.md              # 本文件：项目定义与约定（面向 AI 会话）
 ├── README.md              # 项目介绍（面向外部读者）
 ├── LICENSE                # MIT
-├── apps/web/              # Next.js：API 处理函数 + 网页
-├── packages/core/         # zod schema 与纯逻辑，不做 IO；版本号的唯一来源
+├── apps/web/              # Next.js：API 处理函数 + 网页；src/server/store/ 是唯一读写数据目录的存储模块
+├── packages/core/         # zod schema 与纯逻辑，不做 IO，按模块子路径导入（如 @kanban-hub/core/schema）；版本号的唯一来源
 ├── packages/cli/          # kh 命令行（esbuild 打包成单文件）
 ├── Dockerfile             # deps / build / dev / runtime 四阶段
 ├── docker/                # 容器入口脚本

@@ -64,14 +64,25 @@ export async function checkGitAvailable(gitBin = "git"): Promise<string | null> 
   }
 }
 
+/** 管理员密码是 KH_ADMIN_PASSWORD 的唯一来源，没设置或设置为空串都不能启动 */
+export function checkAdminPassword(env: Record<string, string | undefined>): string | null {
+  if (!env.KH_ADMIN_PASSWORD) return "缺少环境变量 KH_ADMIN_PASSWORD：管理员密码只能从它读取，请在启动前设置";
+  return null;
+}
+
 /** 运行全部自检项，返回错误信息列表；空数组表示全部通过。 */
-export async function runSelfCheck(paths: ServerPaths, gitBin = "git"): Promise<string[]> {
-  // 相对路径先报出来，不去创建或探测它
-  const pathErrors = [
+export async function runSelfCheck(
+  paths: ServerPaths,
+  gitBin = "git",
+  env: Record<string, string | undefined> = process.env,
+): Promise<string[]> {
+  // 不产生副作用的检查先做完，有问题就不去创建目录、探测 git
+  const earlyErrors = [
     checkAbsolutePath("KH_DATA_DIR", paths.dataDir),
     checkAbsolutePath("KH_BACKUP_DIR", paths.backupDir),
+    checkAdminPassword(env),
   ].filter((r): r is string => r !== null);
-  if (pathErrors.length > 0) return pathErrors;
+  if (earlyErrors.length > 0) return earlyErrors;
 
   const dirOpts = { create: !paths.inContainer, inContainer: paths.inContainer };
   const results = await Promise.all([
@@ -87,8 +98,11 @@ export async function runSelfCheck(paths: ServerPaths, gitBin = "git"): Promise<
  * 进程相关的 Node API 放在这个模块里，instrumentation.ts 只做动态导入，
  * 否则 Turbopack 会把它们当作 Edge Runtime 代码告警。
  */
-export async function enforceSelfCheck(paths: ServerPaths = resolveServerPaths()): Promise<void> {
-  const errors = await runSelfCheck(paths);
+export async function enforceSelfCheck(
+  paths: ServerPaths = resolveServerPaths(),
+  env: Record<string, string | undefined> = process.env,
+): Promise<void> {
+  const errors = await runSelfCheck(paths, "git", env);
   if (errors.length === 0) return;
   for (const msg of errors) console.error(`[kanban-hub] 启动自检失败：${msg}`);
   process.exit(1);

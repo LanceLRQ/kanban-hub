@@ -24,7 +24,7 @@ export const AUTH_FILES = {
   sessionSecret: `${AUTH_DIR}/session-secret`,
 } as const;
 
-const SECRET_FILE_MODE = 0o600;
+const AUTH_FILE_MODE = 0o600;
 const AUTH_DIR_MODE = 0o700;
 const SECRET_MIN_LENGTH = 32;
 
@@ -71,6 +71,10 @@ export class AuthRepo {
 
   getMachine(id: string): Machine | undefined {
     return this.machines.find((m) => m.id === id);
+  }
+
+  findMachineByTokenHash(hash: string): Machine | undefined {
+    return this.machines.find((m) => m.tokenHash === hash);
   }
 
   /** 会话 cookie 的签名密钥 */
@@ -143,12 +147,12 @@ export class AuthRepo {
 
   // 先写文件，写成功后再替换内存
   private async saveUsers(users: User[]): Promise<void> {
-    await writeYamlFile(this.abs(AUTH_FILES.users), { users }, { mode: SECRET_FILE_MODE });
+    await writeYamlFile(this.abs(AUTH_FILES.users), { users }, { mode: AUTH_FILE_MODE });
     this.users = users;
   }
 
   private async saveMachines(machines: Machine[]): Promise<void> {
-    await writeYamlFile(this.abs(AUTH_FILES.machines), { machines }, { mode: SECRET_FILE_MODE });
+    await writeYamlFile(this.abs(AUTH_FILES.machines), { machines }, { mode: AUTH_FILE_MODE });
     this.machines = machines;
   }
 
@@ -161,7 +165,7 @@ export class AuthRepo {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     const secret = randomBytes(32).toString("base64url");
-    await writeFileAtomic(file, `${secret}\n`, { mode: SECRET_FILE_MODE });
+    await writeFileAtomic(file, `${secret}\n`, { mode: AUTH_FILE_MODE });
     return secret;
   }
 

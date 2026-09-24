@@ -99,4 +99,11 @@ describe("AuthRepo", () => {
     const machine = await repo.createMachine({ name: "mac", userId: "a000000009", os: "darwin", tokenHash: HASH });
     expect(await repo.updateMachine(machine.id, { revokedAt: NOW })).toMatchObject({ revokedAt: NOW, version: 2 });
   });
+
+  it("按令牌哈希查找机器；找不到时返回 undefined", async () => {
+    const repo = await openRepo();
+    const machine = await repo.createMachine({ name: "mac", userId: "a000000009", os: "darwin", tokenHash: HASH });
+    expect(repo.findMachineByTokenHash(HASH)).toEqual(machine);
+    expect(repo.findMachineByTokenHash("f".repeat(64))).toBeUndefined();
+  });
 });

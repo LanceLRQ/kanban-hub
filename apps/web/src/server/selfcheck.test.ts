@@ -2,7 +2,10 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { checkAbsolutePath, checkGitAvailable, checkWritableDir, runSelfCheck } from "./selfcheck";
+import { checkAbsolutePath, checkAdminPassword, checkGitAvailable, checkWritableDir, runSelfCheck } from "./selfcheck";
+
+// 除了专门测 KH_ADMIN_PASSWORD 的用例，其余用例都带上这个有效值，避免被这项新检查干扰
+const VALID_ENV = { KH_ADMIN_PASSWORD: "dev" };
 
 let tmp: string;
 
@@ -71,11 +74,11 @@ describe("checkGitAvailable", () => {
 
 describe("runSelfCheck", () => {
   it("全部通过时返回空数组", async () => {
-    const errors = await runSelfCheck({
-      dataDir: path.join(tmp, "data"),
-      backupDir: path.join(tmp, "backups"),
-      inContainer: false,
-    });
+    const errors = await runSelfCheck(
+      { dataDir: path.join(tmp, "data"), backupDir: path.join(tmp, "backups"), inContainer: false },
+      "git",
+      VALID_ENV,
+    );
     expect(errors).toEqual([]);
   });
 
@@ -83,8 +86,20 @@ describe("runSelfCheck", () => {
     const errors = await runSelfCheck(
       { dataDir: path.join(tmp, "data"), backupDir: path.join(tmp, "backups"), inContainer: true },
       "/nonexistent/git",
+      VALID_ENV,
     );
     expect(errors).toHaveLength(3);
+    await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
+  });
+
+  it("缺少 KH_ADMIN_PASSWORD 时自检失败，不创建任何目录", async () => {
+    const errors = await runSelfCheck(
+      { dataDir: path.join(tmp, "data"), backupDir: path.join(tmp, "backups"), inContainer: false },
+      "git",
+      {},
+    );
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("KH_ADMIN_PASSWORD");
     await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
   });
 });
@@ -105,14 +120,29 @@ describe("runSelfCheck 的路径检查", () => {
   it("数据目录是相对路径时直接报错，不创建任何目录", async () => {
     // 相对路径也指向 tmp 里面：红灯阶段旧实现会去创建它，afterEach 能清理掉
     const rel = path.relative(process.cwd(), path.join(tmp, "data"));
-    const errors = await runSelfCheck({
-      dataDir: rel,
-      backupDir: path.join(tmp, "backups"),
-      inContainer: false,
-    });
+    const errors = await runSelfCheck(
+      { dataDir: rel, backupDir: path.join(tmp, "backups"), inContainer: false },
+      "git",
+      VALID_ENV,
+    );
     expect(errors).toHaveLength(1);
     expect(errors[0]).toContain("KH_DATA_DIR");
     await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
     await expect(fs.stat(path.join(tmp, "backups"))).rejects.toThrow();
+  });
+});
+
+describe("checkAdminPassword", () => {
+  it("未设置时报错，写明变量名", () => {
+    const msg = checkAdminPassword({});
+    expect(msg).toContain("KH_ADMIN_PASSWORD");
+  });
+
+  it("设置为空串时报错", () => {
+    expect(checkAdminPassword({ KH_ADMIN_PASSWORD: "" })).not.toBeNull();
+  });
+
+  it("设置了非空值时返回 null", () => {
+    expect(checkAdminPassword({ KH_ADMIN_PASSWORD: "hunter2" })).toBeNull();
   });
 });

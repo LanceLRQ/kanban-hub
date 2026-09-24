@@ -4,7 +4,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
-import { KH_VERSION } from "@kanban-hub/core";
+import { KH_VERSION } from "@kanban-hub/core/version";
 import { buildCli } from "../scripts/build.mjs";
 
 const execFileAsync = promisify(execFile);

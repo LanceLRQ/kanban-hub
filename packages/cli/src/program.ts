@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { KH_VERSION } from "@kanban-hub/core";
+import { KH_VERSION } from "@kanban-hub/core/version";
 
 /** 构建 kh 的命令定义。子命令在后续里程碑中逐步注册到这里。 */
 export function buildProgram(): Command {

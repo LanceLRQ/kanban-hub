@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { KH_VERSION } from "@kanban-hub/core";
+import { KH_VERSION } from "@kanban-hub/core/version";
 import { buildProgram } from "./program";
 
 function run(args: string[]): { out: string; exitCode: number } {

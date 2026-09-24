@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 28970",
+    "dev": "KH_DATA_DIR=\"$(cd ../.. && pwd)/dev-data/data\" KH_BACKUP_DIR=\"$(cd ../.. && pwd)/dev-data/backups\" next dev -p 28970",
     "build": "next build",
     "typecheck": "next typegen && tsc --noEmit",
     "lint": "eslint"

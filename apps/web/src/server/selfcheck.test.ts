@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { checkGitAvailable, checkWritableDir, runSelfCheck } from "./selfcheck";
+import { checkAbsolutePath, checkGitAvailable, checkWritableDir, runSelfCheck } from "./selfcheck";
 
 let tmp: string;
 
@@ -46,6 +46,17 @@ describe("checkWritableDir", () => {
     expect(msg).toContain("不可写");
     expect(msg).toContain("chown");
   });
+
+  it("容器外的提示不提宿主机挂载目录", async () => {
+    const msg = await checkWritableDir(path.join(tmp, "missing"), { create: false });
+    expect(msg).toContain("chown");
+    expect(msg).not.toContain("宿主机");
+  });
+
+  it("容器里的提示指向宿主机上的挂载目录", async () => {
+    const msg = await checkWritableDir(path.join(tmp, "missing"), { create: false, inContainer: true });
+    expect(msg).toContain("宿主机");
+  });
 });
 
 describe("checkGitAvailable", () => {
@@ -75,5 +86,33 @@ describe("runSelfCheck", () => {
     );
     expect(errors).toHaveLength(3);
     await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
+  });
+});
+
+describe("checkAbsolutePath", () => {
+  it("绝对路径返回 null", () => {
+    expect(checkAbsolutePath("KH_DATA_DIR", "/data")).toBeNull();
+  });
+
+  it("相对路径报错，并指出是哪个环境变量", () => {
+    const msg = checkAbsolutePath("KH_DATA_DIR", "data");
+    expect(msg).toContain("KH_DATA_DIR");
+    expect(msg).toContain("绝对路径");
+  });
+});
+
+describe("runSelfCheck 的路径检查", () => {
+  it("数据目录是相对路径时直接报错，不创建任何目录", async () => {
+    // 相对路径也指向 tmp 里面：红灯阶段旧实现会去创建它，afterEach 能清理掉
+    const rel = path.relative(process.cwd(), path.join(tmp, "data"));
+    const errors = await runSelfCheck({
+      dataDir: rel,
+      backupDir: path.join(tmp, "backups"),
+      inContainer: false,
+    });
+    expect(errors).toHaveLength(1);
+    expect(errors[0]).toContain("KH_DATA_DIR");
+    await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
+    await expect(fs.stat(path.join(tmp, "backups"))).rejects.toThrow();
   });
 });

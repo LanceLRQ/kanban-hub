@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { commitScope } from "@kanban-hub/core/commit";
-import { KhError } from "@kanban-hub/core/errors";
+import { KhError, parseInput } from "@kanban-hub/core/errors";
 import { generateId, idSchema } from "@kanban-hub/core/ids";
 import * as ops from "@kanban-hub/core/mutations";
 import {
@@ -18,10 +18,12 @@ import {
   type Task,
   type TaskCreateInput,
   type TaskPatchInput,
+  actorSchema,
   boardSchema,
+  eventSchema,
   projectSchema,
 } from "@kanban-hub/core/schema";
-import { AuthRepo } from "./auth";
+import { AUTH_DIR, AuthRepo } from "./auth";
 import { type CommitActor, Committer } from "./committer";
 import { EventLog, monthOf, recentMonths } from "./events";
 import { DataFileError, readYamlFile, writeFileAtomic, writeYamlFile } from "./fsio";
@@ -159,6 +161,11 @@ export class Store {
 
   /** 按时间倒序列出事件；内存里不够时，再按月份从新到旧读更早的文件（规格 6.2） */
   async listEvents(query: EventQuery): Promise<Event[]> {
+    // 项目不存在时拒绝，且必须在内存过滤和读文件之前：query.projectId 不检查就拼进文件路径，
+    // 会把不存在的（或路径穿越的）ID 拼出数据目录外的路径去读（M2 把 not_found 映射成 404）
+    if (query.projectId !== undefined && !this.projects.has(query.projectId)) {
+      throw new KhError("not_found", "项目不存在");
+    }
     const matches = (e: Event) =>
       (query.projectId === undefined || e.projectId === query.projectId) &&
       (query.before === undefined || compareEvents(e, query.before) < 0);
@@ -267,7 +274,9 @@ export class Store {
     // 规格 6.5：上次退出前没来得及提交的改动（包括加载时修复的事件文件残行）补一次提交。
     // 提交失败不影响数据，也不阻止启动（规格第 15 节）；改动留在工作区，下次启动时再补
     try {
-      await this.git.commitAll(created ? "初始化数据目录" : "补提交上次未提交的改动");
+      // auth/ 显式排除，不依赖 .gitignore：它一旦被改动或丢失（例如从备份还原），
+      // 凭据文件就会靠这一层兜底而不是进 git 历史
+      await this.git.commitAll(created ? "初始化数据目录" : "补提交上次未提交的改动", [AUTH_DIR]);
     } catch (e) {
       this.log(`启动时补提交失败，改动留在工作区：${(e as Error).message}`);
     }
@@ -311,15 +320,26 @@ export class Store {
     }
   }
 
+  /**
+   * 写进数据目录的内容，写之前都要按加载时用的同一套 schema 校验一遍：
+   * 保证写得进去的东西，下次一定能按同样的 schema 加载回来（加载时逐行严格校验，见 load/loadProject）。
+   */
   private mutate<T>(actor: Actor, compute: (ctx: ops.MutationContext) => Outcome<T>): Promise<T> {
     if (this.closing) return Promise.reject(new KhError("unavailable", "服务正在关闭，请稍后重试"));
     return this.queue.run(async () => {
-      const ctx: ops.MutationContext = { now: this.now().toISOString(), actor, newId: this.newId };
+      // 操作者也是要落盘的内容（写进每条事件）：这里校验会 trim agent，之后统一用校验后的 validActor
+      const validActor = parseInput(actorSchema, actor);
+      const ctx: ops.MutationContext = { now: this.now().toISOString(), actor: validActor, newId: this.newId };
       const out = compute(ctx);
       // 没有变化：不写文件、不记事件、不通知
       if (out.events.length === 0) return out.value;
 
-      const commitActor = this.commitActor(actor);
+      // 只校验、不替换写入的对象；校验失败时在写文件之前就抛出，什么都不写、内存不变
+      if (out.project) parseInput(projectSchema, out.project);
+      if (out.board) parseInput(boardSchema, out.board);
+      for (const event of out.events) parseInput(eventSchema, event);
+
+      const commitActor = this.commitActor(validActor);
       const files = [
         ...(out.board ? [boardPath(out.projectId)] : []),
         ...(out.project ? [projectPath(out.projectId)] : []),
@@ -337,10 +357,25 @@ export class Store {
       const board = out.board ?? prev?.board;
       if (project && board) this.projects.set(out.projectId, { project, board });
 
-      for (const event of out.events) await this.eventLog.append(event);
-      for (const event of out.events) this.remember(event);
+      // 到这里 project.yaml / board.yaml（如果有）已经写入成功：修改就算生效（与规格第 15 节对 git
+      // 失败的处理一致，“数据文件不受影响”）。事件追加失败只记日志、不向调用方抛错，避免调用方以为
+      // 修改失败而重试——重试会在已经生效的基础上再建一遍，产生重复的项目/任务。remember 只记成功写入
+      // 的事件；track 和 emit 无论追加是否失败都执行，emit 带上成功写入的事件，一条都没写进去时也照常
+      // 通知，订阅者据此知道这个项目变了。
+      const appended: Event[] = [];
+      for (const event of out.events) {
+        try {
+          await this.eventLog.append(event);
+          appended.push(event);
+        } catch (e) {
+          const missing = out.events.length - appended.length;
+          this.log(`项目 ${out.projectId} 的修改已保存，但时间线缺少 ${missing} 条事件：${(e as Error).message}`);
+          break;
+        }
+      }
+      for (const event of appended) this.remember(event);
       await this.committer.track(commitActor, files, out.events.map((e) => e.type));
-      this.emit({ projectId: out.projectId, events: out.events });
+      this.emit({ projectId: out.projectId, events: appended });
       return out.value;
     });
   }

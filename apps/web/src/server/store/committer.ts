@@ -130,7 +130,9 @@ export class Committer {
     this.clearTimer();
     this.timer = setTimeout(() => {
       this.timer = null;
-      void this.flush();
+      // flushNow 内部已经吞掉 git 失败并安排重试；这里的 catch 只是兜底，避免万一仍有异常抛出时
+      // 变成未处理的 rejection（Node 默认会让进程崩溃）
+      this.flush().catch((e: unknown) => this.log(`git 提交出错：${(e as Error).message}`));
     }, ms);
   }
 

@@ -73,4 +73,33 @@ describe("EventLog", () => {
     await log.append(makeEvent({ id: fixtureId("e", 2) }));
     await expect(log.readMonth(P, "2026-09")).rejects.toMatchObject({ name: "DataFileError", line: 2 });
   });
+
+  it("append 前如果文件末尾是写到一半的残行，会先修复再追加（不经过 readMonth）", async () => {
+    const log = new EventLog(dir);
+    const e1 = makeEvent();
+    const rel = await log.append(e1);
+    await fs.appendFile(path.join(dir, rel), '{"id":"ab');
+    const e2 = makeEvent({ id: fixtureId("e", 2) });
+    await log.append(e2);
+    expect(await log.readMonth(P, "2026-09")).toEqual([e1, e2]);
+  });
+
+  it("append 前如果末行完整但缺换行，会先补上换行再追加", async () => {
+    const log = new EventLog(dir);
+    const e1 = makeEvent();
+    const rel = await log.append(e1);
+    const raw = await fs.readFile(path.join(dir, rel), "utf8");
+    await fs.writeFile(path.join(dir, rel), raw.replace(/\n$/, ""));
+    const e2 = makeEvent({ id: fixtureId("e", 2) });
+    await log.append(e2);
+    expect(await log.readMonth(P, "2026-09")).toEqual([e1, e2]);
+  });
+});
+
+describe("路径穿越防护", () => {
+  it("readMonth 与 listMonths 的 projectId 不合法时以 invalid 拒绝", async () => {
+    const log = new EventLog(dir);
+    await expect(log.readMonth("../x", "2020-01")).rejects.toMatchObject({ name: "KhError", code: "invalid" });
+    await expect(log.listMonths("../x")).rejects.toMatchObject({ name: "KhError", code: "invalid" });
+  });
 });

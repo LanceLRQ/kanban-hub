@@ -14,11 +14,14 @@ import {
 import { readYamlFile, writeFileAtomic, writeYamlFile } from "./fsio";
 import type { WriteQueue } from "./queue";
 
+/** 凭据文件所在目录（相对数据目录）。除了数据目录的 .gitignore，启动补提交也显式排除它 */
+export const AUTH_DIR = "auth";
+
 /** 凭据文件的位置（相对数据目录）。auth/ 被数据目录的 .gitignore 排除，不进 git 历史 */
 export const AUTH_FILES = {
-  users: "auth/users.yaml",
-  machines: "auth/machines.yaml",
-  sessionSecret: "auth/session-secret",
+  users: `${AUTH_DIR}/users.yaml`,
+  machines: `${AUTH_DIR}/machines.yaml`,
+  sessionSecret: `${AUTH_DIR}/session-secret`,
 } as const;
 
 const SECRET_FILE_MODE = 0o600;

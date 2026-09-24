@@ -83,6 +83,17 @@ describe("GitRepo", () => {
     expect(await repo.commitAll("再来一次")).toBe(false);
   });
 
+  it("commitAll 可以排除指定路径，即使没有 .gitignore 规则", async () => {
+    const repo = new GitRepo(dir);
+    await repo.init();
+    await fs.mkdir(path.join(dir, "secret"), { recursive: true });
+    await write("secret/token", "t");
+    await write("a.txt", "a");
+    expect(await repo.commitAll("排除 secret", ["secret"])).toBe(true);
+    const { stdout } = await repo.run(["ls-files"]);
+    expect(stdout.split("\n").filter(Boolean).sort()).toEqual(["a.txt"]);
+  });
+
   it("不受外部 GIT_* 环境变量和用户全局配置影响", async () => {
     const repo = new GitRepo(dir);
     await repo.init();

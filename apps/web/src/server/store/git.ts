@@ -132,9 +132,18 @@ export class GitRepo {
     await this.run(["commit", "-q", "--no-verify", `--author=${formatIdent(author)}`, "-m", message]);
   }
 
-  /** 把工作区的全部改动（遵守 .gitignore）提交一次，启动补提交用；没有改动返回 false */
-  async commitAll(message: string): Promise<boolean> {
-    await this.run(["add", "-A"]);
+  /**
+   * 把工作区的全部改动提交一次，启动补提交用；没有改动返回 false。
+   * exclude 里的路径不依赖 .gitignore，一定不会进这次提交——调用方用它兜底排除 auth/ 这类
+   * 绝不能进 git 历史的目录，即使 .gitignore 被改动或丢失。
+   * 实现上先 add 再 reset 撤回，不用 `:(exclude)<路径>` pathspec 直接排除：
+   * 当排除的路径同时也被 .gitignore 忽略时（常态——auth/ 本来就在 .gitignore 里），
+   * git 会把它当成“显式添加了被忽略的文件”，报 advice.addIgnoredFile 警告并以退出码 1 失败，
+   * 即使实际效果是排除而不是添加（已用真实 git 验证）。
+   */
+  async commitAll(message: string, exclude: readonly string[] = []): Promise<boolean> {
+    await this.run(["add", "-A", "--", "."]);
+    if (exclude.length > 0) await this.run(["reset", "-q", "--", ...exclude]);
     if (!(await this.hasStagedChanges())) return false;
     await this.commit(message);
     return true;

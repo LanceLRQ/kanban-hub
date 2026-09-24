@@ -33,6 +33,18 @@ async function open(start = "2026-09-23T10:00:00.000Z"): Promise<Store> {
   return store;
 }
 
+/** 打开时把日志收进数组，用于验证“只记日志、不向调用方抛错”的场景 */
+async function openWithLog(logs: string[], start = "2026-09-23T10:00:00.000Z"): Promise<Store> {
+  const store = await Store.open({
+    dataDir: dir,
+    now: clockFrom(start),
+    commitDebounceMs: 60_000,
+    log: (m) => logs.push(m),
+  });
+  opened.push(store);
+  return store;
+}
+
 /** 经 GitRepo 调 git：不受外部 GIT_* 变量和用户全局配置影响 */
 async function git(...args: string[]): Promise<string> {
   return (await new GitRepo(dir).run(args)).stdout.trim();
@@ -122,6 +134,15 @@ describe("打开数据目录", () => {
     expect(store.listProjects()).toEqual([]);
   });
 
+  it("补提交排除 auth 目录，即使 .gitignore 缺了这条规则", async () => {
+    const first = await open();
+    await first.close();
+    // 模拟 .gitignore 被改动或从备份还原出来时丢了 /auth/ 这条规则
+    await fs.writeFile(path.join(dir, ".gitignore"), "");
+    await open();
+    expect(await git("ls-files", "--", "auth")).toBe("");
+  });
+
   it("数据文件有问题时拒绝打开，并指出文件和行号", async () => {
     const first = await open();
     const { project } = await first.createProject({ name: "看板" }, await cliActor(first));
@@ -205,6 +226,55 @@ describe("写操作", () => {
   });
 });
 
+describe("操作者校验", () => {
+  it("agent 为空或全空格时以 invalid 拒绝，不写任何文件", async () => {
+    const store = await open();
+    const base = await cliActor(store);
+    const err = await rejection(store.createProject({ name: "看板" }, { ...base, agent: "   " }));
+    expect((err as KhError).code).toBe("invalid");
+    expect(store.listProjects()).toEqual([]);
+    expect(store.pendingCommitCount()).toBe(0);
+    await expect(fs.readdir(path.join(dir, "projects"))).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("agent 前后有空格时会被 trim 后写进事件，重新打开仍能加载", async () => {
+    const store = await open();
+    const base = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, { ...base, agent: "  claude  " });
+    const [event] = await readEventLines(project.id, "2026-09");
+    expect(event!.actor.agent).toBe("claude");
+    await store.close();
+    const reopened = await open();
+    expect(reopened.getProject(project.id)?.name).toBe("看板");
+  });
+});
+
+describe("事件追加失败", () => {
+  it.skipIf(process.platform === "win32")(
+    "事件文件只读导致追加失败：写操作仍然成功，改动已生效，只记日志（数据文件已写入就算成功）",
+    async () => {
+      const logs: string[] = [];
+      const store = await openWithLog(logs);
+      const actor = await cliActor(store);
+      const { project, board } = await store.createProject({ name: "看板" }, actor);
+      const changes: StoreChange[] = [];
+      store.subscribe((change) => changes.push(change));
+      const eventFile = path.join(dir, "projects", project.id, "events", "2026-09.jsonl");
+      await fs.chmod(eventFile, 0o444);
+      try {
+        const task = await store.createTask(project.id, { containerId: board.containers[0]!.id, title: "任务" }, actor);
+        expect(task.title).toBe("任务");
+      } finally {
+        await fs.chmod(eventFile, 0o644);
+      }
+      expect(store.getBoard(project.id)?.tasks.map((t) => t.title)).toEqual(["任务"]);
+      expect(store.pendingCommitCount()).toBeGreaterThan(0);
+      expect(changes.at(-1)?.projectId).toBe(project.id);
+      expect(logs.length).toBeGreaterThan(0);
+    },
+  );
+});
+
 describe("git 提交", () => {
   it("关闭时提交：作者是用户，提交者是 kanban-hub，说明按事件类型汇总", async () => {
     const store = await open();
@@ -277,5 +347,19 @@ describe("查询事件", () => {
     const second = await open("2026-09-23T10:00:00.000Z");
     expect(second.getLastEventAt(project.id)).toBe(project.createdAt);
     expect(await second.listEvents({ projectId: project.id, limit: 10 })).toHaveLength(1);
+  });
+
+  it("projectId 不存在（含路径穿越）时以 not_found 拒绝，不读取数据目录外的文件", async () => {
+    const store = await open();
+    const outsideFile = path.join(dir, "..", "outside", "events", "2020-01.jsonl");
+    await fs.mkdir(path.dirname(outsideFile), { recursive: true });
+    await fs.writeFile(outsideFile, '{"id":"x"}\n');
+    try {
+      const err = await rejection(store.listEvents({ projectId: "../../outside", limit: 10 }));
+      expect((err as KhError).code).toBe("not_found");
+      expect(await fs.readFile(outsideFile, "utf8")).toBe('{"id":"x"}\n');
+    } finally {
+      await fs.rm(path.join(dir, "..", "outside"), { recursive: true, force: true });
+    }
   });
 });

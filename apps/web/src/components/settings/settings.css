@@ -38,27 +38,3 @@
   border-top-style: dashed;
   border-top-color: var(--border-soft);
 }
-
-/*
- * 设置页“外观”区块的主题卡片预览：这组变量描述的是“另一套主题的样子”，用来给用户
- * 对比两套主题好选——不是当前生效的主题，所以故意不跟着 [data-theme] 切换，取值恒等于
- * ../../styles/tokens.css（主题 A）和 ../../styles/themes/collage.css（主题 B）里
- * 对应 token 的实际值。改了那两处的取值，这里要跟着更新。
- */
-:root {
-  --theme-swatch-print-bg: #f5f0e1;
-  --theme-swatch-print-card: #fffcf1;
-  --theme-swatch-print-border: #4a4033;
-  --theme-swatch-print-accent: #d9b554;
-  --theme-swatch-print-health-on-track: #8fae84;
-  --theme-swatch-print-health-at-risk: #c09a4e;
-  --theme-swatch-print-health-blocked: #b86458;
-
-  --theme-swatch-collage-bg: #efece3;
-  --theme-swatch-collage-card: #fffdf6;
-  --theme-swatch-collage-border: #33302a;
-  --theme-swatch-collage-accent: #b5922f;
-  --theme-swatch-collage-health-on-track: #5c7a5a;
-  --theme-swatch-collage-health-at-risk: #a87f42;
-  --theme-swatch-collage-health-blocked: #a85a4e;
-}

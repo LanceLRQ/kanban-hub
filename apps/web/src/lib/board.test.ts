@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { fixtureId, makeBoard, makeContainer, makeTask } from "@kanban-hub/core/test-fixtures";
-import { boardSections, formatPlainDate, taskMeta } from "./board";
+import { boardSections, taskMeta } from "./board";
 
 const c = (n: number) => fixtureId("c", n);
 const t = (n: number) => fixtureId("t", n);
@@ -161,13 +161,5 @@ describe("taskMeta", () => {
     const task = makeTask({ status: "todo", dueDate: "2026-09-28" });
     expect(taskMeta(task, NOW, "America/Los_Angeles").main).toEqual({ kind: "due", date: "9 月 28 日" });
     expect(taskMeta(task, NOW, "Pacific/Kiritimati").main).toEqual({ kind: "due", date: "9 月 28 日" });
-  });
-});
-
-describe("formatPlainDate", () => {
-  it("今年的不带年份，其他年份带上年份", () => {
-    const now = new Date("2026-09-24T04:00:00.000Z");
-    expect(formatPlainDate("2026-10-15", "Asia/Shanghai", now)).toBe("10 月 15 日");
-    expect(formatPlainDate("2027-01-03", "Asia/Shanghai", now)).toBe("2027 年 1 月 3 日");
   });
 });

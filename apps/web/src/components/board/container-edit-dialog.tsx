@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import type { BoardContainerView } from "@/server/views/board";
-import { useVersionedPatch } from "./use-versioned-patch";
+import { useVersionedPatch } from "@/lib/client/use-versioned-patch";
 
 /** Radix Select 的选项值不能是空串，“无手动状态”用这个占位值表示 */
 const NONE = "none";

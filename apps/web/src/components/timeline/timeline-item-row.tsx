@@ -12,7 +12,7 @@ import "./timeline.css";
  * （细节「操作者」的显示规则：命令行操作在 agent 名后面带机器名）。
  *
  * `radiusClass` 是 `kh-radius-a/b/c/d` 之一，由 `TimelineView` 按行序号循环传入：主题 A 下
- * 四个值都等于 `--radius`，不影响外观；主题 B 下呈现原型里“不对称手裁圆角”的效果。
+ * 四个值都等于 `--radius`，不影响外观；主题 B 下呈现“不对称手裁圆角”的效果。
  */
 export function TimelineItemRow({
   item,

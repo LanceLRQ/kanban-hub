@@ -110,3 +110,13 @@ export function formatToday(now: Date, tz: string): string {
   const weekday = keyToUtcNoon(dayKey(now, tz)).getUTCDay();
   return `${year} 年 ${month} 月 ${day} 日（周${WEEKDAY_LABELS[weekday]}）`;
 }
+
+/**
+ * 纯日期（YYYY-MM-DD，如截止日期、目标日期）的显示：直接取日期部件，不做时区换算——
+ * 它本来就是某一天，按时间戳换算会在负时区偏到前一天。今年（按 tz、相对 now）的不带年份。
+ */
+export function formatPlainDate(date: string, tz: string, now: Date): string {
+  const [year, month, day] = date.split("-").map(Number);
+  const nowYear = Number(dayKey(now, tz).slice(0, 4));
+  return year === nowYear ? `${month} 月 ${day} 日` : `${year} 年 ${month} 月 ${day} 日`;
+}

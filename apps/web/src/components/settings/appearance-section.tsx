@@ -9,7 +9,7 @@ import { SectionRow } from "./section-card";
 import "./settings.css";
 
 /**
- * 两套主题的取色预览：颜色全部走 `settings.css` 里定义的 `--theme-swatch-*` 变量，
+ * 两套主题的取色预览：颜色全部走 `tokens.css` 里定义的 `--theme-swatch-*` 变量，
  * 组件里不出现十六进制色值、不用内联 style。这组变量恒定描述“另一套主题的样子”，
  * 所以不跟着当前生效的 [data-theme] 变化。示意图里放齐页面底色、卡片、强调色、三个
  * 健康度语义色，选中的卡片额外加粗边框 + 强调色的偏移阴影（呼应按钮的“抬升”视觉）。

@@ -2,9 +2,9 @@ import { checklistProgress, type ContainerStatus, type Progress } from "@kanban-
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import type { Board, ChecklistItem, ContainerKind, HumanFlag, ManualStatus, TaskStatus } from "@kanban-hub/core/schema";
 import type { Services } from "@/server/services";
-import { boardSections, formatPlainDate, taskMeta, type TaskMeta } from "@/lib/board";
+import { boardSections, taskMeta, type TaskMeta } from "@/lib/board";
 import { containerRefLabel } from "@/lib/refs";
-import { formatDate, serverTimeZone } from "@/lib/time";
+import { formatDate, formatPlainDate, serverTimeZone } from "@/lib/time";
 
 /** 看板上的一个任务：行内显示用的信息 + 侧栏编辑所需的全部字段 + 并发控制用的 version */
 export interface BoardTaskView {

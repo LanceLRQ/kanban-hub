@@ -42,3 +42,16 @@ export function locationSummary(location: Location, machineName: string, now: Da
     syncedAt: location.lastSyncAt === null ? null : formatRelative(location.lastSyncAt, now),
   };
 }
+
+/**
+ * 主位置摘要行的拼接：“机器名:路径 · 分支 · ↑a ↓b · dirty n · 同步于 X”，
+ * 缺失的字段跳过。`formatSyncedAt` 由调用方传入，负责套上本地化的“同步于 {value}”文案。
+ */
+export function formatLocationLine(location: LocationSummary, formatSyncedAt: (value: string) => string): string {
+  const parts = [`${location.machineName}:${location.path}`];
+  if (location.branch !== null) parts.push(location.branch);
+  if (location.ahead !== null && location.behind !== null) parts.push(`↑${location.ahead} ↓${location.behind}`);
+  if (location.dirtyCount !== null) parts.push(`dirty ${location.dirtyCount}`);
+  if (location.syncedAt !== null) parts.push(formatSyncedAt(location.syncedAt));
+  return parts.join(" · ");
+}

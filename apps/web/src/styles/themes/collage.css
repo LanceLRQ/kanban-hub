@@ -56,12 +56,12 @@ html[data-theme="collage"] {
   --task-in-progress: var(--ink-mustard);
   --task-review: var(--ink-blue);
   --task-done: var(--ink-green);
-  --task-suspended: var(--fg-faint);
+  --task-suspended: var(--ink-brick);
   --task-cancelled: var(--paper-gray);
 
   /* 语义色 · 待你处理 */
-  --human-decision: var(--ink-mustard);
-  --human-verify: var(--ink-blue);
+  --human-decision: var(--ink-brick);
+  --human-verify: var(--ink-brick);
   --human-action: var(--ink-brick);
 
   /* 语义色 · 停滞 */
@@ -89,6 +89,9 @@ html[data-theme="collage"] {
   --destructive-foreground: var(--bg-card);
   --input: var(--border);
   --ring: var(--focus-ring);
+
+  /* 遮罩：与纸本主题协调的半透明底色 */
+  --overlay: rgba(60, 56, 48, 0.28);
 
   /* 标题：所选中文字体为黑体时加重字重；文楷/宋体保持本身气质，见 fonts.css */
 }

@@ -15,7 +15,7 @@ import { EditableText } from "./editable-text";
 import { HumanEditor } from "./human-editor";
 import { StatusPicker } from "./status-picker";
 import { useDraft } from "./use-draft";
-import { useVersionedPatch } from "./use-versioned-patch";
+import { useVersionedPatch } from "@/lib/client/use-versioned-patch";
 
 interface TaskSheetProps {
   projectId: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { dayKey, formatDate, formatDayHeading, formatRelative, formatTime, formatToday, serverTimeZone } from "./time";
+import { dayKey, formatDate, formatDayHeading, formatPlainDate, formatRelative, formatTime, formatToday, serverTimeZone } from "./time";
 
 describe("serverTimeZone", () => {
   it("取 Intl 解析出的本机时区", () => {
@@ -102,5 +102,13 @@ describe("formatRelative", () => {
     expect(result).not.toBe("刚刚");
     expect(result).toContain("月");
     expect(result).toContain("日");
+  });
+});
+
+describe("formatPlainDate", () => {
+  it("今年的不带年份，其他年份带上年份", () => {
+    const now = new Date("2026-09-24T04:00:00.000Z");
+    expect(formatPlainDate("2026-10-15", "Asia/Shanghai", now)).toBe("10 月 15 日");
+    expect(formatPlainDate("2027-01-03", "Asia/Shanghai", now)).toBe("2027 年 1 月 3 日");
   });
 });

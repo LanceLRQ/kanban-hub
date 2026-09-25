@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { useVersionedPatch } from "@/components/board/use-versioned-patch";
+import { useVersionedPatch } from "@/lib/client/use-versioned-patch";
 
 /** 项目编辑对话框需要的字段 */
 export interface ProjectEditValues {

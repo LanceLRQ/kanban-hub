@@ -30,16 +30,8 @@
     "focusEmpty": "（无）",
     "syncedAt": "同步于 {value}"
   },
-  "placeholderBoard": {
-    "heading": "看板开发中",
-    "body": "项目看板正在开发中，敬请期待。"
-  },
   "liveStatus": {
     "disconnected": "实时更新已断开"
-  },
-  "placeholderHome": {
-    "heading": "总览页开发中",
-    "body": "总览页正在开发中，敬请期待。"
   },
   "notFound": {
     "project": {

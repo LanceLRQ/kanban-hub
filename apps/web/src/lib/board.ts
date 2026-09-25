@@ -4,7 +4,7 @@
  */
 import { checklistProgress, summarizeContainer, type ContainerSummary } from "@kanban-hub/core/derive";
 import type { Board, Container, Task } from "@kanban-hub/core/schema";
-import { dayKey, formatDate } from "./time";
+import { dayKey, formatDate, formatPlainDate } from "./time";
 
 export interface Section {
   container: Container;
@@ -97,14 +97,4 @@ function firstLine(text: string): string | null {
     .map((l) => l.trim())
     .find((l) => l !== "");
   return line ?? null;
-}
-
-/**
- * 纯日期（YYYY-MM-DD，如截止日期、目标日期）的显示：直接取日期部件，不做时区换算——
- * 它本来就是某一天，按时间戳换算会在负时区偏到前一天。今年（按 tz、相对 now）的不带年份。
- */
-export function formatPlainDate(date: string, tz: string, now: Date): string {
-  const [year, month, day] = date.split("-").map(Number);
-  const nowYear = Number(dayKey(now, tz).slice(0, 4));
-  return year === nowYear ? `${month} 月 ${day} 日` : `${year} 年 ${month} 月 ${day} 日`;
 }

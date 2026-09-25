@@ -3,7 +3,7 @@ import { getTranslations } from "next-intl/server";
 import type { Health } from "@kanban-hub/core/schema";
 import { formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
-import type { LocationSummary } from "@/lib/location";
+import { formatLocationLine } from "@/lib/location";
 import type { ProjectCardView } from "@/server/views/overview";
 import { looseTranslator } from "./loose-translator";
 import "./overview.css";
@@ -18,15 +18,6 @@ const HEALTH_BG_CLASS: Record<Health, string> = {
 
 /** 卡片的不对称圆角按卡片序号循环，只在主题 B 生效（overview.css），主题 A 下四个值都等于 --radius */
 const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
-
-function formatLocationLine(location: LocationSummary, syncedAtLabel: (value: string) => string): string {
-  const parts = [`${location.machineName}:${location.path}`];
-  if (location.branch !== null) parts.push(location.branch);
-  if (location.ahead !== null && location.behind !== null) parts.push(`↑${location.ahead} ↓${location.behind}`);
-  if (location.dirtyCount !== null) parts.push(`dirty ${location.dirtyCount}`);
-  if (location.syncedAt !== null) parts.push(syncedAtLabel(location.syncedAt));
-  return parts.join(" · ");
-}
 
 /**
  * 一张项目卡片：周期、健康度、焦点、进度、最近活动、主位置、停滞标记（细节「项目卡片」）。

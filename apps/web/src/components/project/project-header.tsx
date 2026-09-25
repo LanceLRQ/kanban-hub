@@ -4,6 +4,7 @@ import { getTranslations } from "next-intl/server";
 import type { Health } from "@kanban-hub/core/schema";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
+import { formatLocationLine } from "@/lib/location";
 import type { ProjectHeaderView } from "@/server/views/project-header";
 
 /** 健康度徽标的颜色：语义色，来自 tokens.css 的 --health-*，两套主题各自取值 */
@@ -53,13 +54,4 @@ export async function ProjectHeader({ project, actions }: { project: ProjectHead
       )}
     </section>
   );
-}
-
-function formatLocationLine(location: NonNullable<ProjectHeaderView["location"]>, formatSyncedAt: (value: string) => string): string {
-  const parts = [`${location.machineName}:${location.path}`];
-  if (location.branch !== null) parts.push(location.branch);
-  if (location.ahead !== null && location.behind !== null) parts.push(`↑${location.ahead} ↓${location.behind}`);
-  if (location.dirtyCount !== null) parts.push(`dirty ${location.dirtyCount}`);
-  if (location.syncedAt !== null) parts.push(formatSyncedAt(location.syncedAt));
-  return parts.join(" · ");
 }

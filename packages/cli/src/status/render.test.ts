@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import type { ProjectDetailResponse } from "@kanban-hub/core/api";
 import { T0, fixtureId, makeBoard, makeContainer, makeProject, makeTask } from "@kanban-hub/core/test-fixtures";
 import { buildStatusView } from "./view";
-import { renderStatusText, toStatusJson } from "./render";
+import { formatDateOnly, renderStatusText, toStatusJson } from "./render";
 
 const MACHINE_ID = fixtureId("m", 1);
 
@@ -229,5 +229,19 @@ describe("toStatusJson", () => {
     const view = buildStatusView(detail, { machineId: MACHINE_ID, now: new Date(T0) });
     const json = toStatusJson(view) as Record<string, unknown>;
     expect(Object.keys(json).sort()).toEqual(["containers", "inbox", "location", "project"]);
+  });
+});
+
+describe("formatDateOnly", () => {
+  it("按注入的时区取日期，UTC 晚上的时间戳在 Asia/Shanghai 下是本地的第二天", () => {
+    const isoTimestamp = "2026-09-24T20:00:00.000Z";
+    expect(formatDateOnly(isoTimestamp, "UTC")).toBe("2026-09-24");
+    expect(formatDateOnly(isoTimestamp, "Asia/Shanghai")).toBe("2026-09-25");
+  });
+
+  it("不传时区时取本机时区（Intl 解析出的默认时区）", () => {
+    const isoTimestamp = "2026-09-24T20:00:00.000Z";
+    const defaultTz = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    expect(formatDateOnly(isoTimestamp)).toBe(formatDateOnly(isoTimestamp, defaultTz));
   });
 });

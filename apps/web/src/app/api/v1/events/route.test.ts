@@ -105,4 +105,30 @@ describe("GET /api/v1/events", () => {
     expect((await GET(api.request("/api/v1/events?limit=201", { cookie }))).status).toBe(400);
     expect((await GET(api.request("/api/v1/events?limit=abc", { cookie }))).status).toBe(400);
   });
+
+  it("types、actor 参数透传给存储：只返回匹配的事件", async () => {
+    api = await setupTestApi();
+    const actor = await machineActor(api);
+    const web: Actor = { userId: actor.userId, machineId: null, via: "web", agent: null };
+    const { project } = await api.store.createProject({ name: "看板" }, actor);
+    await api.store.appendLog(project.id, { text: "网页日志" }, web);
+    const cookie = api.sessionCookie();
+
+    const byType = await eventsBody(
+      await GET(api.request(`/api/v1/events?project=${project.id}&types=log&limit=10`, { cookie })),
+    );
+    expect(byType.events.map((e) => e.type)).toEqual(["log"]);
+
+    const byActor = await eventsBody(
+      await GET(api.request(`/api/v1/events?project=${project.id}&actor=web&limit=10`, { cookie })),
+    );
+    expect(byActor.events.map((e) => e.text)).toEqual(["网页日志"]);
+  });
+
+  it("types 里有未知类型、actor 不合法时返回 400", async () => {
+    api = await setupTestApi();
+    const cookie = api.sessionCookie();
+    expect((await GET(api.request("/api/v1/events?types=not.a.type", { cookie }))).status).toBe(400);
+    expect((await GET(api.request("/api/v1/events?actor=不合法", { cookie }))).status).toBe(400);
+  });
 });

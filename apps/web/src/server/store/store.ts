@@ -12,6 +12,7 @@ import {
   type ContainerPatchInput,
   type DeepReadonly,
   type Event,
+  type EventType,
   type LocationInput,
   type LogInput,
   type Project,
@@ -69,6 +70,9 @@ export interface EventQuery {
   projectId?: string;
   before?: EventCursor;
   limit: number;
+  types?: EventType[];
+  /** "web" 匹配 actor.via === "web"；其余值按机器 ID 匹配 actor.machineId */
+  actor?: "web" | string;
 }
 
 export interface MutationOptions {
@@ -126,6 +130,11 @@ export class Store {
     return store;
   }
 
+  /** 数据目录的绝对路径，供设置页显示 */
+  get dataDirectory(): string {
+    return this.dataDir;
+  }
+
   // ---------- 查询（读内存，同步） ----------
 
   listProjects(): DeepReadonly<Project[]> {
@@ -170,18 +179,20 @@ export class Store {
     }
     const matches = (e: Event) =>
       (query.projectId === undefined || e.projectId === query.projectId) &&
-      (query.before === undefined || compareEvents(e, query.before) < 0);
+      (query.before === undefined || compareEvents(e, query.before) < 0) &&
+      (query.types === undefined || query.types.includes(e.type)) &&
+      (query.actor === undefined || matchesActor(e.actor, query.actor));
     const result = this.recentEvents.filter(matches).sort(newestFirst).slice(0, query.limit);
     if (result.length >= query.limit) return result;
-    // 读旧文件时可能顺带修复残行，放进写入队列，避免和追加事件交错
+    // 列目录是只读操作，不经过写入队列（不会和写入冲突）；这里只用来决定要不要排队，
+    // 不作为最终读取依据——拿到队列独占权之后会重新列一遍，见下方
+    const projectIds = query.projectId !== undefined ? [query.projectId] : [...this.projects.keys()];
+    if (!(await this.hasMonthsBeforeWindow(projectIds))) return result;
+    // 读旧文件时可能顺带修复残行，放进写入队列，避免和追加事件交错。进队列后重新列一遍月份
+    // 而不是直接复用上面的判断结果：两次调用之间没有互斥，理论上可能有新的旧月份文件出现
+    // （例如导入历史事件），队列外的判断只用来避免内存已经够用时无谓地排队等待
     return this.queue.run(async () => {
-      const projectIds = query.projectId !== undefined ? [query.projectId] : [...this.projects.keys()];
-      const byMonth = new Map<string, string[]>();
-      for (const id of projectIds) {
-        for (const month of await this.eventLog.listMonths(id)) {
-          if (month < this.windowStart) byMonth.set(month, [...(byMonth.get(month) ?? []), id]);
-        }
-      }
+      const byMonth = await this.monthsBeforeWindow(projectIds);
       for (const month of [...byMonth.keys()].sort().reverse()) {
         const batch: Event[] = [];
         for (const id of byMonth.get(month)!) batch.push(...(await this.eventLog.readMonth(id, month)).filter(matches));
@@ -190,6 +201,27 @@ export class Store {
       }
       return result.slice(0, query.limit);
     });
+  }
+
+  /** 是否存在早于内存窗口的事件月份文件；只读目录，供 listEvents 决定要不要排队 */
+  private async hasMonthsBeforeWindow(projectIds: readonly string[]): Promise<boolean> {
+    for (const id of projectIds) {
+      for (const month of await this.eventLog.listMonths(id)) {
+        if (month < this.windowStart) return true;
+      }
+    }
+    return false;
+  }
+
+  /** 早于内存窗口的月份 → 该月有事件的项目 ID 列表；只读目录，不做任何假设地重新列一遍 */
+  private async monthsBeforeWindow(projectIds: readonly string[]): Promise<Map<string, string[]>> {
+    const byMonth = new Map<string, string[]>();
+    for (const id of projectIds) {
+      for (const month of await this.eventLog.listMonths(id)) {
+        if (month < this.windowStart) byMonth.set(month, [...(byMonth.get(month) ?? []), id]);
+      }
+    }
+    return byMonth;
   }
 
   // ---------- 写操作（经过写入队列） ----------
@@ -450,6 +482,11 @@ function compareEvents(a: EventCursor, b: EventCursor): number {
 
 function newestFirst(a: Event, b: Event): number {
   return compareEvents(b, a);
+}
+
+/** actor 筛选：filter 为 "web" 匹配网页操作，其余按机器 ID 匹配 */
+function matchesActor(actor: Actor, filter: string): boolean {
+  return filter === "web" ? actor.via === "web" : actor.machineId === filter;
 }
 
 async function pathExists(p: string): Promise<boolean> {

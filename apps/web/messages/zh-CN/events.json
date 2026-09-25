@@ -1,1 +1,46 @@
-{}
+{
+  "project": {
+    "created": "创建了项目 {project}",
+    "updated": {
+      "cycle": "将周期改为{cycle}",
+      "health": "将健康度改为{health}",
+      "focus": "将焦点改为{focus}",
+      "name": "将项目改名为{name}",
+      "generic": "修改了项目的 {field}"
+    }
+  },
+  "container": {
+    "created": "新建了容器 {container}",
+    "updated": {
+      "manualStatus": "将 {container} 的状态改为{status}",
+      "targetVersion": "将 {container} 的目标版本改为 {version}",
+      "targetDate": "将 {container} 的目标日期改为 {date}",
+      "title": "将 {container} 改名为 {title}",
+      "generic": "修改了 {container} 的 {field}"
+    }
+  },
+  "task": {
+    "created": "新建了任务 {task}",
+    "updated": {
+      "checklist": "更新了 {task} 的清单（{done}/{total}）",
+      "title": "将 {task} 改名为 {title}",
+      "group": "将 {task} 的分组改为 {group}",
+      "dueDate": "将 {task} 的截止日期改为 {date}",
+      "note": "修改了 {task} 的备注",
+      "generic": "修改了 {task} 的 {field}"
+    },
+    "statusChanged": "将 {task} 的状态改为{status}",
+    "human": {
+      "changed": "把 {task} 标记为{kind}：{note}",
+      "cleared": "清除了 {task} 的待你处理标记"
+    }
+  },
+  "log": "记了一条日志：{text}",
+  "docs": {
+    "synced": "同步了文档",
+    "pulled": "拉取了文档"
+  },
+  "import": {
+    "applied": "应用了一次导入"
+  }
+}

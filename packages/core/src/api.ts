@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { KhError } from "./errors";
 import { idSchema } from "./ids";
-import { boardSchema, machineOsSchema, projectSchema, timestampSchema, userRoleSchema } from "./schema";
+import { boardSchema, eventTypeSchema, machineOsSchema, projectSchema, timestampSchema, userRoleSchema, type EventType } from "./schema";
 
 // ---------- 网页与 kh 共用的请求头 ----------
 
@@ -172,6 +172,9 @@ export interface EventsQuery {
   projectId?: string;
   before?: EventCursor;
   limit: number;
+  types?: EventType[];
+  /** "web" 或某台机器的 ID */
+  actor?: "web" | string;
 }
 
 function parseLimit(raw: string | null): number {
@@ -188,9 +191,34 @@ function orUndefinedIfBlank(raw: string | null): string | undefined {
 }
 
 /**
- * 解析 GET /events 的查询参数（规格 11 节：project、before、limit）。
+ * 解析逗号分隔的事件类型列表；重复项去重（保留首次出现的顺序），空串或缺省当作没传。
+ * 其中一项不是合法的事件类型时抛 KhError("invalid")，错误信息里写出是哪一项。
+ */
+function parseTypes(raw: string | null): EventType[] | undefined {
+  if (raw === null || raw.trim() === "") return undefined;
+  const seen = new Set<EventType>();
+  for (const part of raw.split(",")) {
+    const trimmed = part.trim();
+    if (trimmed === "") continue;
+    const parsed = eventTypeSchema.safeParse(trimmed);
+    if (!parsed.success) throw new KhError("invalid", `不是合法的事件类型：${trimmed}`);
+    seen.add(parsed.data);
+  }
+  return seen.size > 0 ? [...seen] : undefined;
+}
+
+/** actor 只接受 "web" 或合法的机器 ID（idSchema），空串或缺省当作没传 */
+function parseActor(raw: string | null): string | undefined {
+  if (raw === null || raw.trim() === "") return undefined;
+  if (raw === "web") return "web";
+  if (!idSchema.safeParse(raw).success) throw new KhError("invalid", `actor 必须是 web 或合法的机器 ID（收到：${raw}）`);
+  return raw;
+}
+
+/**
+ * 解析 GET /events 的查询参数（规格 11 节：project、before、limit、types、actor）。
  * 项目筛选的查询参数名是 project（不是 projectId），返回字段沿用 projectId，供路由传给 Store。
- * limit 缺省时取默认值，不是整数或越界时抛 KhError("invalid")；before 格式不对同样抛 invalid。
+ * limit 缺省时取默认值，不是整数或越界时抛 KhError("invalid")；before、types、actor 格式不对同样抛 invalid。
  */
 export function parseEventsQuery(searchParams: URLSearchParams): EventsQuery {
   const beforeRaw = searchParams.get("before");
@@ -198,5 +226,21 @@ export function parseEventsQuery(searchParams: URLSearchParams): EventsQuery {
     projectId: orUndefinedIfBlank(searchParams.get("project")),
     before: beforeRaw ? decodeEventCursor(beforeRaw) : undefined,
     limit: parseLimit(searchParams.get("limit")),
+    types: parseTypes(searchParams.get("types")),
+    actor: parseActor(searchParams.get("actor")),
   };
+}
+
+/**
+ * 把 EventsQuery 编码成查询参数，与 parseEventsQuery 互为逆运算；只输出有值的字段。
+ * 供网页和以后的 kh 拼接 GET /events 的查询串。
+ */
+export function eventsQueryToSearchParams(query: EventsQuery): URLSearchParams {
+  const params = new URLSearchParams();
+  if (query.projectId !== undefined) params.set("project", query.projectId);
+  if (query.before !== undefined) params.set("before", encodeEventCursor(query.before));
+  params.set("limit", String(query.limit));
+  if (query.types !== undefined && query.types.length > 0) params.set("types", query.types.join(","));
+  if (query.actor !== undefined) params.set("actor", query.actor);
+  return params;
 }

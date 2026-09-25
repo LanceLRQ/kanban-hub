@@ -10,6 +10,7 @@ import {
   apiErrorSchema,
   decodeEventCursor,
   encodeEventCursor,
+  eventsQueryToSearchParams,
   loginInput,
   machineTokenSchema,
   meResponse,
@@ -320,5 +321,69 @@ describe("parseEventsQuery", () => {
     const err = thrown(() => parseEventsQuery(new URLSearchParams({ before: "不是游标" })));
     expect(err).toBeInstanceOf(KhError);
     expect((err as KhError).code).toBe("invalid");
+  });
+
+  it("types 是合法的逗号分隔列表时解析成数组", () => {
+    expect(parseEventsQuery(new URLSearchParams({ types: "task.created,log" })).types).toEqual(["task.created", "log"]);
+  });
+
+  it("types 为空串时当作没传", () => {
+    expect(parseEventsQuery(new URLSearchParams({ types: "" })).types).toBeUndefined();
+  });
+
+  it("types 含未知类型时报 invalid，错误信息写出是哪一个", () => {
+    const err = thrown(() => parseEventsQuery(new URLSearchParams({ types: "log,not.a.type" }))) as KhError;
+    expect(err).toBeInstanceOf(KhError);
+    expect(err.code).toBe("invalid");
+    expect(err.message).toContain("not.a.type");
+  });
+
+  it("types 有重复项时去重，保留首次出现的顺序", () => {
+    expect(parseEventsQuery(new URLSearchParams({ types: "log,task.created,log" })).types).toEqual(["log", "task.created"]);
+  });
+
+  it("actor 为 web 时解析出 web", () => {
+    expect(parseEventsQuery(new URLSearchParams({ actor: "web" })).actor).toBe("web");
+  });
+
+  it("actor 为合法机器 ID 时原样解析", () => {
+    expect(parseEventsQuery(new URLSearchParams({ actor: "m000000001" })).actor).toBe("m000000001");
+  });
+
+  it("actor 为空串时当作没传", () => {
+    expect(parseEventsQuery(new URLSearchParams({ actor: "" })).actor).toBeUndefined();
+  });
+
+  it("actor 是非法值时报 invalid", () => {
+    const err = thrown(() => parseEventsQuery(new URLSearchParams({ actor: "不合法" }))) as KhError;
+    expect(err).toBeInstanceOf(KhError);
+    expect(err.code).toBe("invalid");
+  });
+});
+
+describe("eventsQueryToSearchParams", () => {
+  it("只输出有值的字段，limit 总是输出", () => {
+    const params = eventsQueryToSearchParams({ limit: 50 });
+    expect([...params.entries()]).toEqual([["limit", "50"]]);
+  });
+
+  it("与 parseEventsQuery 互为逆运算", () => {
+    const original = parseEventsQuery(
+      new URLSearchParams({
+        project: "p0000000aa",
+        before: "2026-09-24T10:00:00.000Z_k3v9x2m7qa",
+        limit: "20",
+        types: "task.created,log",
+        actor: "m000000001",
+      }),
+    );
+    const roundTripped = parseEventsQuery(eventsQueryToSearchParams(original));
+    expect(roundTripped).toEqual(original);
+  });
+
+  it("默认查询（没有可选字段）编码后再解析回同样的结果", () => {
+    const original = parseEventsQuery(new URLSearchParams());
+    const roundTripped = parseEventsQuery(eventsQueryToSearchParams(original));
+    expect(roundTripped).toEqual(original);
   });
 });

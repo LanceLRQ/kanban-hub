@@ -419,4 +419,81 @@ describe("查询事件", () => {
       await fs.rm(path.join(dir, "..", "outside"), { recursive: true, force: true });
     }
   });
+
+  it("按 types 筛选", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const { project, board } = await store.createProject({ name: "看板" }, actor);
+    await store.appendLog(project.id, { text: "日志" }, actor);
+    await store.createTask(project.id, { containerId: board.containers[0]!.id, title: "任务" }, actor);
+
+    const onlyLogs = await store.listEvents({ projectId: project.id, types: ["log"], limit: 10 });
+    expect(onlyLogs.map((e) => e.type)).toEqual(["log"]);
+
+    const created = await store.listEvents({ projectId: project.id, types: ["project.created", "task.created"], limit: 10 });
+    expect(new Set(created.map((e) => e.type))).toEqual(new Set(["project.created", "task.created"]));
+  });
+
+  it("按 actor 筛选：web 匹配 via === web，机器 ID 匹配 actor.machineId", async () => {
+    const store = await open();
+    const cli = await cliActor(store);
+    const web: Actor = { userId: cli.userId, machineId: null, via: "web", agent: null };
+    const { project } = await store.createProject({ name: "看板" }, cli);
+    await store.appendLog(project.id, { text: "网页日志" }, web);
+
+    const webEvents = await store.listEvents({ projectId: project.id, actor: "web", limit: 10 });
+    expect(webEvents.map((e) => e.text)).toEqual(["网页日志"]);
+
+    const cliEvents = await store.listEvents({ projectId: project.id, actor: cli.machineId!, limit: 10 });
+    expect(cliEvents.every((e) => e.actor.machineId === cli.machineId)).toBe(true);
+    expect(cliEvents.some((e) => e.type === "project.created")).toBe(true);
+  });
+
+  it("types 与 actor 组合筛选，配合分页游标", async () => {
+    const store = await open();
+    const cli = await cliActor(store);
+    const web: Actor = { userId: cli.userId, machineId: null, via: "web", agent: null };
+    const { project } = await store.createProject({ name: "看板" }, cli);
+    await store.appendLog(project.id, { text: "日志一" }, web);
+    await store.appendLog(project.id, { text: "日志二" }, web);
+    await store.appendLog(project.id, { text: "命令行日志" }, cli);
+
+    const page1 = await store.listEvents({ projectId: project.id, types: ["log"], actor: "web", limit: 1 });
+    expect(page1.map((e) => e.text)).toEqual(["日志二"]);
+    const page2 = await store.listEvents({
+      projectId: project.id,
+      types: ["log"],
+      actor: "web",
+      limit: 1,
+      before: page1[0]!,
+    });
+    expect(page2.map((e) => e.text)).toEqual(["日志一"]);
+  });
+
+  it("没有旧月份文件时不进写入队列：占住队列时 listEvents 仍能立即返回", async () => {
+    const store = await open();
+    const actor = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, actor);
+    await store.appendLog(project.id, { text: "日志" }, actor);
+
+    // 直接占住内部写入队列（不经公开 API：公开的写操作都很快返回，测不出“不进队列”这件事）
+    const queue = (store as unknown as { queue: { run<T>(job: () => Promise<T>): Promise<T> } }).queue;
+    let released!: () => void;
+    const blocker = queue.run(() => new Promise<void>((resolve) => (released = resolve)));
+
+    try {
+      const start = Date.now();
+      const events = await store.listEvents({ projectId: project.id, limit: 10 });
+      expect(Date.now() - start).toBeLessThan(500);
+      expect(events.map((e) => e.type)).toEqual(["log", "project.created"]);
+    } finally {
+      released();
+      await blocker;
+    }
+  });
+
+  it("dataDirectory 等于打开存储时传入的目录", async () => {
+    const store = await open();
+    expect(store.dataDirectory).toBe(dir);
+  });
 });

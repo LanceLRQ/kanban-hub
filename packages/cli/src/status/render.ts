@@ -47,9 +47,19 @@ function taskCodeDisplay(task: StatusViewTask, container: StatusViewContainer): 
   return `${container.refLabel}/${task.code}`;
 }
 
-/** 时间戳只取日期部分（YYYY-MM-DD），折叠摘要里不需要时分秒 */
-function formatDateOnly(isoTimestamp: string): string {
-  return isoTimestamp.slice(0, 10);
+/**
+ * 时间戳只取日期部分（YYYY-MM-DD），折叠摘要里不需要时分秒。按本机时区取日期而不是直接
+ * 截取 UTC 字符串：UTC 晚上的时间戳在本机时区可能已经是第二天。时区可以注入（测试用），
+ * 默认取 Intl 解析出的本机时区。
+ */
+export function formatDateOnly(isoTimestamp: string, timeZone: string = defaultTimeZone()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone, year: "numeric", month: "2-digit", day: "2-digit" }).format(
+    new Date(isoTimestamp),
+  );
+}
+
+function defaultTimeZone(): string {
+  return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
 function renderTaskLine(task: StatusViewTask, container: StatusViewContainer): string {

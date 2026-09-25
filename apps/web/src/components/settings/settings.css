@@ -1,19 +1,64 @@
 /*
- * 设置页“外观”区块专用：两张主题卡片的缩略配色预览。
- *
- * 这组变量描述的是“另一套主题的样子”，用途是给用户对比两套主题好选——不是当前生效的主题，
- * 所以故意不跟着 [data-theme] 切换，取值恒等于 ../../styles/tokens.css（主题 A）和
- * ../../styles/themes/collage.css（主题 B）里对应 token 的实际值。改了那两处的取值，
- * 这里要跟着更新。
+ * 设置页、接入页、项目设置标签共用的 `SectionCard`/`SectionRow`/`PageTitleCard`
+ * （见 `section-card.tsx`）在主题 B「纸本拼贴」下的覆盖，处理方式和总览、看板一致：
+ * 不对称圆角、纸色表头、虚线分隔、去掉编号方框的边框。规则都限定在
+ * `[data-theme="collage"]` 下，颜色和圆角只引用 tokens.css / themes/collage.css 里
+ * 已有的变量，这里不新定义视觉色值。这份文件不放在 @layer 里，好让它稳定盖过 Tailwind
+ * 生成的工具类（globals.css 里同类的主题覆盖也是这个理由）。
+ */
+
+/* ---------- 卡片：主题 B 换成不对称圆角，相邻卡片圆角方向互异 ---------- */
+[data-theme="collage"] .kh-settings-card {
+  border-radius: var(--radius-a);
+}
+[data-theme="collage"] .kh-settings-card:nth-of-type(even) {
+  border-radius: var(--radius-b);
+}
+/* 双类选择器保证优先级高于上面的 :nth-of-type(even)，标题卡不受它所在位置的奇偶影响 */
+[data-theme="collage"] .kh-settings-card.kh-settings-title-card {
+  border-radius: var(--radius-d);
+}
+
+/* ---------- 卡片头：主题 B 底色换成 --bg-hover（浅牛皮纸感），分隔线改虚线 ---------- */
+[data-theme="collage"] .kh-settings-card-head {
+  background: var(--bg-hover);
+  border-bottom-style: dashed;
+}
+
+/* ---------- 编号方框：主题 A 描边小方块，主题 B 去掉边框只留字距 ---------- */
+[data-theme="collage"] .kh-settings-no {
+  border: none;
+  background: transparent;
+  padding: 0;
+  letter-spacing: 0.08em;
+}
+
+/* ---------- 卡片内的行分隔线：主题 B 一律改成虚线 ---------- */
+[data-theme="collage"] .kh-settings-row {
+  border-top-style: dashed;
+  border-top-color: var(--border-soft);
+}
+
+/*
+ * 设置页“外观”区块的主题卡片预览：这组变量描述的是“另一套主题的样子”，用来给用户
+ * 对比两套主题好选——不是当前生效的主题，所以故意不跟着 [data-theme] 切换，取值恒等于
+ * ../../styles/tokens.css（主题 A）和 ../../styles/themes/collage.css（主题 B）里
+ * 对应 token 的实际值。改了那两处的取值，这里要跟着更新。
  */
 :root {
   --theme-swatch-print-bg: #f5f0e1;
   --theme-swatch-print-card: #fffcf1;
   --theme-swatch-print-border: #4a4033;
   --theme-swatch-print-accent: #d9b554;
+  --theme-swatch-print-health-on-track: #8fae84;
+  --theme-swatch-print-health-at-risk: #c09a4e;
+  --theme-swatch-print-health-blocked: #b86458;
 
   --theme-swatch-collage-bg: #efece3;
   --theme-swatch-collage-card: #fffdf6;
   --theme-swatch-collage-border: #33302a;
   --theme-swatch-collage-accent: #b5922f;
+  --theme-swatch-collage-health-on-track: #5c7a5a;
+  --theme-swatch-collage-health-at-risk: #a87f42;
+  --theme-swatch-collage-health-blocked: #a85a4e;
 }

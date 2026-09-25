@@ -1,12 +1,9 @@
-import Link from "next/link";
 import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
-import { buttonVariants } from "@/components/ui/button";
-import { cn } from "@/lib/utils";
 import { getPageSession } from "@/server/web/session";
 import { pageServices } from "@/server/web/services";
 import { buildSetupView } from "@/server/views/setup";
-import { SectionCard, SectionRow } from "@/components/settings/section-card";
+import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/section-card";
 import { CopyCommand } from "@/components/setup/copy-command";
 import { PairingPanel } from "@/components/setup/pairing-panel";
 import { MachineList } from "@/components/setup/machine-list";
@@ -31,26 +28,21 @@ export default async function SetupPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-center gap-3">
-        <Link href="/settings" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
-          &larr; {t("back")}
-        </Link>
-        <h1 className="text-xl font-bold">{t("heading")}</h1>
-      </div>
+      <PageTitleCard title={t("heading")} subtitle="setup" backHref="/settings" backLabel={t("back")} />
 
-      <SectionCard title={t("steps.install.title")} subtitle="install kh">
+      <SectionCard no="1" title={t("steps.install.title")} subtitle="install kh">
         <SectionRow label={t("steps.install.requirement")}>
           <CopyCommand command={installCommand} />
         </SectionRow>
       </SectionCard>
 
-      <SectionCard title={t("steps.login.title")} subtitle="kh login">
+      <SectionCard no="2" title={t("steps.login.title")} subtitle="kh login">
         <SectionRow label={t("steps.login.label")}>
           <PairingPanel publicUrl={view.publicUrl} />
         </SectionRow>
       </SectionCard>
 
-      <SectionCard title={t("steps.register.title")} subtitle="kh register">
+      <SectionCard no="3" title={t("steps.register.title")} subtitle="kh register">
         <SectionRow label={t("steps.register.label")}>
           <CopyCommand command={`cd ${t("steps.register.repoPlaceholder")} && kh register`} />
         </SectionRow>

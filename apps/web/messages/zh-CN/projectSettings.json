@@ -4,9 +4,11 @@
     "empty": "这个项目还没有登记任何位置，在仓库里执行 kh register 登记。"
   },
   "location": {
-    "title": "位置 {index}",
+    "title": "位置 {index} · {machineName}",
     "syncScope": "同步范围",
     "syncScopeEmpty": "未登记",
+    "syncScopeNone": "（无）",
+    "maxFileSize": "单文件上限",
     "gitStatus": "git 状态",
     "dirty": "dirty {count}",
     "head": "head {value}",

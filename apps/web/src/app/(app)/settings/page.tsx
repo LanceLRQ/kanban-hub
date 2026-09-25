@@ -1,7 +1,7 @@
 import { getTranslations } from "next-intl/server";
 import { pageServices } from "@/server/web/services";
 import { buildSettingsView } from "@/server/views/settings";
-import { SectionCard, SectionRow } from "@/components/settings/section-card";
+import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/section-card";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { BackupSection } from "@/components/settings/backup-section";
 import { ConnectSection } from "@/components/settings/connect-section";
@@ -17,7 +17,7 @@ export default async function SettingsPage() {
 
   return (
     <div className="flex flex-col gap-4">
-      <h1 className="text-xl font-bold">{t("heading")}</h1>
+      <PageTitleCard title={t("heading")} subtitle="server settings" />
 
       <SectionCard title={t("appearance.title")} subtitle="appearance">
         <AppearanceSection />

@@ -13,10 +13,11 @@ COPY packages/core/package.json packages/core/
 COPY packages/cli/package.json packages/cli/
 RUN http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} pnpm install --frozen-lockfile
 
-# ---------- build：next build（standalone 产物） ----------
+# ---------- build：next build（standalone 产物） + kh 安装包 ----------
 FROM deps AS build
 COPY . .
 RUN pnpm -F @kanban-hub/web build
+RUN pnpm -F @kanban-hub/cli run pack:tgz
 
 # ---------- dev：开发环境（挂载源码热更新，由 docker-compose.dev.yml 使用） ----------
 FROM node:22-bookworm-slim AS dev
@@ -57,7 +58,8 @@ ENV NODE_ENV=production \
     KH_DATA_DIR=/data \
     KH_BACKUP_DIR=/backups \
     KH_IN_CONTAINER=1 \
-    NEXT_MANUAL_SIG_HANDLE=1
+    NEXT_MANUAL_SIG_HANDLE=1 \
+    KH_CLI_PACKAGE=/app/kh.tgz
 # 代理只用于这一步安装，不写进最终镜像的环境变量
 RUN http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} apt-get update \
  && http_proxy=${HTTP_PROXY} https_proxy=${HTTPS_PROXY} apt-get install -y --no-install-recommends git ca-certificates \
@@ -67,6 +69,7 @@ WORKDIR /app
 COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
+COPY --from=build /app/packages/cli/dist/kh.tgz ./kh.tgz
 COPY docker/entrypoint.sh /usr/local/bin/kh-entrypoint
 RUN chmod 755 /usr/local/bin/kh-entrypoint \
  && mkdir -p /data /backups \

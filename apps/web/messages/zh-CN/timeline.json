@@ -1,6 +1,7 @@
 {
   "heading": "时间线",
-  "eventsCount": "{count} 条事件",
+  "loadedCount": "已显示 {count} 条",
+  "totalCount": "共 {count} 条事件",
   "filters": {
     "project": "项目",
     "type": "类型",

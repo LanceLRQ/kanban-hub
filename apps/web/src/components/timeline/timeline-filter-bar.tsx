@@ -93,7 +93,14 @@ function FilterRow({
 
 function FilterChip({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
   return (
-    <Button type="button" variant={active ? "secondary" : "outline"} size="sm" aria-pressed={active} onClick={onClick}>
+    <Button
+      type="button"
+      variant={active ? "secondary" : "outline"}
+      size="sm"
+      aria-pressed={active}
+      onClick={onClick}
+      className="kh-timeline-chip"
+    >
       {label}
     </Button>
   );

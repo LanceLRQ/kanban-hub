@@ -1,0 +1,111 @@
+/*
+ * 时间线专属的样式钩子：类型徽标按事件分组上色、日期分组标题右侧的延伸分隔线、筛选按钮的
+ * 当前项、行卡片的不对称圆角、项目标签。颜色只引用 tokens.css / themes/collage.css 里已有的
+ * 变量，这里不新定义任何色值。两套主题共用组件，差异都落在 `[data-theme="collage"]` 选择器上。
+ *
+ * 这份文件不放在 `@layer` 里（与 overview.css 同样的理由）：这样普通选择器就能稳定盖过
+ * Tailwind 生成的工具类（`rounded-md`、`bg-secondary`、`bg-background` 等落在 utilities 层，
+ * 层序在没有 `@layer` 标记的普通规则之后），不需要逐条加 `!important`。
+ */
+
+/* ---------- 类型徽标：按事件分组上色 ----------
+ * 任务用 --task-in-progress（主题 B 下改用浅纸色，见下）、
+ * 容器用 --task-review（雾霾蓝）、文档用 --health-on-track（鼠尾草绿）——这三个语义色 token
+ * 在主题 A 下正好是任务、容器、文档三类需要的颜色，不用新增 token。
+ * 日志、项目、导入三个分组，用页面背景色，视觉上接近描边（跟卡片背景
+ * 只有极细微的色差，边框仍然可见）。
+ */
+.kh-timeline-badge[data-group="task"] {
+  background: var(--task-in-progress);
+}
+.kh-timeline-badge[data-group="container"] {
+  background: var(--task-review);
+}
+.kh-timeline-badge[data-group="docs"] {
+  background: var(--health-on-track);
+}
+.kh-timeline-badge[data-group="log"],
+.kh-timeline-badge[data-group="project"],
+.kh-timeline-badge[data-group="import"] {
+  background: var(--background);
+}
+
+/*
+ * 主题 B 的任务状态语义色是加重的“墨色”（给状态点、文字用），直接拿来填徽标背景太深，
+ * 这里改用浅纸色：任务 → --paper-kraft，文档 → --paper-sage，容器 → --paper-gray。
+ */
+[data-theme="collage"] .kh-timeline-badge[data-group="task"] {
+  background: var(--paper-kraft);
+}
+[data-theme="collage"] .kh-timeline-badge[data-group="container"] {
+  background: var(--paper-gray);
+}
+[data-theme="collage"] .kh-timeline-badge[data-group="docs"] {
+  background: var(--paper-sage);
+}
+
+/* ---------- 日期分组标题：右侧延伸到行尾的分隔线，主题 A 实线、主题 B 虚线 ---------- */
+.kh-timeline-day-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.kh-timeline-day-heading::after {
+  content: "";
+  flex: 1;
+  border-bottom: 2px solid var(--border-soft);
+}
+[data-theme="collage"] .kh-timeline-day-heading::after {
+  border-bottom-width: 1px;
+  border-bottom-style: dashed;
+}
+
+/* ---------- 筛选按钮的当前项 ----------
+ * 主题 A：当前项芥末黄填充（不是 shadcn secondary 默认的雾霾蓝），偏移阴影已经由全局的
+ * `[data-slot="button"]` 规则统一处理，这里只需要换填色；非当前项沿用 Button 的 outline
+ * 默认样式（卡片底 + 实线边框），不用覆盖。
+ * 主题 B：当前项是卡片底（近白）+ 实线描边、字重加粗；非当前项是浅灰纸色底、边框转成
+ * 更淡的 --border-soft。
+ */
+.kh-timeline-chip[data-variant="secondary"],
+.kh-timeline-chip[data-variant="secondary"]:hover {
+  background: var(--mustard);
+  color: var(--foreground);
+  border-color: var(--border);
+}
+
+[data-theme="collage"] .kh-timeline-chip[data-variant="secondary"],
+[data-theme="collage"] .kh-timeline-chip[data-variant="secondary"]:hover {
+  background: var(--card);
+  border-width: 1.5px;
+  border-color: var(--border);
+  color: var(--foreground);
+  font-weight: 800;
+}
+[data-theme="collage"] .kh-timeline-chip[data-variant="outline"] {
+  background: var(--paper-gray);
+  border-color: var(--border-soft);
+}
+
+/* ---------- 行卡片：主题 B 不对称圆角（由 TimelineView 按序号循环 kh-radius-a/b/c/d 类名给出） ---------- */
+
+/* ---------- 项目标签 ----------
+ * 主题 A：小胶囊（页面底色 + 小圆角 + 小字号）；
+ * 主题 B：纯文字——字号更大、无底色、深色前景。
+ */
+.kh-timeline-project-tag {
+  display: inline-flex;
+  border-radius: 3px;
+  padding: 1px 7px;
+  background: var(--background);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted-foreground);
+}
+[data-theme="collage"] .kh-timeline-project-tag {
+  background: transparent;
+  padding: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--foreground);
+}

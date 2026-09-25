@@ -11,8 +11,12 @@ import type { TimelineFilters, TimelinePage } from "@/server/views/timeline";
 import { hasActiveFilters } from "./active-filters";
 import { loadMoreTimelineAction } from "./actions";
 import { mergeTimelineDays } from "./merge";
+import "./timeline.css";
 import { TimelineFilterBar } from "./timeline-filter-bar";
 import { TimelineItemRow } from "./timeline-item-row";
+
+/** 行卡片的不对称圆角按行序号循环，只在主题 B 生效（timeline.css），主题 A 下四个值都等于 --radius */
+const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
 
 /**
  * 时间线页面的客户端外壳：筛选栏 + 按天分组的列表 + 加载更多。
@@ -62,6 +66,16 @@ export function TimelineView({
   const hasFilters = hasActiveFilters(filters, fixedProjectId);
   const itemCount = days.reduce((sum, day) => sum + day.items.length, 0);
   const showProject = fixedProjectId === undefined;
+  // 还有下一页时，这个数字只是“已经加载了多少条”，不是总数，文案要说清楚；
+  // 全部加载完（没有 nextCursor）时才是确定的总数
+  const countLabel = cursor ? t("loadedCount", { count: itemCount }) : t("totalCount", { count: itemCount });
+
+  // 行卡片的不对称圆角按“跨天数、跨行”的整体序号循环（不是每天从头数），预先算好而不是在
+  // JSX 的 map 回调里递增一个外部变量——那样会在渲染期间做可变赋值，触发 React 的纯渲染检查
+  const radiusClassById = new Map<string, string>();
+  for (const item of days.flatMap((day) => day.items)) {
+    radiusClassById.set(item.id, RADIUS_CLASSES[radiusClassById.size % RADIUS_CLASSES.length]!);
+  }
 
   return (
     <div className="flex flex-col gap-5">
@@ -69,7 +83,7 @@ export function TimelineView({
         <div className="flex flex-wrap items-center gap-3">
           <h1 className="text-[22px] tracking-tight">{t("heading")}</h1>
           <Badge variant="outline" className="kh-num">
-            {t("eventsCount", { count: itemCount })}
+            {countLabel}
           </Badge>
         </div>
         <TimelineFilterBar filterOptions={page.filterOptions} filters={filters} showProjectFilter={showProject} />
@@ -81,10 +95,15 @@ export function TimelineView({
         <div className="flex flex-col gap-6">
           {days.map((day) => (
             <section key={day.key} className="flex flex-col gap-2">
-              <h2 className="kh-num text-xs font-bold tracking-wide text-muted-foreground">{day.heading}</h2>
+              <h2 className="kh-timeline-day-heading kh-num text-xs font-bold tracking-wide text-muted-foreground">{day.heading}</h2>
               <div className="flex flex-col gap-2">
                 {day.items.map((item) => (
-                  <TimelineItemRow key={item.id} item={item} showProject={showProject} />
+                  <TimelineItemRow
+                    key={item.id}
+                    item={item}
+                    showProject={showProject}
+                    radiusClass={radiusClassById.get(item.id)!}
+                  />
                 ))}
               </div>
             </section>

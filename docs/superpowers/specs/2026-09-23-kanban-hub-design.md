@@ -464,13 +464,15 @@ YAML，顶层写 `format: kanban-hub/v1`，包含 `project`（周期、健康度
 | 项目 | `GET /projects`、`GET /projects?fingerprint=…`、`POST /projects`、`GET /projects/:id`、`PATCH /projects/:id`、`PUT /projects/:id/locations/:machineId` |
 | 容器 | `POST /projects/:id/containers`、`PATCH /projects/:id/containers/:cid` |
 | 任务 | `POST /projects/:id/tasks`、`PATCH /projects/:id/tasks/:tid` |
-| 时间线 | `POST /projects/:id/log`、`GET /events?project=&before=&limit=` |
+| 时间线 | `POST /projects/:id/log`、`GET /events?project=&before=&limit=&types=&actor=` |
 | 同步 | 见 9.1 |
 | 文档 | `GET /projects/:id/docs?machine=`（文件树与最近更新）、`POST /projects/:id/raw-tokens` |
 | 快照读取（供 `kh`） | `GET /projects/:id/snapshots/:machineId/manifest`（路径、sha256、大小、changedAt）、`GET /projects/:id/snapshots/latest-manifest?exclude=<本机ID>`（每个路径取其他机器中最新的一份）、`GET /projects/:id/snapshots/:machineId/files/*path`（文件内容，响应头带 sha256） |
 | 导入导出 | `POST /projects/:id/import?dryRun=1`、`GET /projects/:id/export?format=yaml\|md` |
 | 实时推送 | `GET /stream`（SSE，只接受网页会话） |
 | 备份 | `POST /backups`、`GET /backups`、`GET /backups/:name` |
+
+`GET /events` 的 `types` 是逗号分隔的事件类型列表，`actor` 筛选操作者（取值 `web`，或某台机器的 ID），两者都是可选参数，不传时不筛选；取值不合法时返回 400。
 
 接入引导文件公开访问，不需要鉴权，也不包含任何凭据：`/setup/agent.md`、`/setup/migrate.md`、`/setup/kh.tgz`。
 
@@ -540,13 +542,14 @@ skill 里只写 `kh` 命令和规则，不引用任何一家 agent 特有的工�
 |---|---|
 | `/login` | 密码登录 |
 | `/` 总览 | 顶部是跨项目的“待你处理”收件箱，按决策、验证、操作分组。下面是项目卡片：周期、健康度、当前焦点、进度条、最近活动、停滞标记，以及所在机器和 git 状态 |
-| `/p/:id` 项目 | 四个标签页：**看板**（进行中的特性、阶段、储备、杂项；已完成的容器折叠成一行摘要。任务行显示状态、编号、标题、分组、待你处理、备注、文档链接、日期；点击后在侧边栏编辑，包括清单）、**时间线**、**文档**、**设置**（各位置信息、同步范围、跳过的文件、导出） |
+| `/p/:id` 项目 | 四个标签页：**看板**（进行中的特性、阶段、储备、杂项；已完成的容器折叠成一行摘要。任务行显示状态、编号、标题、分组、待你处理、备注、文档链接、日期；点击后在侧边栏编辑，包括清单；每个容器末尾都可以直接新建任务）、**时间线**、**文档**、**设置**（各位置信息、同步范围、跳过的文件、导出） |
 | `/p/:id/docs/…` | 左边是文件树（可以切换机器，显示同步时间）和“最近更新”列表；右边渲染 Markdown：GFM、代码高亮、mermaid；文档里的相对链接改写成站内跳转，图片通过 `/raw` 加载；用 rehype-sanitize 清理 HTML |
 | `/raw/<令牌>/…` | 原始文件，在新标签页打开。html 和 svg 带 `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups`；所有文件都带 `X-Content-Type-Options: nosniff`，按扩展名设置 `Content-Type` |
 | `/timeline` | 跨项目的时间线，可以按项目、事件类型、操作者筛选 |
 | `/setup` | 见 12.4 |
-| `/settings` | 备份（输入密码、选择是否含历史）、备份列表与下载、服务信息（版本、数据目录、待提交改动数） |
+| `/settings` | 外观（主题、字体）、备份（输入密码、选择是否含历史）、备份列表与下载、服务信息（版本、数据目录、待提交改动数） |
 
+- **外观**：提供两套界面主题可以切换（褪色印刷、纸本拼贴），等宽字体与中文字体各有几种可选项；偏好保存在浏览器本地，不同设备各自记忆。
 - **实时刷新**：网页通过 SSE 接收改动，更新看板和收件箱；断线后自动重连，重连后重新拉取一次数据。
 - **UI**：shadcn/ui + Tailwind CSS + lucide 图标；文案通过 next-intl 集中管理，第一版只有中文。
 

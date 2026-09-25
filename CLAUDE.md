@@ -33,7 +33,7 @@ kanban-hub 是一个自托管的多项目进度看板服务：AI 编码助手通
 
 - [x] 调研：同类项目评估完成，确定自建
 - [x] 设计定稿：见上方规格
-- [ ] 实施：进行中（M0 工程骨架、M1 核心模型与存储、M2 鉴权与看板 API、M3 kh 基础命令已完成）
+- [ ] 实施：进行中（M0 工程骨架、M1 核心模型与存储、M2 鉴权与看板 API、M3 kh 基础命令、M4 网页看板已完成）
 
 ## 仓库结构
 
@@ -45,7 +45,10 @@ kanban-hub/
 ├── README.md              # 项目介绍（面向外部读者）
 ├── LICENSE                # MIT
 ├── apps/web/              # Next.js：API 处理函数 + 网页；src/server/store/ 是唯一读写数据目录的存储模块
-│   ├── src/server/{auth,api}/、src/app/api/v1/  # 鉴权原语、apiRoute 外壳与服务容器、/api/v1 路由实现
+│   ├── src/server/{auth,api,views,web}/         # 鉴权原语、apiRoute 外壳与服务容器、/api/v1 路由实现、页面用的视图构建函数、页面会话与取数的公共函数
+│   ├── src/app/api/v1/、src/app/(app)/、src/app/login/  # API 路由；需要登录的页面（布局统一校验会话）；登录页
+│   ├── src/{components,lib,i18n,styles}/        # 页面组件（按区域分目录）；纯函数（时间、偏好、客户端请求等）；next-intl 配置；主题 token 与字体样式
+│   ├── messages/zh-CN/                          # next-intl 文案，按命名空间分文件；枚举中文名在 enums.json
 │   └── src/app/setup/kh.tgz/、src/kh-e2e/       # 下发 kh 安装包的路由；kh 端到端测试（进程内测试服务端）
 ├── packages/core/         # zod schema 与纯逻辑，不做 IO，按模块子路径导入（如 @kanban-hub/core/schema）；版本号的唯一来源
 ├── packages/cli/          # kh 命令行（esbuild 打包成单文件）
@@ -68,6 +71,7 @@ pnpm test                        # 全部测试（Vitest，按包拆成多个项
 pnpm typecheck                   # 类型检查（web 会先执行 next typegen）
 pnpm lint                        # eslint
 pnpm dev                         # 在本机直接启动开发服务：http://127.0.0.1:28970，数据写在 dev-data/
+pnpm -F @kanban-hub/web build     # web 的生产构建；会先收集字体许可证（写到 apps/web/public/licenses/），再执行 next build
 pnpm -F @kanban-hub/cli build    # 把 kh 打包到 packages/cli/dist/kh.mjs
 pnpm -F @kanban-hub/cli run pack:tgz   # 打包 kh 安装包到 packages/cli/dist/kh.tgz（开发服务的 /setup/kh.tgz 下发它）
 

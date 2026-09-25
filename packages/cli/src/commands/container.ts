@@ -120,6 +120,20 @@ export function buildContainerPatch(opts: ContainerSetOptions) {
   return parsed.data;
 }
 
+/**
+ * container add 成功后的提示行：有编号时编号与短 ID 前缀之间用空格分隔；
+ * 没有编号时不显示 displayEmpty 的“（无）”，直接是短 ID 前缀，与 containerRefLabel 的口径一致。
+ */
+export function formatContainerAddedMessage(
+  kind: ContainerAddKind,
+  code: string | null,
+  prefix: string,
+  title: string,
+): string {
+  const label = code !== null ? `${code}（${prefix}）` : `（${prefix}）`;
+  return `已新建${CONTAINER_KIND_LABELS[kind]}容器${code !== null ? " " : ""}${label}：${title}`;
+}
+
 async function runContainerAdd(
   ctx: CliContext,
   rawKind: string,
@@ -137,9 +151,8 @@ async function runContainerAdd(
   // POST 只返回新建的容器本身，短 ID 前缀要在整个看板的容器范围内取最短唯一前缀（至少 4 位）
   const prefixes = shortIdPrefixes([...before.board.containers.map((c) => c.id), created.id]);
   const prefix = prefixes.get(created.id) ?? created.id;
-  const codeLabel = displayEmpty(created.code);
 
-  ctx.stdout.write(`已新建${CONTAINER_KIND_LABELS[kind]}容器 ${codeLabel}（${prefix}）：${created.title}\n`);
+  ctx.stdout.write(`${formatContainerAddedMessage(kind, created.code, prefix, created.title)}\n`);
   await afterReport(ctx, repo.config.projectId);
 }
 

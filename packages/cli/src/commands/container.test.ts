@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { EXIT, type CliError } from "../errors";
-import { buildContainerCreateInput, buildContainerPatch, parseTargetDateOption } from "./container";
+import {
+  buildContainerCreateInput,
+  buildContainerPatch,
+  formatContainerAddedMessage,
+  parseTargetDateOption,
+} from "./container";
 
 function captureError(fn: () => unknown): CliError {
   try {
@@ -62,6 +67,26 @@ describe("buildContainerCreateInput", () => {
   it("目标日期格式不对时抛 CliError(2)", () => {
     const err = captureError(() => buildContainerCreateInput("phase", "阶段一", { targetDate: "不是日期" }));
     expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+});
+
+describe("formatContainerAddedMessage", () => {
+  it("有编号时，编号与短 ID 前缀之间用空格分隔", () => {
+    expect(formatContainerAddedMessage("feature", "M1", "u85r", "离线同步")).toBe(
+      "已新建特性容器 M1（u85r）：离线同步",
+    );
+  });
+
+  it("没有编号时不显示（无），直接是短 ID 前缀", () => {
+    expect(formatContainerAddedMessage("feature", null, "u85r", "离线同步")).toBe(
+      "已新建特性容器（u85r）：离线同步",
+    );
+  });
+
+  it("phase 种类的标签正确", () => {
+    expect(formatContainerAddedMessage("phase", null, "abcd", "阶段一")).toBe(
+      "已新建阶段容器（abcd）：阶段一",
+    );
   });
 });
 

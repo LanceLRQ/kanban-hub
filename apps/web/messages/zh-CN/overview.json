@@ -1,1 +1,22 @@
-{}
+{
+  "inbox": {
+    "heading": "待你处理",
+    "empty": "没有待你处理的事项",
+    "groupTitle": "{label} ×{count}",
+    "collapse": "收起分组",
+    "expand": "展开分组"
+  },
+  "projects": {
+    "heading": "项目",
+    "focusLabel": "焦点",
+    "focusEmpty": "（无）",
+    "syncedAt": "同步于 {value}",
+    "stale": "停滞 {days} 天",
+    "noActivity": "还没有活动",
+    "empty": {
+      "heading": "还没有项目",
+      "body": "去接入页添加第一个项目，开始上报进度",
+      "cta": "前往接入"
+    }
+  }
+}

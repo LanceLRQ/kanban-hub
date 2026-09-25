@@ -1,13 +1,25 @@
 import { getTranslations } from "next-intl/server";
+import { InboxSection } from "@/components/overview/inbox-section";
+import { looseTranslator } from "@/components/overview/loose-translator";
+import { ProjectSection } from "@/components/overview/project-section";
+import type { EnumLabelFn } from "@/lib/events";
+import { pageServices } from "@/server/web/services";
+import { buildOverview } from "@/server/views/overview";
 
-/** 占位首页：真正的总览页（收件箱 + 项目卡片）由后续开发替换 */
-export default async function OverviewPlaceholderPage() {
-  const t = await getTranslations("common");
+/** 总览页：跨项目“待你处理”收件箱 + 项目卡片 */
+export default async function OverviewPage() {
+  const services = pageServices();
+  const now = services.now();
+
+  const te = looseTranslator(await getTranslations("enums"));
+  const enumLabel: EnumLabelFn = (group, value) => te(`${group}.${value}`);
+
+  const view = await buildOverview(services, now, enumLabel);
 
   return (
-    <div className="flex flex-col gap-2">
-      <h1 className="text-xl font-semibold">{t("placeholderHome.heading")}</h1>
-      <p className="text-muted-foreground">{t("placeholderHome.body")}</p>
+    <div className="flex flex-col">
+      <InboxSection view={view} now={now} />
+      <ProjectSection view={view} now={now} />
     </div>
   );
 }

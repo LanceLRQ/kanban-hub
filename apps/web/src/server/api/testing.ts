@@ -1,6 +1,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { DEFAULT_STALE_DAYS } from "@kanban-hub/core/derive";
 import type { Machine, User } from "@kanban-hub/core/schema";
 import { LastSeenTracker } from "../auth/authenticate";
 import { syncAdminPassword } from "../auth/admin";
@@ -81,6 +82,7 @@ export async function setupTestApi(): Promise<TestApi> {
     limiter: new FailureLimiter({ now }),
     seen: new LastSeenTracker({ now, log }),
     publicUrl: null,
+    staleDays: DEFAULT_STALE_DAYS,
     now,
     log,
   };

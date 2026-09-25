@@ -1,4 +1,4 @@
-import { loginInput } from "@kanban-hub/core/api";
+import { type RateLimitDetails, loginInput } from "@kanban-hub/core/api";
 import { verifyPassword } from "@/server/auth/password";
 import { buildSessionCookie, SESSION_TTL_MS, signSession } from "@/server/auth/session";
 import { clientKey } from "@/server/auth/rate-limit";
@@ -17,7 +17,8 @@ export const POST = apiRoute({ auth: "none" }, async ({ req, services }) => {
   const key = `login:${clientKey(req.headers)}`;
   const limit = services.limiter.check(key);
   if (limit.blocked) {
-    throw new ApiError("rate_limited", "登录尝试过于频繁，请稍后再试", { retryAfterSeconds: limit.retryAfterSec });
+    const details = { retryAfterSeconds: limit.retryAfterSec } satisfies RateLimitDetails;
+    throw new ApiError("rate_limited", "登录尝试过于频繁，请稍后再试", details);
   }
 
   // check 通过就立即占位记一次失败，再去 await scrypt 校验：中间这段 await 期间，

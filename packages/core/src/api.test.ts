@@ -10,10 +10,18 @@ import {
   decodeEventCursor,
   encodeEventCursor,
   loginInput,
+  meResponse,
   pairInput,
+  pairResponse,
   parseEventsQuery,
+  projectCreatedResponse,
+  projectDetailResponse,
+  projectListResponse,
+  projectViewSchema,
+  rateLimitDetailsSchema,
   withExpectedVersion,
 } from "./api";
+import { makeBoard, makeProject } from "./test-fixtures";
 
 function thrown(fn: () => unknown): unknown {
   try {
@@ -154,6 +162,65 @@ describe("事件游标", () => {
     const err = thrown(() => decodeEventCursor("2026-09-24T10:00:00.000Z_太短"));
     expect(err).toBeInstanceOf(KhError);
     expect((err as KhError).code).toBe("invalid");
+  });
+});
+
+describe("rateLimitDetailsSchema", () => {
+  it("能解析 pair、login 实际返回的 429 details", () => {
+    expect(rateLimitDetailsSchema.parse({ retryAfterSeconds: 30 })).toEqual({ retryAfterSeconds: 30 });
+  });
+
+  it("retryAfterSeconds 缺失或类型不对时校验失败", () => {
+    expect(rateLimitDetailsSchema.safeParse({}).success).toBe(false);
+    expect(rateLimitDetailsSchema.safeParse({ retryAfterSeconds: "30" }).success).toBe(false);
+  });
+});
+
+describe("pairResponse", () => {
+  it("能解析配对成功的响应体", () => {
+    const body = { token: "kh_abc123", machineId: "m000000001" };
+    expect(pairResponse.parse(body)).toEqual(body);
+  });
+});
+
+describe("meResponse", () => {
+  it("能解析会话请求的响应体（machine 为 null）", () => {
+    const body = { user: { id: "u000000001", name: "admin", role: "admin" as const }, machine: null, serverVersion: "0.1.0" };
+    expect(meResponse.parse(body)).toEqual(body);
+  });
+
+  it("能解析令牌请求的响应体（带 machine）", () => {
+    const body = {
+      user: { id: "u000000001", name: "admin", role: "admin" as const },
+      machine: { id: "m000000001", name: "我的电脑", os: "darwin" as const },
+      serverVersion: "0.1.0",
+    };
+    expect(meResponse.parse(body)).toEqual(body);
+  });
+});
+
+describe("projectViewSchema / projectListResponse / projectDetailResponse / projectCreatedResponse", () => {
+  const project = makeProject();
+  const board = makeBoard();
+
+  it("projectViewSchema 能解析项目视图（project、lastEventAt、stale）", () => {
+    const view = { project, lastEventAt: null, stale: false };
+    expect(projectViewSchema.parse(view)).toEqual(view);
+  });
+
+  it("projectListResponse 能解析项目列表响应", () => {
+    const body = { projects: [{ project, lastEventAt: "2026-09-24T10:00:00.000Z", stale: true }] };
+    expect(projectListResponse.parse(body)).toEqual(body);
+  });
+
+  it("projectDetailResponse 是 ProjectView 加 board", () => {
+    const body = { project, lastEventAt: null, stale: false, board };
+    expect(projectDetailResponse.parse(body)).toEqual(body);
+  });
+
+  it("projectCreatedResponse 能解析新建项目的响应体", () => {
+    const body = { project, board };
+    expect(projectCreatedResponse.parse(body)).toEqual(body);
   });
 });
 

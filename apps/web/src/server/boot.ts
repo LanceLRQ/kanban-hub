@@ -1,3 +1,4 @@
+import { parseStaleDays } from "@kanban-hub/core/derive";
 import { syncAdminPassword } from "./auth/admin";
 import { LastSeenTracker } from "./auth/authenticate";
 import { PairingRegistry } from "./auth/pairing";
@@ -31,6 +32,7 @@ export async function boot(): Promise<void> {
     limiter: new FailureLimiter({ now }),
     seen: new LastSeenTracker({ now, log }),
     publicUrl: readPublicUrl(),
+    staleDays: parseStaleDays(process.env.KH_STALE_DAYS),
     now,
     log,
   };
@@ -79,5 +81,5 @@ async function syncAdminPasswordOrExit(store: Store): Promise<void> {
 
 /** 值已经在 enforceSelfCheck 里校验过了（selfcheck.ts 的 checkPublicUrl），这里只读取 */
 function readPublicUrl(): string | null {
-  return process.env.KH_PUBLIC_URL ?? null;
+  return process.env.KH_PUBLIC_URL || null;
 }

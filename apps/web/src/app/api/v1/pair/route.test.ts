@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { pairResponse, rateLimitDetailsSchema } from "@kanban-hub/core/api";
 import { PairingRegistry } from "@/server/auth/pairing";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import { GET as ME } from "../me/route";
@@ -25,7 +26,7 @@ describe("POST /api/v1/pair", () => {
       }),
     );
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { token: string; machineId: string };
+    const body = pairResponse.parse(await res.json());
     expect(body.token).toMatch(/^kh_/);
 
     const meRes = await ME(api.request("/api/v1/me", { token: body.token }));
@@ -83,6 +84,8 @@ describe("POST /api/v1/pair", () => {
     );
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).not.toBeNull();
+    const error = ((await res.json()) as { error: { details?: unknown } }).error;
+    expect(rateLimitDetailsSchema.parse(error.details).retryAfterSeconds).toBeGreaterThan(0);
   });
 
   it("请求体非法时返回 400", async () => {

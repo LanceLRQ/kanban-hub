@@ -1,4 +1,5 @@
-import { pairInput } from "@kanban-hub/core/api";
+import { type PairResponse, type RateLimitDetails, pairInput } from "@kanban-hub/core/api";
+import type { DeepReadonly } from "@kanban-hub/core/schema";
 import { clientKey } from "@/server/auth/rate-limit";
 import { generateMachineToken, hashToken } from "@/server/auth/token";
 import { ApiError } from "@/server/api/errors";
@@ -16,7 +17,8 @@ export const POST = apiRoute({ auth: "none" }, async ({ req, services }) => {
   const key = `pair:${clientKey(req.headers)}`;
   const limit = services.limiter.check(key);
   if (limit.blocked) {
-    throw new ApiError("rate_limited", "配对尝试过于频繁，请稍后再试", { retryAfterSeconds: limit.retryAfterSec });
+    const details = { retryAfterSeconds: limit.retryAfterSec } satisfies RateLimitDetails;
+    throw new ApiError("rate_limited", "配对尝试过于频繁，请稍后再试", details);
   }
 
   const grant = services.pairing.consume(input.code);
@@ -33,7 +35,8 @@ export const POST = apiRoute({ auth: "none" }, async ({ req, services }) => {
       os: input.os,
       tokenHash: hashToken(token),
     });
-    return json({ token, machineId: machine.id }, { status: 201 });
+    const body = { token, machineId: machine.id } satisfies DeepReadonly<PairResponse>;
+    return json(body, { status: 201 });
   } catch (e) {
     // 配对码已经被兑换掉了，创建机器失败时放回去，不然这个配对码就白白浪费了
     services.pairing.restore(grant);

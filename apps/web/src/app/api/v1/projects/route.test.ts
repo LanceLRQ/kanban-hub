@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { HEADER_KH_AGENT } from "@kanban-hub/core/api";
+import { HEADER_KH_AGENT, projectCreatedResponse, projectListResponse } from "@kanban-hub/core/api";
 import type { Project } from "@kanban-hub/core/schema";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import { GET, POST } from "./route";
@@ -24,7 +24,7 @@ describe("POST /api/v1/projects", () => {
     const res = await POST(api.request("/api/v1/projects", { method: "POST", cookie: api.sessionCookie(), json: { name: "看板" } }), api.ctx({}));
 
     expect(res.status).toBe(201);
-    const body = (await res.json()) as { project: Project; board: { containers: { kind: string }[] } };
+    const body = projectCreatedResponse.parse(await res.json());
     expect(body.project.name).toBe("看板");
     expect(body.board.containers).toHaveLength(1);
     expect(body.board.containers[0]?.kind).toBe("misc");
@@ -100,10 +100,32 @@ describe("GET /api/v1/projects", () => {
 
     const res = await GET(api.request("/api/v1/projects", { cookie: api.sessionCookie() }), api.ctx({}));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { projects: { project: Project; lastEventAt: string | null }[] };
+    const body = projectListResponse.parse(await res.json());
     expect(body.projects).toHaveLength(1);
     expect(body.projects[0]?.project.id).toBe(project.id);
     expect(body.projects[0]?.lastEventAt).toBe(project.updatedAt);
+    expect(body.projects[0]?.stale).toBe(false);
+  });
+
+  it("stale 随 staleDays 与经过的时间变化", async () => {
+    api = await setupTestApi();
+    const { machine } = await api.pairMachine();
+    const { project } = await api.store.createProject(
+      { name: "看板" },
+      { userId: machine.userId, machineId: machine.id, via: "cli", agent: null },
+    );
+    const createdMs = Date.parse(project.createdAt);
+    api.services.now = () => new Date(createdMs + 8 * 86_400_000);
+
+    api.services.staleDays = 7;
+    const staleRes = await GET(api.request("/api/v1/projects", { cookie: api.sessionCookie() }), api.ctx({}));
+    const staleBody = projectListResponse.parse(await staleRes.json());
+    expect(staleBody.projects[0]?.stale).toBe(true);
+
+    api.services.staleDays = 30;
+    const freshRes = await GET(api.request("/api/v1/projects", { cookie: api.sessionCookie() }), api.ctx({}));
+    const freshBody = projectListResponse.parse(await freshRes.json());
+    expect(freshBody.projects[0]?.stale).toBe(false);
   });
 
   it("按指纹查询：能命中，也能对不上时返回空列表", async () => {

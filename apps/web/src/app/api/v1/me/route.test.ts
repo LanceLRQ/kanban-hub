@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { meResponse } from "@kanban-hub/core/api";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import { GET } from "./route";
@@ -14,7 +15,7 @@ describe("GET /api/v1/me", () => {
     api = await setupTestApi();
     const res = await GET(api.request("/api/v1/me", { cookie: api.sessionCookie() }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { user: { id: string; name: string; role: string }; machine: unknown; serverVersion: string };
+    const body = meResponse.parse(await res.json());
     expect(body.user.name).toBe("admin");
     expect(body.user.role).toBe("admin");
     expect(body.machine).toBeNull();
@@ -26,7 +27,7 @@ describe("GET /api/v1/me", () => {
     const { token, machine } = await api.pairMachine("我的电脑");
     const res = await GET(api.request("/api/v1/me", { token }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { machine: { id: string; name: string; os: string } | null };
+    const body = meResponse.parse(await res.json());
     expect(body.machine).toEqual({ id: machine.id, name: "我的电脑", os: machine.os });
   });
 

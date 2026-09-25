@@ -1,3 +1,5 @@
+import type { MeResponse } from "@kanban-hub/core/api";
+import type { DeepReadonly } from "@kanban-hub/core/schema";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { json } from "@/server/api/http";
 import { apiRoute } from "@/server/api/route";
@@ -11,9 +13,10 @@ export const GET = apiRoute({ auth: "any" }, ({ principal }) => {
       ? { id: principal.machine.id, name: principal.machine.name, os: principal.machine.os }
       : null;
 
-  return json({
+  const body = {
     user: { id: principal.user.id, name: principal.user.name, role: principal.user.role },
     machine,
     serverVersion: KH_VERSION,
-  });
+  } satisfies DeepReadonly<MeResponse>;
+  return json(body);
 });

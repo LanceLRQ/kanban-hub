@@ -9,6 +9,7 @@ function fakeServices(): Services {
     limiter: {} as Services["limiter"],
     seen: {} as Services["seen"],
     publicUrl: null,
+    staleDays: 7,
     now: () => new Date(),
     log: () => {},
   };

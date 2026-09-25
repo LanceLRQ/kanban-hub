@@ -67,8 +67,9 @@ export function resolveTaskRef(board: Pick<Board, "containers" | "tasks">, ref: 
     return fail("not_found", `找不到任务“${text}”`);
   }
 
-  if (FULL_ID_RE.test(text)) {
-    return board.tasks.some((t) => t.id === text) ? ok(text) : fail("not_found", `找不到任务“${text}”`);
+  const lower = text.toLowerCase();
+  if (FULL_ID_RE.test(lower)) {
+    return board.tasks.some((t) => t.id === lower) ? ok(lower) : fail("not_found", `找不到任务“${text}”`);
   }
 
   return fail("invalid", `无法识别任务写法“${text}”：请用“容器编号/任务编号”（例如 M2/2.3）或“#短ID”（例如 #k3v9）`);

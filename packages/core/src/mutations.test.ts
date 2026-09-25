@@ -225,6 +225,23 @@ describe("updateContainer", () => {
   it("容器不存在时报 not_found", () => {
     expect(thrown(() => updateContainer(makeBoard(), P, fixtureId("c", 9), { title: "x" }, ctx())).code).toBe("not_found");
   });
+
+  it("挂起（原因 A）改成储备且不给原因：原因被清空（M1 遗留：之前只处理了改回自动的情形）", () => {
+    const c = makeContainer({ manualStatus: "suspended", manualReason: "原因 A" });
+    const r = updateContainer(makeBoard([c]), P, c.id, { manualStatus: "backlog" }, ctx());
+    expect(r.container).toMatchObject({ manualStatus: "backlog", manualReason: null });
+  });
+
+  it("挂起改成挂起、只改原因：原因更新", () => {
+    const c = makeContainer({ manualStatus: "suspended", manualReason: "原因 A" });
+    const r = updateContainer(makeBoard([c]), P, c.id, { manualReason: "原因 B" }, ctx());
+    expect(r.container).toMatchObject({ manualStatus: "suspended", manualReason: "原因 B" });
+  });
+
+  it("储备改成挂起且不给原因：报 invalid", () => {
+    const c = makeContainer({ manualStatus: "backlog", manualReason: null });
+    expect(thrown(() => updateContainer(makeBoard([c]), P, c.id, { manualStatus: "suspended" }, ctx())).code).toBe("invalid");
+  });
 });
 
 describe("createTask", () => {

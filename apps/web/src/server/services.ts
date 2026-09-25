@@ -19,6 +19,8 @@ export interface Services {
   seen: LastSeenTracker;
   /** KH_PUBLIC_URL 校验通过后的值；没设置时为 null */
   publicUrl: string | null;
+  /** 停滞判定的天数阈值，来自 KH_STALE_DAYS（core 的 parseStaleDays 解析，规格 5.5） */
+  staleDays: number;
   now: () => Date;
   log: (message: string) => void;
 }

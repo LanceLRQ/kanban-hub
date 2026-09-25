@@ -73,4 +73,8 @@ describe("resolveTaskRef", () => {
     expect(r).toMatchObject({ ok: false, reason: "invalid" });
     expect(!r.ok && r.message).toContain("M2/2.3");
   });
+
+  it("完整 ID 写成大写也能找到", () => {
+    expect(resolveTaskRef(board, "ABCD123456")).toEqual({ ok: true, id: "abcd123456" });
+  });
 });

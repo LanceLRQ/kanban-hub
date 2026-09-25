@@ -1,4 +1,5 @@
-import { withExpectedVersion } from "@kanban-hub/core/api";
+import { type ProjectDetailResponse, withExpectedVersion } from "@kanban-hub/core/api";
+import type { DeepReadonly } from "@kanban-hub/core/schema";
 import { projectPatchInput } from "@kanban-hub/core/schema";
 import { json, readJson } from "@/server/api/http";
 import { requireBoard, requireProject, toProjectView } from "@/server/api/project-view";
@@ -10,7 +11,9 @@ export const dynamic = "force-dynamic";
 export const GET = apiRoute({ auth: "any" }, ({ params, services }: AnyRouteArgs<{ id: string }>) => {
   const project = requireProject(services.store, params.id);
   const board = requireBoard(services.store, params.id);
-  return json({ ...toProjectView(services.store, project), board });
+  const view = toProjectView(services.store, project, services.staleDays, services.now());
+  const body = { ...view, board } satisfies DeepReadonly<ProjectDetailResponse>;
+  return json(body);
 });
 
 export const PATCH = apiRoute({ auth: "any" }, async ({ req, params, actor, services }: AnyRouteArgs<{ id: string }>) => {

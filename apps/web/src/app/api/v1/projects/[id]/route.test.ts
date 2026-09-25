@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
-import { HEADER_KH_AGENT } from "@kanban-hub/core/api";
+import { HEADER_KH_AGENT, projectDetailResponse } from "@kanban-hub/core/api";
 import type { Actor, Project } from "@kanban-hub/core/schema";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import { GET, PATCH } from "./route";
@@ -26,16 +26,17 @@ describe("GET /api/v1/projects/:id", () => {
     await api?.cleanup();
   });
 
-  it("返回 project、board、lastEventAt", async () => {
+  it("返回 project、board、lastEventAt、stale", async () => {
     api = await setupTestApi();
     const { project } = await createProject(api);
 
     const res = await GET(api.request(`/api/v1/projects/${project.id}`, { cookie: api.sessionCookie() }), api.ctx({ id: project.id }));
     expect(res.status).toBe(200);
-    const body = (await res.json()) as { project: Project; board: { containers: unknown[] }; lastEventAt: string | null };
+    const body = projectDetailResponse.parse(await res.json());
     expect(body.project.id).toBe(project.id);
     expect(body.board.containers).toHaveLength(1);
     expect(body.lastEventAt).toBe(project.updatedAt);
+    expect(body.stale).toBe(false);
   });
 
   it("项目不存在时返回 404", async () => {
@@ -43,6 +44,27 @@ describe("GET /api/v1/projects/:id", () => {
     const res = await GET(api.request("/api/v1/projects/zzzzzzzzzz", { cookie: api.sessionCookie() }), api.ctx({ id: "zzzzzzzzzz" }));
     expect(res.status).toBe(404);
     expect((await errorOf(res)).code).toBe("not_found");
+  });
+
+  it("stale 随 staleDays 与经过的时间变化；归档的项目始终为 false", async () => {
+    api = await setupTestApi();
+    const { project, actor } = await createProject(api);
+    const createdMs = Date.parse(project.createdAt);
+    api.services.now = () => new Date(createdMs + 8 * 86_400_000);
+
+    api.services.staleDays = 7;
+    const staleRes = await GET(api.request(`/api/v1/projects/${project.id}`, { cookie: api.sessionCookie() }), api.ctx({ id: project.id }));
+    expect(projectDetailResponse.parse(await staleRes.json()).stale).toBe(true);
+
+    api.services.staleDays = 30;
+    const freshRes = await GET(api.request(`/api/v1/projects/${project.id}`, { cookie: api.sessionCookie() }), api.ctx({ id: project.id }));
+    expect(projectDetailResponse.parse(await freshRes.json()).stale).toBe(false);
+
+    // 归档的项目即使停滞时间很长，也始终不算 stale
+    api.services.staleDays = 1;
+    await api.store.updateProject(project.id, { cycle: "archived" }, actor);
+    const archivedRes = await GET(api.request(`/api/v1/projects/${project.id}`, { cookie: api.sessionCookie() }), api.ctx({ id: project.id }));
+    expect(projectDetailResponse.parse(await archivedRes.json()).stale).toBe(false);
   });
 });
 

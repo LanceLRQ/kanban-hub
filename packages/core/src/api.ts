@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { KhError } from "./errors";
 import { idSchema } from "./ids";
-import { machineOsSchema, timestampSchema } from "./schema";
+import { boardSchema, machineOsSchema, projectSchema, timestampSchema, userRoleSchema } from "./schema";
 
 // ---------- 网页与 kh 共用的请求头 ----------
 
@@ -81,6 +81,51 @@ export function withExpectedVersion<S extends z.ZodObject<z.ZodRawShape>>(
   >;
   return extended.transform(({ version, ...rest }) => ({ patch: rest as z.output<S>, expectedVersion: version }));
 }
+
+// ---------- 响应 schema（网页与 kh 共用的契约） ----------
+
+/** 429 的 details：还要等多少秒才能重试 */
+export const rateLimitDetailsSchema = z.object({
+  retryAfterSeconds: z.number(),
+});
+export type RateLimitDetails = z.infer<typeof rateLimitDetailsSchema>;
+
+export const pairResponse = z.object({
+  token: z.string(),
+  machineId: idSchema,
+});
+export type PairResponse = z.infer<typeof pairResponse>;
+
+export const meResponse = z.object({
+  user: z.object({ id: idSchema, name: z.string(), role: userRoleSchema }),
+  machine: z.object({ id: idSchema, name: z.string(), os: machineOsSchema }).nullable(),
+  serverVersion: z.string(),
+});
+export type MeResponse = z.infer<typeof meResponse>;
+
+/** 项目列表和详情接口共用：项目本体、最近一次事件时间（停滞判定用）、停滞标记（规格 5.5，M3 新增） */
+export const projectViewSchema = z.object({
+  project: projectSchema,
+  lastEventAt: timestampSchema.nullable(),
+  stale: z.boolean(),
+});
+export type ProjectView = z.infer<typeof projectViewSchema>;
+
+export const projectListResponse = z.object({
+  projects: z.array(projectViewSchema),
+});
+export type ProjectListResponse = z.infer<typeof projectListResponse>;
+
+export const projectDetailResponse = projectViewSchema.extend({
+  board: boardSchema,
+});
+export type ProjectDetailResponse = z.infer<typeof projectDetailResponse>;
+
+export const projectCreatedResponse = z.object({
+  project: projectSchema,
+  board: boardSchema,
+});
+export type ProjectCreatedResponse = z.infer<typeof projectCreatedResponse>;
 
 // ---------- 事件游标与查询参数 ----------
 

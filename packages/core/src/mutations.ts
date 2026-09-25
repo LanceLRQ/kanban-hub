@@ -213,8 +213,11 @@ export function updateContainer(
   const current = findContainer(board, containerId);
   checkVersion(current, expectedVersion, "容器");
   const merged: Container = { ...current, ...data };
-  // 改回自动状态时，原因一并清空
-  if (data.manualStatus === null && data.manualReason === undefined) merged.manualReason = null;
+  // manualStatus 变了、patch 又没给 manualReason 时，原因跟着清空（不管是改回自动，还是在几种手动状态之间切换）；
+  // manualStatus 没变时，原因沿用原样（data.manualReason 有给就用，没给就还是 current 的）
+  if (data.manualStatus !== undefined && data.manualStatus !== current.manualStatus && data.manualReason === undefined) {
+    merged.manualReason = null;
+  }
   const change = diffFields(current, merged, CONTAINER_KEYS);
   if (!change) return { board, container: current, events: [] };
   const container = parseInput(containerSchema, { ...merged, version: current.version + 1, updatedAt: ctx.now });

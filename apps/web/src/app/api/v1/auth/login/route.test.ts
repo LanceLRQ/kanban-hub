@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { rateLimitDetailsSchema } from "@kanban-hub/core/api";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import { POST } from "./route";
 
@@ -75,6 +76,8 @@ describe("POST /api/v1/auth/login", () => {
     const res = await POST(api.request("/api/v1/auth/login", { method: "POST", json: { password: api.adminPassword } }));
     expect(res.status).toBe(429);
     expect(res.headers.get("retry-after")).not.toBeNull();
+    const error = ((await res.json()) as { error: { details?: unknown } }).error;
+    expect(rateLimitDetailsSchema.parse(error.details).retryAfterSeconds).toBeGreaterThan(0);
   });
 
   it("请求体非法时返回 400，且不计入失败次数", async () => {

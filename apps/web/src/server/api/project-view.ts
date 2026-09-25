@@ -1,15 +1,15 @@
+import type { ProjectView as ProjectViewShape } from "@kanban-hub/core/api";
+import { isStale } from "@kanban-hub/core/derive";
 import { KhError } from "@kanban-hub/core/errors";
 import type { Board, DeepReadonly, Project } from "@kanban-hub/core/schema";
 import type { Store } from "../store/store";
 
-/** 项目列表和详情接口共用：项目本体外加最近一次事件时间，停滞判定用（规格 11 节） */
-export interface ProjectView {
-  project: DeepReadonly<Project>;
-  lastEventAt: string | null;
-}
+/** 项目列表和详情接口共用：项目本体、最近一次事件时间、停滞标记（规格 11 节、5.5），对齐 core 的响应契约 */
+export type ProjectView = DeepReadonly<ProjectViewShape>;
 
-export function toProjectView(store: Store, project: DeepReadonly<Project>): ProjectView {
-  return { project, lastEventAt: store.getLastEventAt(project.id) };
+export function toProjectView(store: Store, project: DeepReadonly<Project>, staleDays: number, now: Date): ProjectView {
+  const lastEventAt = store.getLastEventAt(project.id);
+  return { project, lastEventAt, stale: isStale(project, lastEventAt, now, staleDays) };
 }
 
 /** 项目不存在时抛 not_found，交给 apiRoute 外壳映射成 404；不要在路由里自己拼 404 响应 */

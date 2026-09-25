@@ -1,3 +1,5 @@
-import { buildProgram } from "./program";
+import { createNodeContext } from "./context";
+import { main } from "./main";
 
-await buildProgram().parseAsync(process.argv);
+const ctx = createNodeContext();
+process.exitCode = await main(process.argv.slice(2), ctx);

@@ -8,5 +8,7 @@ nodeLinker: hoisted
 
 # pnpm 11 默认拦截依赖的构建脚本，需要放行的在这里列出。
 allowBuilds:
+  '@parcel/watcher': false
+  '@swc/core': false
   esbuild: true
   unrs-resolver: true

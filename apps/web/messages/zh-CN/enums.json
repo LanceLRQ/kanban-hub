@@ -1,0 +1,83 @@
+{
+  "cycle": {
+    "design": "设计期",
+    "development": "开发期",
+    "iteration": "迭代期",
+    "maintenance": "维护期",
+    "archived": "已归档"
+  },
+  "health": {
+    "on_track": "正常",
+    "at_risk": "有风险",
+    "blocked": "卡住"
+  },
+  "taskStatus": {
+    "todo": "待开始",
+    "in_progress": "进行中",
+    "review": "复核中",
+    "done": "已完成",
+    "suspended": "挂起",
+    "cancelled": "已取消"
+  },
+  "humanKind": {
+    "decision": "待决策",
+    "verify": "待验证",
+    "action": "待操作"
+  },
+  "manualStatus": {
+    "backlog": "储备",
+    "suspended": "挂起",
+    "cancelled": "已取消"
+  },
+  "containerKind": {
+    "phase": "阶段",
+    "feature": "特性",
+    "misc": "杂项"
+  },
+  "containerStatus": {
+    "todo": "待开始",
+    "in_progress": "进行中",
+    "done": "已完成"
+  },
+  "eventType": {
+    "project.created": "项目创建",
+    "project.updated": "项目更新",
+    "container.created": "容器创建",
+    "container.updated": "容器更新",
+    "task.created": "任务创建",
+    "task.updated": "任务更新",
+    "task.status_changed": "任务状态变更",
+    "task.human_changed": "待你处理变更",
+    "log": "日志",
+    "docs.synced": "文档同步",
+    "docs.pulled": "文档拉取",
+    "import.applied": "导入应用"
+  },
+  "eventTypeGroup": {
+    "task": "任务",
+    "container": "容器",
+    "project": "项目",
+    "log": "日志",
+    "docs": "文档",
+    "import": "导入"
+  },
+  "machineOs": {
+    "darwin": "macOS",
+    "linux": "Linux",
+    "windows": "Windows"
+  },
+  "theme": {
+    "print": "褪色印刷",
+    "collage": "纸本拼贴"
+  },
+  "monoFont": {
+    "jetbrains-mono": "JetBrains Mono",
+    "ibm-plex-mono": "IBM Plex Mono",
+    "fira-code": "Fira Code"
+  },
+  "cjkFont": {
+    "lxgw-wenkai": "霞鹜文楷",
+    "noto-sans-sc": "思源黑体",
+    "noto-serif-sc": "思源宋体"
+  }
+}

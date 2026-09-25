@@ -1,0 +1,131 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "./fonts.css";
+@import "./tokens.css";
+@import "./themes/collage.css";
+
+/*
+ * 本产品只有两套亮色主题（[data-theme] 切换），没有暗色主题。Tailwind 4 的 `dark:` 变体
+ * 默认跟随系统 `prefers-color-scheme`；shadcn/ui 生成的组件（button、input 等）里带着一批
+ * 默认的 `dark:` 类，系统处于深色模式时会意外触发一套没人设计过的第三种视觉。
+ * 把 `dark` 变体绑定到一个永远不会存在的选择器上，让所有 `dark:*` 类永远不生效，
+ * 不用逐个删除 shadcn 生成组件里的 `dark:` 类（以后 `shadcn add` 生成的新组件也自动免疫）。
+ */
+@custom-variant dark (&:where(.kh-disable-dark-mode));
+
+/*
+ * 把 CSS 变量映射成 Tailwind 4 的 @theme 变量：用 `@theme inline` 而不是 `@theme`，
+ * 因为这里引用的是会随 [data-theme] / [data-font-*] 切换而变化的变量，
+ * `inline` 让 Tailwind 生成的工具类继续引用 var(...)，不会在构建时把值内联死。
+ */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-health-on-track: var(--health-on-track);
+  --color-health-at-risk: var(--health-at-risk);
+  --color-health-blocked: var(--health-blocked);
+  --color-task-todo: var(--task-todo);
+  --color-task-in-progress: var(--task-in-progress);
+  --color-task-review: var(--task-review);
+  --color-task-done: var(--task-done);
+  --color-task-suspended: var(--task-suspended);
+  --color-task-cancelled: var(--task-cancelled);
+  --color-human-decision: var(--human-decision);
+  --color-human-verify: var(--human-verify);
+  --color-human-action: var(--human-action);
+  --color-stale: var(--stale);
+
+  --radius-sm: calc(var(--radius) - 2px);
+  --radius-md: var(--radius);
+  --radius-lg: calc(var(--radius) + 2px);
+
+  --font-mono: var(--mono);
+  --font-cjk: var(--cjk);
+}
+
+@layer base {
+  * {
+    border-color: var(--border);
+    outline-color: var(--ring);
+  }
+
+  html {
+    font-family: var(--cjk);
+    font-feature-settings: var(--mono-feature, normal);
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--cjk);
+  }
+
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--cjk-heading);
+    font-weight: var(--cjk-heading-weight);
+  }
+
+  /* 数字一律走等宽或表格数字，两套主题共用 */
+  .kh-num {
+    font-family: var(--mono);
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+@layer components {
+  /*
+   * 主题化 hover / active 效果：只挂在 shadcn 组件的 data-slot 上，组件本身不分叉。
+   * 主题 A：贴纸按压（位移 + 阴影缩短）；主题 B：纸片轻抬（上移 + 阴影加深）。
+   */
+  [data-slot="button"] {
+    box-shadow: var(--shadow-raised);
+    transition:
+      transform 0.12s ease,
+      box-shadow 0.12s ease;
+  }
+  [data-slot="button"]:hover {
+    transform: var(--press-hover);
+    box-shadow: var(--shadow-hover);
+  }
+  [data-slot="button"]:active {
+    transform: var(--press-active);
+    box-shadow: var(--shadow-active);
+  }
+
+  /* 主题 B 的不对称手裁圆角：给需要这种气质的卡片类元素用，组件本身不分叉 */
+  .kh-radius-a {
+    border-radius: var(--radius-a);
+  }
+  .kh-radius-b {
+    border-radius: var(--radius-b);
+  }
+  .kh-radius-c {
+    border-radius: var(--radius-c);
+  }
+  .kh-radius-d {
+    border-radius: var(--radius-d);
+  }
+}

@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import path from "node:path";
+import createNextIntlPlugin from "next-intl/plugin";
 
 // monorepo 根目录：Turbopack 解析 packages/* 源码、standalone 产物追踪都以它为根，两者必须一致
 const monorepoRoot = path.join(__dirname, "../..");
@@ -15,4 +16,7 @@ const nextConfig: NextConfig = {
   agentRules: false,
 };
 
-export default nextConfig;
+// 固定语言 zh-CN，不做语言路由：配置见 src/i18n/request.ts
+const withNextIntl = createNextIntlPlugin("./src/i18n/request.ts");
+
+export default withNextIntl(nextConfig);

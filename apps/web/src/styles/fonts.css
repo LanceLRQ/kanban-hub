@@ -1,0 +1,88 @@
+/*
+ * 字体：@font-face 声明 + 字体栈变量。
+ *
+ * 加载方式：六族字体全部按 unicode-range 切片的 npm 包引入，自托管、不经外部 CDN。
+ * 实测把六族字体全部导入后，这份文件本身（未压缩文本，不含字体二进制）约 209KiB，
+ * 低于 300KB 的阈值，所以不做「默认字体先加载、其余按需加载」的拆分，
+ * 六族字体的 CSS 在首屏一次性声明；字体二进制文件仍按 unicode-range 由浏览器按需下载。
+ *
+ * 字重：各包实际只提供 Regular(400) / Bold(700) 两档（等宽三族另有 600）：
+ *   - JetBrains Mono / IBM Plex Mono / Fira Code：400、600
+ *   - 思源黑体 / 思源宋体：400、700
+ *   - 霞鹜文楷（lxgw-wenkai-webfont）：只有 Regular / Bold / Light，没有 Medium，
+ *     标题的「加重字重」退回用 Bold(700) 代替 Medium。
+ *
+ * --cjk-heading 复用 --cjk 同一字体族，只是字重不同：见下方 --cjk-heading-weight。
+ */
+
+@import "@fontsource/jetbrains-mono/latin-400.css";
+@import "@fontsource/jetbrains-mono/latin-600.css";
+@import "@fontsource/ibm-plex-mono/latin-400.css";
+@import "@fontsource/ibm-plex-mono/latin-600.css";
+@import "@fontsource/fira-code/latin-400.css";
+@import "@fontsource/fira-code/latin-600.css";
+
+@import "@fontsource/noto-sans-sc/latin-400.css";
+@import "@fontsource/noto-sans-sc/latin-700.css";
+@import "@fontsource/noto-sans-sc/chinese-simplified-400.css";
+@import "@fontsource/noto-sans-sc/chinese-simplified-700.css";
+@import "@fontsource/noto-serif-sc/latin-400.css";
+@import "@fontsource/noto-serif-sc/latin-700.css";
+@import "@fontsource/noto-serif-sc/chinese-simplified-400.css";
+@import "@fontsource/noto-serif-sc/chinese-simplified-700.css";
+
+@import "lxgw-wenkai-webfont/lxgwwenkai-regular.css";
+@import "lxgw-wenkai-webfont/lxgwwenkai-bold.css";
+
+:root {
+  /* 等宽默认：JetBrains Mono；Fira Code 启用连字，其余 normal */
+  --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --mono-feature: normal;
+
+  /* 中文默认：霞鹜文楷 */
+  --cjk: "LXGW WenKai", "PingFang SC", sans-serif;
+  --cjk-heading: var(--cjk);
+  /* 主题 A：任意中文字体的标题都加重；霞鹜文楷没有 Medium，退回 Bold(700) */
+  --cjk-heading-weight: 700;
+}
+
+/* 等宽字体选择 */
+html[data-font-mono="jetbrains-mono"] {
+  --mono: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  --mono-feature: normal;
+}
+html[data-font-mono="ibm-plex-mono"] {
+  --mono: "IBM Plex Mono", "SF Mono", Menlo, monospace;
+  --mono-feature: normal;
+}
+html[data-font-mono="fira-code"] {
+  --mono: "Fira Code", "SF Mono", Menlo, monospace;
+  --mono-feature: "liga" 1;
+}
+
+/* 中文字体选择：正文一律用所选字体 */
+html[data-font-cjk="lxgw-wenkai"] {
+  --cjk: "LXGW WenKai", "PingFang SC", sans-serif;
+}
+html[data-font-cjk="noto-sans-sc"] {
+  --cjk: "Noto Sans SC", "PingFang SC", sans-serif;
+}
+html[data-font-cjk="noto-serif-sc"] {
+  --cjk: "Noto Serif SC", "Songti SC", serif;
+}
+
+/* 标题字重：主题 A 下，任意中文字体都加重（霞鹜文楷退回 Bold 代替 Medium） */
+html:not([data-theme="collage"])[data-font-cjk="lxgw-wenkai"],
+html:not([data-theme="collage"])[data-font-cjk="noto-sans-sc"],
+html:not([data-theme="collage"])[data-font-cjk="noto-serif-sc"] {
+  --cjk-heading-weight: 700;
+}
+
+/* 标题字重：主题 B 下，黑体（思源黑体）同样加重；文楷/宋体保持本身气质，不加重 */
+html[data-theme="collage"][data-font-cjk="noto-sans-sc"] {
+  --cjk-heading-weight: 700;
+}
+html[data-theme="collage"][data-font-cjk="lxgw-wenkai"],
+html[data-theme="collage"][data-font-cjk="noto-serif-sc"] {
+  --cjk-heading-weight: 400;
+}

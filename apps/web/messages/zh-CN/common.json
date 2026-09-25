@@ -1,0 +1,10 @@
+{
+  "wordmark": "kanban-hub",
+  "tagline": "自托管 · 多项目进度看板",
+  "styleCheck": {
+    "heading": "外观地基自检",
+    "body": "这段正文用的是所选中文字体；下面这一串用等宽字体。",
+    "sample": "#a82f 12/19 v1.2.0",
+    "action": "示例按钮"
+  }
+}

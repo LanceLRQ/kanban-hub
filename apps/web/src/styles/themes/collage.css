@@ -1,0 +1,94 @@
+/*
+ * 设计 token：主题 B「纸本拼贴」的取值，覆盖 ../tokens.css 里同名变量。
+ * token 名单见 ../tokens.css 顶部注释。
+ */
+
+html[data-theme="collage"] {
+  color-scheme: light;
+
+  /* 版面：工作台垫板 + 米白纸 */
+  --bg-page: #efece3;
+  --bg-card: #fffdf6;
+  --bg-hover: #f2ebd9;
+  --fg: #33302a;
+  --fg-muted: #5a564b;
+  --fg-faint: #8a857a;
+
+  /* 边框与分隔：墨线 + 淡墨虚线 */
+  --border: var(--fg);
+  --border-soft: #8a857a;
+
+  /* 阴影：纸张双层柔影，无位移 */
+  --shadow-raised: 0 1px 2px rgba(51, 48, 42, 0.1), 0 6px 16px rgba(51, 48, 42, 0.08);
+  --shadow-hover: 0 2px 4px rgba(51, 48, 42, 0.12), 0 12px 26px rgba(51, 48, 42, 0.13);
+  --shadow-active: 0 1px 2px rgba(51, 48, 42, 0.12);
+  --press-hover: translateY(-1px);
+  --press-active: translateY(0);
+
+  /* 圆角：不对称手裁，相邻互异 */
+  --radius: 4px;
+  --radius-a: 3px 9px 4px 8px;
+  --radius-b: 9px 4px 8px 3px;
+  --radius-c: 4px 8px 3px 9px;
+  --radius-d: 8px 3px 9px 4px;
+
+  /* 纸色（区分区块，不用于语义） */
+  --paper-cream: #fffdf6;
+  --paper-kraft: #e8dcc2;
+  --paper-gray: #e9e7df;
+  --paper-sage: #e4eae3;
+  --paper-tape: rgba(217, 181, 84, 0.45);
+
+  /* 墨水感状态色 */
+  --ink-green: #5c7a5a;
+  --ink-ochre: #a87f42;
+  --ink-brick: #a85a4e;
+  --ink-mustard: #b5922f;
+  --ink-blue: #5e7b94;
+
+  /* 语义色 · 健康度 */
+  --health-on-track: var(--ink-green);
+  --health-at-risk: var(--ink-ochre);
+  --health-blocked: var(--ink-brick);
+
+  /* 语义色 · 任务状态 */
+  --task-todo: var(--fg-faint);
+  --task-in-progress: var(--ink-mustard);
+  --task-review: var(--ink-blue);
+  --task-done: var(--ink-green);
+  --task-suspended: var(--fg-faint);
+  --task-cancelled: var(--paper-gray);
+
+  /* 语义色 · 待你处理 */
+  --human-decision: var(--ink-mustard);
+  --human-verify: var(--ink-blue);
+  --human-action: var(--ink-brick);
+
+  /* 语义色 · 停滞 */
+  --stale: var(--ink-brick);
+
+  /* 焦点：少量胶带 */
+  --focus-ring: var(--ink-mustard);
+
+  /* shadcn/ui 语义层 */
+  --background: var(--bg-page);
+  --foreground: var(--fg);
+  --card: var(--bg-card);
+  --card-foreground: var(--fg);
+  --popover: var(--bg-card);
+  --popover-foreground: var(--fg);
+  --primary: var(--ink-mustard);
+  --primary-foreground: var(--bg-card);
+  --secondary: var(--ink-blue);
+  --secondary-foreground: var(--bg-card);
+  --muted: var(--paper-gray);
+  --muted-foreground: var(--fg-muted);
+  --accent: var(--paper-sage);
+  --accent-foreground: var(--fg);
+  --destructive: var(--ink-brick);
+  --destructive-foreground: var(--bg-card);
+  --input: var(--border);
+  --ring: var(--focus-ring);
+
+  /* 标题：所选中文字体为黑体时加重字重；文楷/宋体保持本身气质，见 fonts.css */
+}

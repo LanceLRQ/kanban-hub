@@ -1,0 +1,108 @@
+/*
+ * 设计 token：主题 A「褪色印刷」的取值（默认主题，声明在 :root 上）。
+ * 主题 B「纸本拼贴」的取值见 ./themes/collage.css，覆盖同名变量。
+ *
+ * token 分组（两套主题同名，只是取值不同）：
+ *   - 版面：--bg-page --bg-card --bg-hover --fg --fg-muted --fg-faint
+ *   - 边框与分隔：--border --border-soft
+ *   - 阴影（按钮/卡片抬升效果，三态）：--shadow-raised --shadow-hover --shadow-active
+ *   - 圆角：--radius，以及主题 B 专用的不对称圆角 --radius-a/-b/-c/-d
+ *   - 语义色 · 健康度：--health-on-track --health-at-risk --health-blocked
+ *   - 语义色 · 任务状态：--task-todo --task-in-progress --task-review
+ *     --task-done --task-suspended --task-cancelled
+ *   - 语义色 · 待你处理：--human-decision --human-verify --human-action
+ *   - 语义色 · 停滞：--stale
+ *   - 焦点：--focus-ring
+ *   - shadcn/ui 语义层（由上面这些 token 派生，供 components/ui 使用）：
+ *     --background --foreground --card --card-foreground --popover
+ *     --popover-foreground --primary --primary-foreground --secondary
+ *     --secondary-foreground --muted --muted-foreground --accent
+ *     --accent-foreground --destructive --destructive-foreground
+ *     --border --input --ring
+ *   - 字体见 ./fonts.css：--mono --cjk --cjk-heading
+ */
+
+:root {
+  color-scheme: light;
+
+  /* 版面 */
+  --bg-page: #f5f0e1;
+  --bg-card: #fffcf1;
+  --bg-hover: #ede2be;
+  --fg: #3a3226;
+  --fg-muted: #6e6350;
+  --fg-faint: #9a8f79;
+
+  /* 边框与分隔 */
+  --border: #4a4033;
+  --border-soft: rgba(74, 64, 51, 0.32);
+
+  /* 阴影：套印错位（无模糊，色深化） */
+  --shadow-color: rgba(74, 64, 51, 0.35);
+  --shadow-raised: 3px 3px 0 var(--shadow-color);
+  --shadow-hover: 2px 2px 0 var(--shadow-color);
+  --shadow-active: 0 0 0 var(--shadow-color);
+  --press-hover: translate(1px, 1px);
+  --press-active: translate(3px, 3px);
+
+  /* 圆角：主题 A 统一 4-6px；主题 B 的不对称值见 collage.css */
+  --radius: 0.375rem;
+  --radius-a: var(--radius);
+  --radius-b: var(--radius);
+  --radius-c: var(--radius);
+  --radius-d: var(--radius);
+
+  /* 莫兰迪平涂 */
+  --mustard: #d9b554;
+  --mustard-deep: #cda93f;
+  --mistblue: #7e96be;
+  --dryrose: #c98f94;
+  --sage: #8fae84;
+  --ochre: #c09a4e;
+  --brick: #b86458;
+  --cancelbg: #e3dbc4;
+
+  /* 语义色 · 健康度 */
+  --health-on-track: var(--sage);
+  --health-at-risk: var(--ochre);
+  --health-blocked: var(--brick);
+
+  /* 语义色 · 任务状态 */
+  --task-todo: var(--fg-faint);
+  --task-in-progress: var(--mustard);
+  --task-review: var(--mistblue);
+  --task-done: var(--sage);
+  --task-suspended: var(--fg-faint);
+  --task-cancelled: var(--cancelbg);
+
+  /* 语义色 · 待你处理 */
+  --human-decision: var(--mustard);
+  --human-verify: var(--mistblue);
+  --human-action: var(--dryrose);
+
+  /* 语义色 · 停滞 */
+  --stale: var(--brick);
+
+  /* 焦点：套印错位阴影 */
+  --focus-ring: var(--mustard-deep);
+
+  /* shadcn/ui 语义层 */
+  --background: var(--bg-page);
+  --foreground: var(--fg);
+  --card: var(--bg-card);
+  --card-foreground: var(--fg);
+  --popover: var(--bg-card);
+  --popover-foreground: var(--fg);
+  --primary: var(--mustard);
+  --primary-foreground: var(--fg);
+  --secondary: var(--mistblue);
+  --secondary-foreground: var(--bg-card);
+  --muted: var(--bg-hover);
+  --muted-foreground: var(--fg-muted);
+  --accent: var(--bg-hover);
+  --accent-foreground: var(--fg);
+  --destructive: var(--brick);
+  --destructive-foreground: var(--bg-card);
+  --input: var(--border);
+  --ring: var(--focus-ring);
+}

@@ -1,5 +1,11 @@
 import type { z } from "zod";
-import { apiErrorSchema, HEADER_KH_AGENT, HEADER_KH_VERSION, type ApiErrorBody } from "@kanban-hub/core/api";
+import {
+  apiErrorSchema,
+  rateLimitDetailsSchema,
+  HEADER_KH_AGENT,
+  HEADER_KH_VERSION,
+  type ApiErrorBody,
+} from "@kanban-hub/core/api";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { CliError, EXIT } from "../errors";
 
@@ -58,8 +64,12 @@ function mapHttpError(status: number, body: ApiErrorBody | null, server: string)
       return new CliError(EXIT.DATA, message ?? "请求体过大");
     case 426:
       return new CliError(EXIT.INCOMPATIBLE, message ?? "kh 版本过旧，服务端拒绝了请求", upgradeHint(server));
-    case 429:
-      return new CliError(EXIT.AUTH, message ?? "请求过于频繁，请稍后再试");
+    case 429: {
+      // details.retryAfterSeconds 放进 hint（而不是拼进 message），message 原样保留服务端给的原因
+      const parsed = rateLimitDetailsSchema.safeParse(body?.error.details);
+      const hint = parsed.success ? `请等待 ${parsed.data.retryAfterSeconds} 秒后重试` : undefined;
+      return new CliError(EXIT.AUTH, message ?? "请求过于频繁，请稍后再试", hint);
+    }
     case 500:
       return new CliError(EXIT.UNEXPECTED, message ?? "服务端内部错误");
     case 503:

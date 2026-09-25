@@ -40,18 +40,28 @@
     "done": "已完成"
   },
   "eventType": {
-    "project.created": "项目创建",
-    "project.updated": "项目更新",
-    "container.created": "容器创建",
-    "container.updated": "容器更新",
-    "task.created": "任务创建",
-    "task.updated": "任务更新",
-    "task.status_changed": "任务状态变更",
-    "task.human_changed": "待你处理变更",
+    "project": {
+      "created": "项目创建",
+      "updated": "项目更新"
+    },
+    "container": {
+      "created": "容器创建",
+      "updated": "容器更新"
+    },
+    "task": {
+      "created": "任务创建",
+      "updated": "任务更新",
+      "status_changed": "任务状态变更",
+      "human_changed": "待你处理变更"
+    },
     "log": "日志",
-    "docs.synced": "文档同步",
-    "docs.pulled": "文档拉取",
-    "import.applied": "导入应用"
+    "docs": {
+      "synced": "文档同步",
+      "pulled": "文档拉取"
+    },
+    "import": {
+      "applied": "导入应用"
+    }
   },
   "eventTypeGroup": {
     "task": "任务",

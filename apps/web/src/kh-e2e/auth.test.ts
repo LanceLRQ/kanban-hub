@@ -250,6 +250,19 @@ describe("kh login / logout / whoami", () => {
       expect(result.code).toBe(0);
       expect(server.lastRequestHeaders()?.["x-kh-agent"]).toBe("claude-code");
     });
+
+    it("--agent 不合法（中文）时退出码 2，未登录和已登录都一样：本地校验优先于登录检查", async () => {
+      const unloggedIn = await runKh(["--agent", "验收脚本", "whoami"], { cwd: home.dir, khHome: home.dir });
+      expect(unloggedIn.code).toBe(2);
+      expect(unloggedIn.stderr.startsWith("错误：")).toBe(true);
+
+      const { code } = server.issuePairingCode();
+      await runKh(["login", "--server", server.url, "--code", code, "--name", "x"], { cwd: home.dir, khHome: home.dir });
+
+      const loggedIn = await runKh(["--agent", "验收脚本", "whoami"], { cwd: home.dir, khHome: home.dir });
+      expect(loggedIn.code).toBe(2);
+      expect(loggedIn.stderr.startsWith("错误：")).toBe(true);
+    });
   });
 
   describe("logout", () => {

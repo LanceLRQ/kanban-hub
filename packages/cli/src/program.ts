@@ -16,7 +16,12 @@ export function buildProgram(ctx: CliContext): Command {
     .description("kanban-hub 命令行：上报进度、同步文档")
     .version(KH_VERSION, "-v, --version", "显示版本号")
     .helpOption("-h, --help", "显示帮助")
-    .option("--agent <名称>", "标注上报事件的 agent 名称，不指定时按运行环境自动识别");
+    .helpCommand("help [命令]", "显示某个命令的帮助")
+    .option("--agent <名称>", "标注上报事件的 agent 名称，不指定时按运行环境自动识别")
+    // 只在子命令名出现之前识别根命令自己的选项：子命令自己的同名选项（例如 container add 的
+    // --version <版本号>）不会被根命令的 -v/--version 截走。子命令用 withAgentOption 各自
+    // 再声明一次 --agent，这样 --agent 写在子命令后面也能生效（见 shared.ts）。
+    .enablePositionalOptions();
 
   registerAuth(program, ctx);
   registerRegister(program, ctx);

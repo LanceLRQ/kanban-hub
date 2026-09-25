@@ -1,17 +1,16 @@
 /**
  * kh task 的端到端测试：用进程内测试服务端（真实路由处理函数 + 临时存储）驱动 cli 的 main()。
  *
- * 这个文件独立起服务端、临时仓库、临时 KH_HOME，并自己建项目、登记本机位置、写仓库配置——
- * kh register 由任务 6 并行开发，这里用不到，改成直接调用测试服务端的 Store（进程内可以拿到）
- * 完成同等前置条件（控制者裁决，见 04-M3-kh基础命令/wave4-common.md）。
+ * 这个文件独立起服务端、临时仓库、临时 KH_HOME。register 命令自己的行为在 register.test.ts
+ * 单独测试，这里用 harness 的 loginFixture / registerProjectFixture 搭好前置条件，
+ * 再额外建一个编号 M2 的阶段容器供任务测试使用。
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Actor } from "@kanban-hub/core/schema";
-import { writeRepoConfig } from "../../../../packages/cli/src/repo/config";
 import { startTestServer, type TestServer } from "../server/api/test-server";
-import { cleanupAll, makeTempKhHome, makeTempRepo, runKh, type TempDir, type TempRepo } from "./harness";
+import { cleanupAll, loginFixture, makeTempKhHome, makeTempRepo, registerProjectFixture, runKh, type TempDir, type TempRepo } from "./harness";
 
 const ALPHABET = "0123456789abcdefghijklmnopqrstuvwxyz";
 
@@ -32,12 +31,7 @@ afterEach(async () => {
 
 /** 登录（走真实的 /pair 路由），后续命令才能通过 requireLogin */
 async function login(): Promise<void> {
-  const { code } = server.issuePairingCode();
-  const result = await runKh(["login", "--server", server.url, "--code", code, "--name", "测试机"], {
-    cwd: repo.dir,
-    khHome: home.dir,
-  });
-  if (result.code !== 0) throw new Error(`测试前置条件失败：kh login 退出码 ${result.code}，stderr=${result.stderr}`);
+  await loginFixture(server, repo, home);
 }
 
 /**
@@ -45,24 +39,14 @@ async function login(): Promise<void> {
  * 再写出仓库配置，让 requireRegisteredRepo 能找到它。必须先 login()。
  */
 async function setupProject(): Promise<{ projectId: string }> {
+  const { projectId } = await registerProjectFixture(server, repo, home, { name: "示例项目" });
+
   const admin = server.api.store.auth.listUsers().find((u) => u.role === "admin");
   if (!admin) throw new Error("测试前置条件失败：找不到管理员账号");
   const actor: Actor = { userId: admin.id, machineId: null, via: "web", agent: null };
+  await server.api.store.createContainer(projectId, { kind: "phase", code: "M2", title: "阶段二" }, actor);
 
-  const { project } = await server.api.store.createProject({ name: "示例项目" }, actor);
-  await server.api.store.createContainer(project.id, { kind: "phase", code: "M2", title: "阶段二" }, actor);
-
-  const machine = server.api.store.auth.listMachines().find((m) => m.revokedAt === null);
-  if (!machine) throw new Error("测试前置条件失败：还没有登录任何机器");
-  await server.api.store.setLocation(project.id, machine.id, { path: repo.dir }, actor);
-
-  await writeRepoConfig(repo.dir, {
-    projectId: project.id,
-    sync: { include: [], exclude: [], maxFileSize: "5MB" },
-    pull: { auto: true },
-  });
-
-  return { projectId: project.id };
+  return { projectId };
 }
 
 /** 用 kh task add 建一个任务，从输出里解析出打印的短 ID（后续命令用 #短ID 定位） */
@@ -454,21 +438,42 @@ describe("kh task checklist", () => {
 });
 
 describe("上报时间", () => {
-  it("task add / set 成功后都更新 KH_HOME 下的上报时间", async () => {
+  function reportFileFor(projectId: string): string {
+    return path.join(home.dir, "cache", "reports", `${projectId}.json`);
+  }
+
+  async function lastReportAt(projectId: string): Promise<number> {
+    const raw = JSON.parse(await fs.readFile(reportFileFor(projectId), "utf8")) as { lastReportAt: string };
+    return Date.parse(raw.lastReportAt);
+  }
+
+  it("task add 成功后更新上报时间", async () => {
     await login();
     const { projectId } = await setupProject();
-    const reportFile = path.join(home.dir, "cache", "reports", `${projectId}.json`);
-
     const before = Date.now();
+    await addTask("上报测试任务");
+    expect(await lastReportAt(projectId)).toBeGreaterThanOrEqual(before);
+  });
+
+  // task set/human/check/checklist 都要各自更新上报时间，逐条验证而不是只测一种子命令
+  it.each<[string, boolean, (shortId: string) => string[]]>([
+    ["task set", false, (id) => ["task", "set", `#${id}`, "--note", "更新一下"]],
+    ["task human", false, (id) => ["task", "human", `#${id}`, "--decision", "选 A 还是 B"]],
+    ["task check", true, (id) => ["task", "check", `#${id}`, "1"]],
+    ["task checklist", false, (id) => ["task", "checklist", `#${id}`, "--add", "追加一项"]],
+  ])("%s 成功后更新上报时间", async (_name, needsChecklistItem, buildArgs) => {
+    await login();
+    const { projectId } = await setupProject();
     const shortId = await addTask("上报测试任务");
-    const raw1 = JSON.parse(await fs.readFile(reportFile, "utf8")) as { lastReportAt: string };
-    expect(Date.parse(raw1.lastReportAt)).toBeGreaterThanOrEqual(before);
+    if (needsChecklistItem) {
+      await runKh(["task", "checklist", `#${shortId}`, "--add", "唯一一项"], { cwd: repo.dir, khHome: home.dir });
+    }
 
     await new Promise((resolve) => setTimeout(resolve, 5));
-    const before2 = Date.now();
-    await runKh(["task", "set", `#${shortId}`, "--note", "更新一下"], { cwd: repo.dir, khHome: home.dir });
-    const raw2 = JSON.parse(await fs.readFile(reportFile, "utf8")) as { lastReportAt: string };
-    expect(Date.parse(raw2.lastReportAt)).toBeGreaterThanOrEqual(before2);
+    const before = Date.now();
+    const result = await runKh(buildArgs(shortId), { cwd: repo.dir, khHome: home.dir });
+    expect(result.code).toBe(0);
+    expect(await lastReportAt(projectId)).toBeGreaterThanOrEqual(before);
   });
 });
 

@@ -12,9 +12,8 @@ function captureError(fn: () => unknown): CliError {
 }
 
 describe("normalizeServerUrl", () => {
-  it("去掉末尾的一个或多个斜杠", () => {
+  it("去掉末尾的斜杠", () => {
     expect(normalizeServerUrl("http://example.test/")).toBe("http://example.test");
-    expect(normalizeServerUrl("http://example.test//")).toBe("http://example.test");
   });
 
   it("保留 https 和端口号", () => {
@@ -29,6 +28,23 @@ describe("normalizeServerUrl", () => {
   it("不是合法 URL 时抛 CliError(2)", () => {
     const err = captureError(() => normalizeServerUrl("不是网址"));
     expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("带路径时抛 CliError(2)（包括多余的斜杠）", () => {
+    expect(captureError(() => normalizeServerUrl("http://example.test/setup")).exitCode).toBe(EXIT.USAGE);
+    expect(captureError(() => normalizeServerUrl("http://example.test//")).exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("带查询参数或锚点时抛 CliError(2)", () => {
+    expect(captureError(() => normalizeServerUrl("http://example.test?x=1")).exitCode).toBe(EXIT.USAGE);
+    expect(captureError(() => normalizeServerUrl("http://example.test#frag")).exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("带用户名密码时抛 CliError(2)，错误信息不回显密码", () => {
+    const err = captureError(() => normalizeServerUrl("http://user:hunter2@example.test"));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).not.toContain("hunter2");
+    expect(err.hint ?? "").not.toContain("hunter2");
   });
 });
 

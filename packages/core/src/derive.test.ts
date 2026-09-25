@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checklistProgress, containerStatus, isStale, parseStaleDays, progressOf, summarizeContainer } from "./derive";
+import { checklistProgress, containerStatus, isStale, parseStaleDays, progressOf, projectProgress, summarizeContainer } from "./derive";
 import type { TaskStatus } from "./schema";
 import { fixtureId, makeContainer, makeMisc, makeProject, makeTask } from "./test-fixtures";
 
@@ -77,6 +77,37 @@ describe("进度", () => {
 
   it("清单完成度", () => {
     expect(checklistProgress([{ done: true }, { done: false }])).toEqual({ done: 1, total: 2 });
+  });
+});
+
+describe("projectProgress", () => {
+  it("只统计阶段和特性容器里的任务，不含杂项容器", () => {
+    const misc = makeMisc();
+    const phase = makeContainer({ id: fixtureId("c", 1) });
+    const board = {
+      containers: [misc, phase],
+      tasks: [
+        makeTask({ id: fixtureId("t", 1), containerId: phase.id, status: "done" }),
+        makeTask({ id: fixtureId("t", 2), containerId: phase.id, status: "todo" }),
+        // 杂项容器里塞已完成和未完成的任务：不应该影响项目进度的分子分母
+        makeTask({ id: fixtureId("t", 3), containerId: misc.id, status: "done" }),
+        makeTask({ id: fixtureId("t", 4), containerId: misc.id, status: "todo" }),
+      ],
+    };
+    expect(projectProgress(board)).toEqual({ done: 1, total: 2 });
+  });
+
+  it("不计已取消的任务（复用 progressOf）", () => {
+    const misc = makeMisc();
+    const phase = makeContainer({ id: fixtureId("c", 1) });
+    const board = {
+      containers: [misc, phase],
+      tasks: [
+        makeTask({ id: fixtureId("t", 1), containerId: phase.id, status: "done" }),
+        makeTask({ id: fixtureId("t", 2), containerId: phase.id, status: "cancelled" }),
+      ],
+    };
+    expect(projectProgress(board)).toEqual({ done: 1, total: 1 });
   });
 });
 

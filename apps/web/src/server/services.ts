@@ -5,7 +5,7 @@ import type { FailureLimiter } from "./auth/rate-limit";
 import type { Store } from "./store/store";
 
 /**
- * 进程内共享的服务容器：存储加上 M2 新增的内存状态（配对码、限流、lastSeenAt 节流）。
+ * 进程内共享的服务容器：存储加上内存状态（配对码、限流、lastSeenAt 节流）。
  * 与 store/instance.ts 的单例一样挂在 globalThis 上——Next 把每个路由编译成独立的模块实例，
  * 模块级变量互不相通，只有 globalThis 上的引用能在它们之间共享。
  *

@@ -73,7 +73,7 @@ const maxFileSizeField = z
     }
   });
 
-/** .kanban-hub/config.yaml 的形状（规格没写、本计划定下的细节 / 仓库配置文件）；读取时忽略未知字段 */
+/** .kanban-hub/config.yaml 的形状；读取时忽略未知字段 */
 export const repoConfigSchema = z.object({
   projectId: idSchema,
   sync: z.object({

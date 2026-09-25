@@ -47,11 +47,7 @@ function mapHttpError(status: number, body: ApiErrorBody | null, server: string)
       return new CliError(EXIT.DATA, lines.join("\n"));
     }
     case 401:
-      return new CliError(
-        EXIT.AUTH,
-        message ?? "未登录或令牌已失效",
-        `到 ${server}/setup 取配对码，再执行 kh login --server ${server} --code <配对码>`,
-      );
+      return new CliError(EXIT.AUTH, message ?? "未登录或令牌已失效", `到 ${server}/setup 取配对码，再执行 kh login --code <配对码>`);
     case 403:
       return new CliError(EXIT.AUTH, message ?? "没有权限执行此操作");
     case 404:
@@ -83,6 +79,35 @@ function mapHttpError(status: number, body: ApiErrorBody | null, server: string)
 
 function isAbortError(err: unknown): boolean {
   return err instanceof Error && err.name === "AbortError";
+}
+
+/** 请求头的值必须是可打印 ASCII（0x20-0x7E）：fetch 对超出 Latin-1/含控制字符的值会抛 TypeError，
+ * 之前会被误判成“无法连接到服务端”。这里提前挡住，报错只提头名，不带值——不管这个头装的是
+ * agent 名称还是令牌，都不应该出现在错误信息里。 */
+const ASCII_HEADER_VALUE_RE = /^[\x20-\x7E]*$/;
+
+function assertHeadersSendable(headers: Record<string, string>): void {
+  for (const [name, value] of Object.entries(headers)) {
+    if (!ASCII_HEADER_VALUE_RE.test(value)) {
+      throw new CliError(EXIT.UNEXPECTED, `请求头 ${name} 含有无法发送的字符`);
+    }
+  }
+}
+
+/** 3xx 状态码范围 */
+function isRedirectStatus(status: number): boolean {
+  return status >= 300 && status < 400;
+}
+
+/** err.cause 里的错误码（例如 ECONNREFUSED），拿不到就是 undefined；不含任何请求头内容 */
+function causeCode(err: unknown): string | undefined {
+  if (!(err instanceof Error)) return undefined;
+  const cause = err.cause;
+  if (cause && typeof cause === "object" && "code" in cause) {
+    const code = (cause as { code?: unknown }).code;
+    if (typeof code === "string") return code;
+  }
+  return undefined;
 }
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT";
@@ -123,39 +148,60 @@ export class ApiClient {
       headers["content-type"] = "application/json";
       requestBody = JSON.stringify(body);
     }
+    assertHeadersSendable(headers);
 
-    const response = await this.fetchWithTimeout(url, method, headers, requestBody);
-
-    if (response.ok) {
-      const data = await this.safeParseJson(response);
-      const parsed = schema.safeParse(data);
-      if (!parsed.success) {
-        throw new CliError(EXIT.UNEXPECTED, "服务端返回的数据格式不符合预期");
-      }
-      return parsed.data;
-    }
-
-    throw await this.buildError(response);
-  }
-
-  private async fetchWithTimeout(
-    url: string,
-    method: HttpMethod,
-    headers: Record<string, string>,
-    body: string | undefined,
-  ): Promise<Response> {
     const timeoutMs = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
     const controller = new AbortController();
+    // 超时要覆盖到读完响应体为止，不能在拿到响应头之后就 clearTimeout：服务端发完头就
+    // 不再发数据的话，读 body 会一直挂着。这里把 fetch 和后续的 body 读取都放进同一个
+    // AbortController 的作用域，finally 里统一 clearTimeout。
     const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
-      return await this.opts.fetch(url, { method, headers, body, signal: controller.signal });
+      const response = await this.opts.fetch(url, {
+        method,
+        headers,
+        body: requestBody,
+        signal: controller.signal,
+        redirect: "manual",
+      });
+
+      if (isRedirectStatus(response.status)) {
+        throw this.buildRedirectError(response);
+      }
+
+      if (response.ok) {
+        const data = await this.safeParseJson(response);
+        const parsed = schema.safeParse(data);
+        if (!parsed.success) {
+          throw new CliError(EXIT.UNEXPECTED, "服务端返回的数据格式不符合预期");
+        }
+        return parsed.data;
+      }
+
+      throw await this.buildError(response);
     } catch (err) {
+      if (err instanceof CliError) throw err;
       if (isAbortError(err)) {
         throw new CliError(EXIT.UNREACHABLE, `请求超时（超过 ${timeoutMs}ms）：${this.opts.server}`);
       }
-      throw new CliError(EXIT.UNREACHABLE, `无法连接到服务端：${this.opts.server}`);
+      const code = causeCode(err);
+      throw new CliError(EXIT.UNREACHABLE, `无法连接到服务端：${this.opts.server}${code ? `（${code}）` : ""}`);
     } finally {
       clearTimeout(timer);
+    }
+  }
+
+  /** 收到 3xx 时不跟随重定向：多半是服务端地址配错了，提示改用 Location 解析出的 origin 重新登录 */
+  private buildRedirectError(response: Response): CliError {
+    const location = response.headers.get("location");
+    if (!location) {
+      return new CliError(EXIT.USAGE, "服务端地址发生了重定向", "响应没有带 Location，请检查服务端地址是否正确");
+    }
+    try {
+      const origin = new URL(location, this.opts.server).origin;
+      return new CliError(EXIT.USAGE, "服务端地址发生了重定向", `请改用 ${origin} 重新执行 kh login`);
+    } catch {
+      return new CliError(EXIT.USAGE, "服务端地址发生了重定向", "响应的 Location 不是合法地址，请检查服务端地址是否正确");
     }
   }
 

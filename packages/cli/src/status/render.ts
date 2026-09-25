@@ -5,6 +5,7 @@
 import type { ContainerStatus } from "@kanban-hub/core/derive";
 import type { TaskStatus } from "@kanban-hub/core/schema";
 import { CYCLE_LABELS, HEALTH_LABELS, HUMAN_KIND_LABELS, MANUAL_STATUS_LABELS, TASK_STATUS_LABELS } from "../commands/labels";
+import { displayEmpty } from "../commands/shared";
 import type { StatusView, StatusViewContainer, StatusViewTask } from "./view";
 
 /** 任务状态符号（规格 5.3）；已取消没有符号，折叠计数里用文字 */
@@ -36,10 +37,14 @@ function isOpenTask(status: TaskStatus): boolean {
   return status === "todo" || status === "in_progress" || status === "review" || status === "suspended";
 }
 
-/** 任务的编号写法：容器有编号时是 "容器编号/任务编号"，否则只显示任务自己的编号，都没有编号时省略 */
+/**
+ * 任务的编号写法：有任务编号时展示成 "<容器标签>/<任务编号>"，容器标签用 containerRefLabel
+ * 同一套规则（有编号用编号，杂项用 misc，否则用 ID 前缀），这样写出来的编号总能直接拿来引用
+ * 这个任务；任务自己没有编号时省略。
+ */
 function taskCodeDisplay(task: StatusViewTask, container: StatusViewContainer): string | null {
   if (task.code === null) return null;
-  return container.code !== null ? `${container.code}/${task.code}` : task.code;
+  return `${container.refLabel}/${task.code}`;
 }
 
 /** 时间戳只取日期部分（YYYY-MM-DD），折叠摘要里不需要时分秒 */
@@ -107,7 +112,7 @@ export function renderStatusText(view: StatusView): string {
   const p = view.project;
 
   lines.push(`${p.name} · ${CYCLE_LABELS[p.cycle]} · ${HEALTH_LABELS[p.health]} · 进度 ${p.progress.done}/${p.progress.total}`);
-  lines.push(`焦点：${p.focus || "（未设置）"}`);
+  lines.push(`焦点：${displayEmpty(p.focus)}`);
   if (p.stale) lines.push(`停滞 ${p.idleDays} 天`);
   if (view.location) {
     const syncPart = view.location.lastSyncAt ? `，上次同步 ${view.location.lastSyncAt}` : "，尚未同步";

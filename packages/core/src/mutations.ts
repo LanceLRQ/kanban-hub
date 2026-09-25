@@ -154,7 +154,7 @@ export function updateProject(
 /**
  * 登记项目在某台机器上的位置。已有位置时只替换 path 和 sync，lastSyncAt、git、skippedFiles
  * 由服务端在 M5 维护，这里原样保留。change 的 "location" 键不是 Project 的实际字段名，
- * 只是这条事件约定的记法（见 M2 计划）。
+ * 只是这条事件约定的记法。
  */
 export function setLocation(project: Project, machineId: string, input: LocationInput, ctx: MutationContext): ProjectResult {
   const data = parseInput(locationInput, input);

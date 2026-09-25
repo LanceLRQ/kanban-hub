@@ -3,9 +3,7 @@ import { EXIT, type CliError } from "../errors";
 import {
   assertHasSetOption,
   assertSuspendReason,
-  containerLabel,
   dedupePaths,
-  displayValue,
   parseChecklistIndex,
   resolveHumanFlag,
   type SetOptionsInput,
@@ -19,35 +17,6 @@ function captureThrow(fn: () => unknown): CliError {
   }
   throw new Error("期望抛出异常，但没有抛出");
 }
-
-describe("containerLabel", () => {
-  it("杂项容器固定显示 misc（即便自己有 code）", () => {
-    expect(containerLabel({ kind: "misc", code: "misc" })).toBe("misc");
-    expect(containerLabel({ kind: "misc", code: null })).toBe("misc");
-  });
-
-  it("有编号的容器显示编号", () => {
-    expect(containerLabel({ kind: "phase", code: "M2" })).toBe("M2");
-  });
-
-  it("非杂项容器没有编号时给出退化提示，不会误显示成 misc", () => {
-    expect(containerLabel({ kind: "phase", code: null })).toBe("(无编号)");
-  });
-});
-
-describe("displayValue", () => {
-  it("null 显示成 (空)", () => {
-    expect(displayValue(null)).toBe("(空)");
-  });
-
-  it("空串显示成 (空)", () => {
-    expect(displayValue("")).toBe("(空)");
-  });
-
-  it("非空字符串原样返回", () => {
-    expect(displayValue("v1.0")).toBe("v1.0");
-  });
-});
 
 describe("dedupePaths", () => {
   it("按先出现顺序去重", () => {
@@ -120,6 +89,11 @@ describe("assertSuspendReason", () => {
 
   it("状态改成 suspended 且给了 reason 时不抛", () => {
     expect(() => assertSuspendReason("suspended", "等待外部依赖")).not.toThrow();
+  });
+
+  it("状态改成 suspended 但 reason 是空字符串时抛 CliError(2)", () => {
+    const err = captureThrow(() => assertSuspendReason("suspended", ""));
+    expect(err.exitCode).toBe(EXIT.USAGE);
   });
 
   it("状态不是 suspended 时，不管有没有 reason 都不抛", () => {

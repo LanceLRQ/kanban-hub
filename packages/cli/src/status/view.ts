@@ -1,13 +1,14 @@
 /**
  * 构建 kh status 的视图：一个不做 IO、不读 CliContext 的纯函数，只依赖项目详情、
  * 本机 machineId 和当前时间。M6 的会话摘要会直接复用 buildStatusView，
- * 所以这里不能掺进任何文件读写或网络调用（见任务简报“行为要点”）。
+ * 所以这里不能掺进任何文件读写或网络调用。
  */
 import type { ProjectDetailResponse } from "@kanban-hub/core/api";
-import { checklistProgress, progressOf, summarizeContainer } from "@kanban-hub/core/derive";
+import { checklistProgress, projectProgress, summarizeContainer } from "@kanban-hub/core/derive";
 import type { ContainerStatus, Progress } from "@kanban-hub/core/derive";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import type { Container, ContainerKind, Cycle, Health, HumanFlag, TaskStatus } from "@kanban-hub/core/schema";
+import { containerRefLabel } from "../commands/shared";
 
 const DAY_MS = 86_400_000;
 
@@ -30,6 +31,8 @@ export interface StatusViewTask {
 export interface StatusViewContainer {
   id: string;
   code: string | null;
+  /** 有编号用编号，杂项固定 misc，否则用整个看板范围内的最短唯一 ID 前缀；可以直接拿来引用 */
+  refLabel: string;
   kind: ContainerKind;
   title: string;
   /** 用 core 的 summarizeContainer 推算；杂项容器为 null */
@@ -68,8 +71,7 @@ export interface StatusViewProject {
   stale: boolean;
   /**
    * 距最近一条事件（没有事件时用项目创建时间）的整天数，向下取整，非负。
-   * 字段名特意不叫 staleDays：这只是“闲置了多少天”的事实，不是 KH_STALE_DAYS 阈值本身，
-   * 两者容易混淆（第 1 轮修复 Ruling 10）。
+   * 字段名特意不叫 staleDays：这只是“闲置了多少天”的事实，不是 KH_STALE_DAYS 阈值本身，两者容易混淆。
    */
   idleDays: number;
   lastEventAt: string | null;
@@ -89,12 +91,6 @@ export interface StatusView {
 export interface BuildStatusViewOptions {
   machineId: string;
   now: Date;
-}
-
-/** 容器在“待你处理”里的显示标签：有编号用编号，杂项固定 misc，否则退回标题 */
-function containerLabel(container: Container): string {
-  if (container.code !== null) return container.code;
-  return container.kind === "misc" ? "misc" : container.title;
 }
 
 /** 杂项容器固定排最后，其余按 order 升序（misc 的 order 是 0，不能直接按 order 排） */
@@ -137,6 +133,7 @@ export function buildStatusView(detail: ProjectDetailResponse, opts: BuildStatus
     return {
       id: container.id,
       code: container.code,
+      refLabel: containerRefLabel(container, board.containers),
       kind: container.kind,
       title: container.title,
       status: summary.status,
@@ -152,7 +149,7 @@ export function buildStatusView(detail: ProjectDetailResponse, opts: BuildStatus
 
   const inbox: StatusViewInboxItem[] = [];
   for (const container of sortedContainers) {
-    const label = containerLabel(container);
+    const label = containerRefLabel(container, board.containers);
     const own = board.tasks.filter((t) => t.containerId === container.id).sort((a, b) => a.order - b.order);
     for (const task of own) {
       if (task.human === null) continue;
@@ -165,10 +162,6 @@ export function buildStatusView(detail: ProjectDetailResponse, opts: BuildStatus
 
   const location = project.locations.find((l) => l.machineId === opts.machineId);
 
-  // 项目整体进度不计杂项容器里的任务（Ruling 11）：杂项是随手记的东西，不是计划内的工作量
-  const miscContainerId = board.containers.find((c) => c.kind === "misc")?.id;
-  const trackedTasks = board.tasks.filter((t) => t.containerId !== miscContainerId);
-
   return {
     project: {
       id: project.id,
@@ -179,7 +172,7 @@ export function buildStatusView(detail: ProjectDetailResponse, opts: BuildStatus
       stale,
       idleDays,
       lastEventAt,
-      progress: progressOf(trackedTasks),
+      progress: projectProgress(board),
     },
     location: location ? { path: location.path, lastSyncAt: location.lastSyncAt } : null,
     containers,

@@ -117,12 +117,20 @@ describe("renderStatusText", () => {
     expect(text).toContain("M2/2.3");
   });
 
-  it("容器没有编号时任务只显示自己的编号", () => {
+  it("容器没有编号时任务编号前缀用容器的 ID 前缀，写出来的编号仍能直接引用", () => {
     const c = makeContainer({ id: fixtureId("c", 1), code: null });
     const board = makeBoard([c], [makeTask({ id: fixtureId("t", 1), containerId: c.id, code: "2.3", status: "todo" })]);
     const text = render({ board });
-    expect(text).toContain("2.3");
-    expect(text).not.toContain("/2.3");
+    expect(text).toContain(`${c.id}/2.3`);
+  });
+
+  it("杂项容器里有编号的任务，编号前缀固定是 misc", () => {
+    const board = makeBoard(
+      [makeContainer()],
+      [makeTask({ id: fixtureId("t", 1), containerId: fixtureId("c", 0), code: "9.9", status: "todo" })],
+    );
+    const text = render({ board });
+    expect(text).toContain("misc/9.9");
   });
 
   it("待你处理放在最前面（容器信息之前）", () => {

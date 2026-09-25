@@ -1,18 +1,22 @@
 /**
  * kh 端到端测试的公共夹具：驱动 cli 的 main()（不 spawn 真实进程，除非测试明确需要验证
- * 真实进程的退出码），以及造临时仓库、临时 KH_HOME。
+ * 真实进程的退出码），以及造临时仓库、临时 KH_HOME、登录、注册项目。
  *
  * 临时目录一律先 fs.realpath 再交给调用方：macOS 的 os.tmpdir() 落在 /var，实际是
- * /private/var 的软链接，而 git 输出的是解析后的物理路径，混用会让仓库内路径的换算出错
- * （控制者裁决，见 04-M3-kh基础命令/context.md）。
+ * /private/var 的软链接，而 git 输出的是解析后的物理路径，混用会让仓库内路径的换算出错。
  */
 import { execFileSync } from "node:child_process";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import type { Actor } from "@kanban-hub/core/schema";
+import { SYNC_DEFAULT_MAX_FILE_SIZE } from "@kanban-hub/core/sync";
+import { readMachineConfig } from "../../../../packages/cli/src/config/home";
 import type { CliContext } from "../../../../packages/cli/src/context";
 import { main } from "../../../../packages/cli/src/main";
+import { writeRepoConfig } from "../../../../packages/cli/src/repo/config";
+import type { TestServer } from "../server/api/test-server";
 
 const GIT_TEST_ENV: NodeJS.ProcessEnv = {
   ...process.env,
@@ -83,6 +87,8 @@ export interface RunKhOptions {
   /** 交互式确认要读的输入；省略时 stdin 视为立即 EOF（空输入） */
   stdin?: string;
   isTTY?: boolean;
+  /** ctx.homeDir，默认取真实的 os.homedir()；用来测试“默认 KH_HOME 与仓库配置撞路径”这类场景 */
+  homeDir?: string;
 }
 
 export interface RunKhResult {
@@ -113,9 +119,73 @@ export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhRe
     now: () => new Date(),
     platform: process.platform,
     hostname: os.hostname(),
-    homeDir: os.homedir(),
+    homeDir: opts.homeDir ?? os.homedir(),
     fetch: globalThis.fetch.bind(globalThis),
   };
   const code = await main(args, ctx);
   return { code, stdout, stderr };
+}
+
+export interface LoginFixtureOptions {
+  /** 本机名称，默认“测试机” */
+  name?: string;
+}
+
+/** 走真实的 /pair 路由登录，返回本机的 machineId；board / status / task 的端到端测试共用 */
+export async function loginFixture(
+  server: TestServer,
+  repo: Pick<TempRepo, "dir">,
+  khHome: Pick<TempDir, "dir">,
+  opts: LoginFixtureOptions = {},
+): Promise<string> {
+  const { code } = server.issuePairingCode();
+  const result = await runKh(["login", "--server", server.url, "--code", code, "--name", opts.name ?? "测试机"], {
+    cwd: repo.dir,
+    khHome: khHome.dir,
+  });
+  if (result.code !== 0) throw new Error(`测试前置条件失败：登录失败（${result.code}）：${result.stderr}`);
+  const cfg = await readMachineConfig(khHome.dir);
+  if (!cfg?.machineId) throw new Error("测试前置条件失败：登录后读不到 machineId");
+  return cfg.machineId;
+}
+
+export interface RegisterFixtureOptions {
+  name?: string;
+  focus?: string;
+}
+
+export interface RegisterFixtureResult {
+  projectId: string;
+  machineId: string;
+}
+
+/**
+ * 建一个项目、登记本机在这个仓库的位置、写出仓库配置：相当于 kh register 会做的事，
+ * 但直接用测试服务端的 Store 完成，不经过 kh register 命令本身——register 命令自己的行为
+ * 在 register.test.ts 里单独测试，这里只需要一个能让 requireRegisteredRepo 认得的前置条件。
+ * 调用前必须先 loginFixture()。
+ */
+export async function registerProjectFixture(
+  server: TestServer,
+  repo: Pick<TempRepo, "dir">,
+  khHome: Pick<TempDir, "dir">,
+  opts: RegisterFixtureOptions = {},
+): Promise<RegisterFixtureResult> {
+  const cfg = await readMachineConfig(khHome.dir);
+  const machineId = cfg?.machineId;
+  if (!machineId) throw new Error("测试前置条件失败：还没有登录，请先调用 loginFixture");
+
+  const admin = server.api.store.auth.listUsers().find((u) => u.role === "admin");
+  if (!admin) throw new Error("测试前置条件失败：找不到管理员账号");
+  const actor: Actor = { userId: admin.id, machineId: null, via: "web", agent: null };
+
+  const { project } = await server.api.store.createProject({ name: opts.name ?? "示例项目", focus: opts.focus }, actor);
+  await server.api.store.setLocation(project.id, machineId, { path: repo.dir }, actor);
+  await writeRepoConfig(repo.dir, {
+    projectId: project.id,
+    sync: { include: [], exclude: [], maxFileSize: SYNC_DEFAULT_MAX_FILE_SIZE },
+    pull: { auto: true },
+  });
+
+  return { projectId: project.id, machineId };
 }

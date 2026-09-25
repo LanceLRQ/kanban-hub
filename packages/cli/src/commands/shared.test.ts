@@ -15,16 +15,26 @@ import { writeRepoConfig } from "../repo/config";
 import { ApiClient } from "../http/client";
 import {
   afterReport,
+  assertAnyOptionGiven,
+  containerRefLabel,
+  displayEmpty,
+  formatChange,
   globalAgentFlag,
   loadProject,
+  loadProjectOrFail,
   parseEnumOption,
+  parseNullableDateOption,
   parseNullableOption,
   requireLogin,
   requireRegisteredRepo,
   resolveContainerOrFail,
   resolveTaskOrFail,
   shortRef,
+  withAgentOption,
 } from "./shared";
+
+/** 测试用的合法机器令牌：kh_ 加 43 位 [A-Za-z0-9_-] */
+const FAKE_TOKEN = `kh_${"a".repeat(43)}`;
 
 const cleanupDirs: string[] = [];
 
@@ -129,7 +139,7 @@ describe("requireLogin：agent 解析（收进公共件，写命令不用各自�
   async function loggedInHome(server: string): Promise<string> {
     const home = await tmpDir("kh-shared-home-");
     await writeMachineConfig(home, { server, machineId: "abcdefghij", machineName: "m" });
-    await writeToken(home, "the-token");
+    await writeToken(home, FAKE_TOKEN);
     return home;
   }
 
@@ -175,9 +185,16 @@ describe("requireLogin：agent 解析（收进公共件，写命令不用各自�
   it("agent 超过 50 个字符时抛 CliError(2)", async () => {
     const home = await tmpDir("kh-shared-home-");
     await writeMachineConfig(home, { server: "http://example.test", machineId: "abcdefghij", machineName: "m" });
-    await writeToken(home, "the-token");
+    await writeToken(home, FAKE_TOKEN);
     const ctx = fakeContext({ env: { KH_HOME: home } });
     const err = await captureError(requireLogin(ctx, "a".repeat(51)));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("agent 不合法时，即使没有登录也抛 CliError(2)：本地可判定的用法错误优先于登录检查", async () => {
+    const home = await tmpDir("kh-shared-home-");
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const err = await captureError(requireLogin(ctx, "非法 agent 名称"));
     expect(err.exitCode).toBe(EXIT.USAGE);
   });
 });
@@ -191,12 +208,14 @@ describe("requireLogin", () => {
     expect(err.hint).toContain("kh login");
   });
 
-  it("有配置但从未配对（没有 machineId）时抛 CliError(3)", async () => {
+  it("有配置但从未配对（没有 machineId）时抛 CliError(3)，本机配置里已有服务端地址，提示 /setup", async () => {
     const home = await tmpDir("kh-shared-home-");
     await writeMachineConfig(home, { server: "http://example.test" });
     const ctx = fakeContext({ env: { KH_HOME: home } });
     const err = await captureError(requireLogin(ctx));
     expect(err.exitCode).toBe(EXIT.AUTH);
+    expect(err.hint).toContain("http://example.test/setup");
+    expect(err.hint).toContain("kh login --code");
   });
 
   it("配置里有机器身份但凭据文件缺失时抛 CliError(3)", async () => {
@@ -210,7 +229,7 @@ describe("requireLogin", () => {
   it("配置和凭据都在时返回 client/machine/server", async () => {
     const home = await tmpDir("kh-shared-home-");
     await writeMachineConfig(home, { server: "http://example.test", machineId: "abcdefghij", machineName: "我的电脑" });
-    await writeToken(home, "the-token");
+    await writeToken(home, FAKE_TOKEN);
     const ctx = fakeContext({ env: { KH_HOME: home }, platform: "linux" });
     const result = await requireLogin(ctx);
     expect(result.server).toBe("http://example.test");
@@ -231,7 +250,9 @@ describe("requireRegisteredRepo", () => {
   it("找到注册信息时返回 root 和 config", async () => {
     const dir = await tmpDir("kh-shared-repo-");
     await writeRepoConfig(dir, { projectId: "abcdefghij", sync: { include: ["docs/**"], exclude: [], maxFileSize: "5MB" }, pull: { auto: true } });
-    const ctx = fakeContext({ cwd: dir, homeDir: dir });
+    // homeDir 不能等于 dir：默认 KH_HOME 是 homeDir 下的 .kanban-hub，等于 dir 会被
+    // collidesWithKhHome 判定为撞路径而跳过（这里只是想要一个和仓库目录无关的 homeDir）
+    const ctx = fakeContext({ cwd: dir, homeDir: path.dirname(dir) });
     const result = await requireRegisteredRepo(ctx);
     expect(result.root).toBe(dir);
     expect(result.config.projectId).toBe("abcdefghij");
@@ -269,6 +290,25 @@ describe("loadProject", () => {
       expect(requestedPath).toBe("/api/v1/projects/abcdefghij");
       expect(projectDetailResponse.parse(result)).toEqual(result);
       expect(result.project.name).toBe("示例项目");
+    } finally {
+      await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
+    }
+  });
+});
+
+describe("loadProjectOrFail", () => {
+  it("项目找不到（带错误信封的 404）时补一条提示，指向仓库配置文件", async () => {
+    const server = http.createServer((req, res) => {
+      res.writeHead(404, { "content-type": "application/json" });
+      res.end(JSON.stringify({ error: { code: "not_found", message: "项目不存在" } }));
+    });
+    await new Promise<void>((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const { port } = server.address() as AddressInfo;
+    try {
+      const client = new ApiClient({ server: `http://127.0.0.1:${port}`, fetch });
+      const err = await captureError(loadProjectOrFail(client, "zzzzzzzzzz"));
+      expect(err.exitCode).toBe(EXIT.DATA);
+      expect(err.hint).toContain(".kanban-hub/config.yaml");
     } finally {
       await new Promise<void>((resolve, reject) => server.close((e) => (e ? reject(e) : resolve())));
     }
@@ -407,5 +447,99 @@ describe("parseNullableOption", () => {
 
   it("非空字符串原样返回", () => {
     expect(parseNullableOption("v1.0")).toBe("v1.0");
+  });
+});
+
+describe("parseNullableDateOption", () => {
+  it("undefined 原样返回 undefined", () => {
+    expect(parseNullableDateOption(undefined)).toBeUndefined();
+  });
+
+  it("空串转成 null", () => {
+    expect(parseNullableDateOption("")).toBeNull();
+  });
+
+  it("合法日期原样返回", () => {
+    expect(parseNullableDateOption("2026-09-25")).toBe("2026-09-25");
+  });
+
+  it("格式不对时抛 CliError(2)", () => {
+    const err = (() => {
+      try {
+        parseNullableDateOption("2026/09/25");
+      } catch (e) {
+        return e as CliError;
+      }
+      throw new Error("应该抛出");
+    })();
+    expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+});
+
+describe("displayEmpty", () => {
+  it("null 显示成（无）", () => {
+    expect(displayEmpty(null)).toBe("（无）");
+  });
+
+  it("undefined 显示成（无）", () => {
+    expect(displayEmpty(undefined)).toBe("（无）");
+  });
+
+  it("空字符串显示成（无）", () => {
+    expect(displayEmpty("")).toBe("（无）");
+  });
+
+  it("非空字符串原样返回", () => {
+    expect(displayEmpty("v1.0")).toBe("v1.0");
+  });
+});
+
+describe("containerRefLabel", () => {
+  const all = [{ id: "aaaa000001" }, { id: "bbbb000002" }];
+
+  it("有编号用编号", () => {
+    expect(containerRefLabel({ id: "aaaa000001", kind: "phase", code: "M1" }, all)).toBe("M1");
+  });
+
+  it("杂项容器固定显示 misc（即便自己有 code）", () => {
+    expect(containerRefLabel({ id: "aaaa000001", kind: "misc", code: "misc" }, all)).toBe("misc");
+    expect(containerRefLabel({ id: "aaaa000001", kind: "misc", code: null }, all)).toBe("misc");
+  });
+
+  it("非杂项容器没有编号时用整个看板范围内的最短唯一 ID 前缀，可以直接拿来引用", () => {
+    const label = containerRefLabel({ id: "aaaa000001", kind: "phase", code: null }, all);
+    expect(label).toBe("aaaa");
+  });
+});
+
+describe("assertAnyOptionGiven", () => {
+  it("全部为 false 时抛 CliError(2)", () => {
+    const err = (() => {
+      try {
+        assertAnyOptionGiven([false, false]);
+      } catch (e) {
+        return e as CliError;
+      }
+      throw new Error("应该抛出");
+    })();
+    expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("至少一个为 true 时不抛", () => {
+    expect(() => assertAnyOptionGiven([false, true])).not.toThrow();
+  });
+});
+
+describe("formatChange", () => {
+  it("拼成“标签 改前 → 改后”", () => {
+    expect(formatChange("状态", "进行中", "复核中")).toBe("状态 进行中 → 复核中");
+  });
+});
+
+describe("withAgentOption", () => {
+  it("给命令加上 --agent <名称> 选项", () => {
+    const cmd = withAgentOption(new Command("x").exitOverride());
+    cmd.parse(["--agent", "claude-code"], { from: "user" });
+    expect((cmd.opts() as { agent?: string }).agent).toBe("claude-code");
   });
 });

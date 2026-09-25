@@ -1,12 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
+import { machineTokenSchema } from "@kanban-hub/core/api";
 
 const TOKEN_PREFIX = "kh_";
 const TOKEN_RANDOM_BYTES = 32;
 
-/** 令牌格式：kh_ 加 32 字节随机数的 base64url 编码（43 个字符） */
-const TOKEN_FORMAT = /^kh_[A-Za-z0-9_-]{43}$/;
-
-/** 生成新的机器令牌明文；永久有效，只在网页上吊销才失效（M2 决定） */
+/** 生成新的机器令牌明文；永久有效，只在网页上吊销才失效 */
 export function generateMachineToken(): string {
   return `${TOKEN_PREFIX}${randomBytes(TOKEN_RANDOM_BYTES).toString("base64url")}`;
 }
@@ -16,7 +14,7 @@ export function hashToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-/** 查表前的格式快速校验，用于拒绝明显不对的输入 */
+/** 查表前的格式快速校验，用于拒绝明显不对的输入；格式定义与 kh 共用（core 的 machineTokenSchema） */
 export function isMachineTokenFormat(value: string): boolean {
-  return TOKEN_FORMAT.test(value);
+  return machineTokenSchema.safeParse(value).success;
 }

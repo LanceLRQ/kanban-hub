@@ -1,4 +1,4 @@
-import { Command } from "commander";
+import { Command, Option } from "commander";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import type { CliContext } from "./context";
@@ -43,16 +43,64 @@ describe("main", () => {
     expect(a.stdout()).toContain("kanban-hub 命令行");
   });
 
-  it("未知选项返回 2，stderr 以 错误： 开头", async () => {
+  it("未知选项返回 2，stderr 是中文翻译", async () => {
     const a = fakeContext();
     expect(await main(["--totally-bogus"], a.ctx)).toBe(EXIT.USAGE);
-    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(a.stderr()).toBe("错误：未知选项 '--totally-bogus'\n");
   });
 
-  it("未知命令返回 2，stderr 以 错误： 开头", async () => {
+  it("未知命令返回 2，stderr 是中文翻译", async () => {
     const a = fakeContext();
     expect(await main(["totally-bogus-command"], a.ctx)).toBe(EXIT.USAGE);
-    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(a.stderr()).toBe("错误：未知命令 'totally-bogus-command'\n");
+  });
+});
+
+describe("commander 内置错误的中文翻译", () => {
+  function buildErrorTestProgram(): Command {
+    return new Command()
+      .name("root")
+      .exitOverride()
+      .argument("<必需参数>", "必需参数")
+      .requiredOption("--code <配对码>", "必需选项")
+      .action(() => {});
+  }
+
+  it("缺少必需的参数：翻译成中文", async () => {
+    const a = fakeContext();
+    expect(await runProgram(buildErrorTestProgram(), ["--code", "x"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr()).toContain("错误：缺少必需的参数 '必需参数'");
+  });
+
+  it("缺少必需的选项：翻译成中文", async () => {
+    const a = fakeContext();
+    expect(await runProgram(buildErrorTestProgram(), ["值"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr()).toContain("错误：缺少必需的选项 '--code <配对码>'");
+  });
+
+  it("选项缺少参数值：翻译成中文", async () => {
+    const a = fakeContext();
+    expect(await runProgram(buildErrorTestProgram(), ["值", "--code"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr()).toContain("错误：选项 '--code <配对码>' 缺少参数值");
+  });
+
+  it("参数太多：翻译成中文", async () => {
+    const a = fakeContext();
+    expect(await runProgram(buildErrorTestProgram(), ["值", "多余的", "--code", "x"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr()).toContain("错误：参数太多");
+    expect(a.stderr()).toContain("预期 1 个，实际收到 2 个：值, 多余的");
+  });
+
+  it("选项冲突：翻译成中文", async () => {
+    const a = fakeContext();
+    const program = new Command()
+      .name("root")
+      .exitOverride()
+      .addOption(new Option("--a", "选项 a").conflicts("b"))
+      .addOption(new Option("--b", "选项 b"))
+      .action(() => {});
+    expect(await runProgram(program, ["--a", "--b"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr()).toContain("不能和");
   });
 });
 

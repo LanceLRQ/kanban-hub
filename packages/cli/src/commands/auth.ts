@@ -8,13 +8,14 @@ import type { CliContext } from "../context";
 import { CliError, EXIT } from "../errors";
 import {
   clearMachineIdentity,
+  normalizeServerOrigin,
   readMachineConfig,
   resolveKhHome,
   writeMachineConfig,
   writeToken,
 } from "../config/home";
 import { ApiClient } from "../http/client";
-import { globalAgentFlag, requireLogin } from "./shared";
+import { globalAgentFlag, requireLogin, withAgentOption } from "./shared";
 
 const PLATFORM_TO_OS: Partial<Record<NodeJS.Platform, MachineOs>> = {
   darwin: "darwin",
@@ -22,18 +23,13 @@ const PLATFORM_TO_OS: Partial<Record<NodeJS.Platform, MachineOs>> = {
   win32: "windows",
 };
 
-/** --server 只接受 http/https，去掉末尾的斜杠；不合法（协议不对或不是合法 URL）时抛用法错误 */
+/**
+ * --server 只接受 http/https 的 origin，去掉末尾的斜杠；不合法（协议不对、不是合法 URL、
+ * 带用户名密码、带路径或查询参数）时抛用法错误。规则与本机配置的 server 字段共用，见
+ * config/home.ts 的 normalizeServerOrigin。
+ */
 export function normalizeServerUrl(raw: string): string {
-  let parsed: URL;
-  try {
-    parsed = new URL(raw);
-  } catch {
-    throw new CliError(EXIT.USAGE, `服务端地址不合法：${raw}`);
-  }
-  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-    throw new CliError(EXIT.USAGE, `服务端地址必须是 http 或 https：${raw}`);
-  }
-  return raw.trim().replace(/\/+$/, "");
+  return normalizeServerOrigin(raw);
 }
 
 /** 把 Node 的 platform 映射成机器 os 枚举（darwin/linux/win32 → darwin/linux/windows）；其他平台抛用法错误 */
@@ -115,17 +111,18 @@ async function runWhoami(ctx: CliContext, agentFlag?: string): Promise<void> {
   ctx.stdout.write(`kh 版本：${KH_VERSION}\n`);
 }
 
-/** login / logout / whoami（规格没写的细节：“kh login / logout / whoami”一节） */
+/** kh login / logout / whoami：登录、登出、查看当前登录状态 */
 export function registerAuth(program: Command, ctx: CliContext): void {
-  program
-    .command("login")
-    .description("登录到 kanban-hub 服务端，保存本机凭据")
-    .option("--server <地址>", "服务端地址（http 或 https），省略时沿用已保存的地址")
-    .requiredOption("--code <配对码>", "从服务端 /setup 页面获取的配对码")
-    .option("--name <名称>", "本机名称，默认取主机名（去掉 .local 后缀）")
-    .action(async (opts: LoginOptions, cmd: Command) => {
-      await runLogin(ctx, opts, globalAgentFlag(cmd));
-    });
+  withAgentOption(
+    program
+      .command("login")
+      .description("登录到 kanban-hub 服务端，保存本机凭据")
+      .option("--server <地址>", "服务端地址（http 或 https），省略时沿用已保存的地址")
+      .requiredOption("--code <配对码>", "从服务端 /setup 页面获取的配对码")
+      .option("--name <名称>", "本机名称，默认取主机名（去掉 .local 后缀）"),
+  ).action(async (opts: LoginOptions, cmd: Command) => {
+    await runLogin(ctx, opts, globalAgentFlag(cmd));
+  });
 
   program
     .command("logout")
@@ -134,10 +131,9 @@ export function registerAuth(program: Command, ctx: CliContext): void {
       await runLogout(ctx);
     });
 
-  program
-    .command("whoami")
-    .description("显示当前登录状态")
-    .action(async (_opts: unknown, cmd: Command) => {
+  withAgentOption(program.command("whoami").description("显示当前登录状态")).action(
+    async (_opts: unknown, cmd: Command) => {
       await runWhoami(ctx, globalAgentFlag(cmd));
-    });
+    },
+  );
 }

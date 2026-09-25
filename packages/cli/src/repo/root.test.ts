@@ -4,7 +4,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { EXIT } from "../errors";
 import { writeRepoConfig, type RepoConfig } from "./config";
 import { cleanupDir, fakeContext, gitFixture, makeTempDir } from "./test-helpers";
-import { findRegisteredRepo, inspectRepo, toRepoPath } from "./root";
+import { collidesWithKhHome, findRegisteredRepo, inspectRepo, toRepoPath } from "./root";
 
 function sampleConfig(projectId: string): RepoConfig {
   return {
@@ -153,6 +153,50 @@ describe("findRegisteredRepo", () => {
     const ctx = fakeContext({ homeDir: home });
     const found = await findRegisteredRepo(cwd, ctx);
     expect(found).toBeNull();
+  });
+
+  it("默认 KH_HOME 与非 git 目录的 .kanban-hub 撞在一起时跳过它，不会把本机配置当成仓库配置报错", async () => {
+    const home = await tempDir();
+    await fs.mkdir(path.join(home, ".kanban-hub"), { recursive: true });
+    // 本机配置的形状（不是仓库配置：没有 projectId/sync）；不跳过的话 readRepoConfig 会因为
+    // schema 不符而抛错，而不是像仓库配置缺失那样安静地返回 null
+    await fs.writeFile(
+      path.join(home, ".kanban-hub", "config.yaml"),
+      "server: http://example.test\nmachineId: m000000001\nmachineName: my-mac\n",
+      "utf8",
+    );
+    const ctx = fakeContext({ homeDir: home });
+    await expect(findRegisteredRepo(home, ctx)).resolves.toBeNull();
+  });
+
+  it("git 仓库的顶层目录恰好是 KH_HOME 所在目录时跳过它", async () => {
+    const home = await tempDir();
+    gitFixture(["init", "-q"], home);
+    gitFixture(["commit", "-q", "--allow-empty", "-m", "init"], home);
+    await fs.mkdir(path.join(home, ".kanban-hub"), { recursive: true });
+    await fs.writeFile(path.join(home, ".kanban-hub", "config.yaml"), "server: http://example.test\n", "utf8");
+    const ctx = fakeContext({ homeDir: home });
+    await expect(findRegisteredRepo(home, ctx)).resolves.toBeNull();
+  });
+});
+
+describe("collidesWithKhHome", () => {
+  it("候选目录的 .kanban-hub 就是 KH_HOME 时返回 true", () => {
+    const ctx = fakeContext({ homeDir: "/home/alice", env: {} });
+    expect(collidesWithKhHome("/home/alice", ctx)).toBe(true);
+  });
+
+  it("KH_HOME 环境变量覆盖时按覆盖后的值判断", () => {
+    // KH_HOME 覆盖时指的是目录本身（不是它的父目录），候选目录要恰好在这个目录下再拼一层
+    // .kanban-hub 才会撞上；用一个以 .kanban-hub 结尾的覆盖值来构造这种情况
+    const ctx = fakeContext({ homeDir: "/home/alice", env: { KH_HOME: "/custom/.kanban-hub" } });
+    expect(collidesWithKhHome("/custom", ctx)).toBe(true);
+    expect(collidesWithKhHome("/home/alice", ctx)).toBe(false);
+  });
+
+  it("不相关的目录返回 false", () => {
+    const ctx = fakeContext({ homeDir: "/home/alice", env: {} });
+    expect(collidesWithKhHome("/repo", ctx)).toBe(false);
   });
 });
 

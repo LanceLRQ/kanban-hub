@@ -45,4 +45,50 @@ describe("kh 打包产物", () => {
     expect(failed?.code).toBe(2);
     expect(failed?.stderr?.startsWith("错误：")).toBe(true);
   });
+
+  it("kh -v 返回 0 并打印版本号（不会被子命令的同名选项截走）", async () => {
+    const { stdout } = await execFileAsync(process.execPath, [outfile, "-v"]);
+    expect(stdout.trim()).toBe(KH_VERSION);
+  });
+
+  it("kh container add … --version 不会被根命令的 -v/--version 截走：未登录、未注册的目录里退出码不是 0，stdout 不是版本号", async () => {
+    const cwd = await fs.mkdtemp(path.join(os.tmpdir(), "kh-bundle-cwd-"));
+    const khHome = await fs.mkdtemp(path.join(os.tmpdir(), "kh-bundle-home-"));
+    try {
+      let failed: { code?: number | null; stdout?: string } | undefined;
+      try {
+        await execFileAsync(process.execPath, [outfile, "container", "add", "phase", "X", "--version", "v1"], {
+          cwd,
+          env: { ...process.env, KH_HOME: khHome },
+        });
+      } catch (err) {
+        failed = err as { code?: number | null; stdout?: string };
+      }
+      expect(failed).toBeDefined();
+      expect(failed?.code).not.toBe(0);
+      expect((failed?.stdout ?? "").trim()).not.toBe(KH_VERSION);
+    } finally {
+      await fs.rm(cwd, { recursive: true, force: true });
+      await fs.rm(khHome, { recursive: true, force: true });
+    }
+  });
+
+  it("kh login --server 带账号密码：退出码 2，stderr 不回显密码", async () => {
+    const khHome = await fs.mkdtemp(path.join(os.tmpdir(), "kh-bundle-home-"));
+    try {
+      let failed: { code?: number | null; stderr?: string } | undefined;
+      try {
+        await execFileAsync(process.execPath, [outfile, "login", "--server", "http://u:p@127.0.0.1:1", "--code", "x"], {
+          env: { ...process.env, KH_HOME: khHome },
+        });
+      } catch (err) {
+        failed = err as { code?: number | null; stderr?: string };
+      }
+      expect(failed).toBeDefined();
+      expect(failed?.code).toBe(2);
+      expect(failed?.stderr ?? "").not.toContain("p@");
+    } finally {
+      await fs.rm(khHome, { recursive: true, force: true });
+    }
+  });
 });

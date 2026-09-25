@@ -1,4 +1,4 @@
-import { HEADER_KH_AGENT, HEADER_KH_VERSION } from "@kanban-hub/core/api";
+import { HEADER_KH_AGENT, HEADER_KH_VERSION, agentNameSchema } from "@kanban-hub/core/api";
 import type { Actor } from "@kanban-hub/core/schema";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { authenticate, toActor, type Principal } from "../auth/authenticate";
@@ -10,8 +10,6 @@ import { checkClientVersion, isSameOrigin } from "./http";
 
 /** 请求里是否带了 Authorization: Bearer（大小写不敏感），不关心令牌本身是否合法 */
 const BEARER_SCHEME_PATTERN = /^Bearer(\s|$)/i;
-/** X-KH-Agent 允许的最大长度，与 core 的 actorSchema 一致 */
-const MAX_AGENT_LENGTH = 50;
 
 export type ApiAuthMode = "none" | "session" | "machine" | "any";
 
@@ -137,14 +135,19 @@ async function resolvePrincipal(req: Request, auth: ApiAuthMode, services: Servi
   return principal;
 }
 
-/** 只对令牌鉴权的请求生效：去掉首尾空白后为空当作没有，超过 50 个字符报 invalid */
+/**
+ * 只对令牌鉴权的请求生效：去掉首尾空白后为空当作没有；否则必须通过 agentNameSchema
+ * （1-50 个可打印 ASCII 字符，不含空格），与 kh 的 resolveAgent 共用同一份规则，
+ * 不合法（含超长、含空格、非 ASCII 字符）一律报 invalid。
+ */
 function readAgent(req: Request): string | null {
   const raw = req.headers.get(HEADER_KH_AGENT);
   if (raw === null) return null;
   const trimmed = raw.trim();
   if (trimmed === "") return null;
-  if (trimmed.length > MAX_AGENT_LENGTH) throw new ApiError("invalid", `X-KH-Agent 不能超过 ${MAX_AGENT_LENGTH} 个字符`);
-  return trimmed;
+  const parsed = agentNameSchema.safeParse(trimmed);
+  if (!parsed.success) throw new ApiError("invalid", "X-KH-Agent 不合法：必须是 1-50 个可打印 ASCII 字符，不能包含空格");
+  return parsed.data;
 }
 
 function defaultLog(message: string): void {

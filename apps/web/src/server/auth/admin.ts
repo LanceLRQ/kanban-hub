@@ -7,7 +7,7 @@ export type AdminSyncResult = "created" | "updated" | "unchanged";
  * 按 KH_ADMIN_PASSWORD 同步管理员账号：没有管理员就新建一个（名字为 admin）；
  * 已有管理员但密码校验不通过，就用一次 updateUser 同时写入新哈希和 sessionVersion + 1，
  * 让旧的网页会话失效（已配对机器的令牌永久有效，不受影响）；密码一致时什么都不做。
- * params 是 scrypt 成本参数，供测试和任务 6 的测试夹具传低成本值，省略时用 hashPassword 的默认成本。
+ * params 是 scrypt 成本参数，供测试传低成本值加速用例，省略时用 hashPassword 的默认成本。
  */
 export async function syncAdminPassword(
   auth: AuthRepo,

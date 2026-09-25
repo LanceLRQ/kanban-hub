@@ -7,7 +7,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { readRepoConfig } from "../../../../packages/cli/src/repo/config";
+import { readRepoConfig, writeRepoConfig } from "../../../../packages/cli/src/repo/config";
 import { startTestServer, type TestServer } from "../server/api/test-server";
 import { cleanupAll, makeTempKhHome, makeTempRepo, runKh, type MakeTempRepoOptions, type TempDir, type TempRepo } from "./harness";
 
@@ -234,6 +234,20 @@ describe("kh register", () => {
       }
       expect(result.stdout).toContain(repo.dir);
     });
+
+    it("--name 超过 100 个字符时，--dry-run 就返回 2：名称校验排在打印计划之前，不建项目也不写文件", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      const before = server.api.store.listProjects().length;
+
+      const result = await runKh(["register", "--new", "--dry-run", "--name", "a".repeat(101)], {
+        cwd: repo.dir,
+        khHome: home.dir,
+      });
+      expect(result.code).toBe(2);
+      expect(server.api.store.listProjects().length).toBe(before);
+      await expect(fs.stat(path.join(repo.dir, ".kanban-hub"))).rejects.toThrow();
+    });
   });
 
   describe("确认", () => {
@@ -327,6 +341,11 @@ describe("kh register", () => {
       expect(spy).toHaveBeenCalledTimes(1);
       await expect(fs.stat(path.join(repo.dir, ".kanban-hub"))).rejects.toThrow();
       expect(server.api.store.listProjects()).toHaveLength(1);
+      // 提示重新执行时改用 --bind 绑定刚建好的项目，避免重复新建
+      const project = server.api.store.listProjects()[0]!;
+      expect(first.stderr).toContain(project.id);
+      expect(first.stderr).toContain("--bind");
+      expect(first.stderr).toContain("避免重复新建");
 
       const second = await runKh(["register", "--yes"], { cwd: repo.dir, khHome: home.dir });
       expect(second.code).toBe(0);
@@ -335,6 +354,259 @@ describe("kh register", () => {
 
       const config = await readRepoConfig(repo.dir);
       expect(config?.projectId).toBe(server.api.store.listProjects()[0]!.id);
+    });
+  });
+
+  describe("默认 KH_HOME 撞仓库路径", () => {
+    it("主目录下的非 git 子目录能正常注册", async () => {
+      const fakeHome = await makeRealTempDir("kh-e2e-fakehome-");
+      cleanupItems.push({ dir: fakeHome, cleanup: () => fs.rm(fakeHome, { recursive: true, force: true }) });
+      const khHomeDir = path.join(fakeHome, ".kanban-hub");
+      const subDir = path.join(fakeHome, "notes", "sub");
+      await fs.mkdir(subDir, { recursive: true });
+
+      const { code } = server.issuePairingCode();
+      const login = await runKh(["login", "--server", server.url, "--code", code], {
+        cwd: subDir,
+        khHome: khHomeDir,
+        homeDir: fakeHome,
+      });
+      expect(login.code).toBe(0);
+
+      const result = await runKh(["register", "--new", "--yes"], {
+        cwd: subDir,
+        khHome: khHomeDir,
+        homeDir: fakeHome,
+      });
+      expect(result.code).toBe(0);
+      expect(server.api.store.listProjects()).toHaveLength(1);
+    });
+
+    it("在主目录本身执行 register，返回 2，本机配置没有被改动", async () => {
+      const fakeHome = await makeRealTempDir("kh-e2e-fakehome-");
+      cleanupItems.push({ dir: fakeHome, cleanup: () => fs.rm(fakeHome, { recursive: true, force: true }) });
+      const khHomeDir = path.join(fakeHome, ".kanban-hub");
+
+      const { code } = server.issuePairingCode();
+      const login = await runKh(["login", "--server", server.url, "--code", code], {
+        cwd: fakeHome,
+        khHome: khHomeDir,
+        homeDir: fakeHome,
+      });
+      expect(login.code).toBe(0);
+      const before = await fs.readFile(path.join(khHomeDir, "config.yaml"), "utf8");
+
+      const result = await runKh(["register", "--new", "--yes"], {
+        cwd: fakeHome,
+        khHome: khHomeDir,
+        homeDir: fakeHome,
+      });
+      expect(result.code).toBe(2);
+      expect(server.api.store.listProjects()).toHaveLength(0);
+
+      const after = await fs.readFile(path.join(khHomeDir, "config.yaml"), "utf8");
+      expect(after).toBe(before);
+    });
+  });
+
+  describe("没有提交的 git 仓库", () => {
+    it("能用 --new 注册，指纹准确显示为“还没有提交”而不是“不是 git 仓库”", async () => {
+      const repo = await tempRepo({ commits: 0 });
+      const home = await loginHome();
+
+      const dryRun = await runKh(["register", "--new", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+      expect(dryRun.code).toBe(0);
+      expect(dryRun.stdout).toContain("无（仓库还没有提交）");
+      expect(dryRun.stdout).not.toContain("不是 git 仓库");
+
+      const result = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      const config = await readRepoConfig(repo.dir);
+      const project = server.api.store.getProject(config!.projectId);
+      expect(project?.fingerprint).toBeNull();
+    });
+  });
+
+  describe("链接工作树", () => {
+    it("主工作树未注册：在链接工作树里注册，配置写在工作树根，exclude 写进主仓库，两个工作树 git 状态都干净", async () => {
+      const mainRepo = await tempRepo();
+      const linkedDir = path.join(mainRepo.dir, "..", `${path.basename(mainRepo.dir)}-linked`);
+      execFileSync("git", ["worktree", "add", linkedDir, "-b", "kh-e2e-linked", "-q"], {
+        cwd: mainRepo.dir,
+        encoding: "utf8",
+      });
+      const linkedRealDir = await fs.realpath(linkedDir);
+      const home = await loginHome();
+
+      // worktree 的删除放在这个用例自己的 finally 里同步做完，不放进 cleanupItems：
+      // afterEach 的 cleanupAll 是并行执行的，如果和 mainRepo 自己的目录删除撞在一起，
+      // `git worktree remove` 需要读取主仓库 .git 下的 worktree 元数据，可能因为主仓库
+      // 已经被删掉一半而失败。
+      try {
+        const result = await runKh(["register", "--new", "--yes"], { cwd: linkedRealDir, khHome: home.dir });
+        expect(result.code).toBe(0);
+
+        await expect(fs.stat(path.join(linkedRealDir, ".kanban-hub", "config.yaml"))).resolves.toBeDefined();
+        const exclude = await fs.readFile(path.join(mainRepo.dir, ".git", "info", "exclude"), "utf8");
+        expect(exclude).toContain("/.kanban-hub/");
+
+        expect(gitStatusPorcelain(mainRepo.dir)).toBe("");
+        expect(gitStatusPorcelain(linkedRealDir)).toBe("");
+      } finally {
+        try {
+          execFileSync("git", ["worktree", "remove", "--force", linkedRealDir], { cwd: mainRepo.dir });
+        } catch {
+          // 忽略：清理失败不影响测试结果，临时目录本身还会被上层的 tempRepo 一起删掉
+        }
+      }
+    });
+
+    it("主工作树已注册：在链接工作树里执行 register --yes 走“已有配置”分支，不会把本机位置改成工作树路径", async () => {
+      const mainRepo = await tempRepo();
+      const home = await loginHome();
+      const first = await runKh(["register", "--new", "--yes"], { cwd: mainRepo.dir, khHome: home.dir });
+      expect(first.code).toBe(0);
+      const project = server.api.store.listProjects()[0]!;
+      expect(project.locations).toHaveLength(1);
+      expect(project.locations[0]!.path).toBe(mainRepo.dir);
+
+      const linkedDir = path.join(mainRepo.dir, "..", `${path.basename(mainRepo.dir)}-linked2`);
+      execFileSync("git", ["worktree", "add", linkedDir, "-b", "kh-e2e-linked2", "-q"], {
+        cwd: mainRepo.dir,
+        encoding: "utf8",
+      });
+      const linkedRealDir = await fs.realpath(linkedDir);
+
+      try {
+        const result = await runKh(["register", "--yes"], { cwd: linkedRealDir, khHome: home.dir });
+        expect(result.code).toBe(0);
+        expect(result.stdout).not.toContain("补登记");
+
+        // 服务端本机位置不变：还是主工作树的路径，没有被链接工作树的路径覆盖
+        const updated = server.api.store.getProject(project.id)!;
+        expect(updated.locations).toHaveLength(1);
+        expect(updated.locations[0]!.path).toBe(mainRepo.dir);
+
+        // 工作树里不写出 .kanban-hub/
+        await expect(fs.stat(path.join(linkedRealDir, ".kanban-hub"))).rejects.toThrow();
+
+        expect(gitStatusPorcelain(mainRepo.dir)).toBe("");
+        expect(gitStatusPorcelain(linkedRealDir)).toBe("");
+      } finally {
+        try {
+          execFileSync("git", ["worktree", "remove", "--force", linkedRealDir], { cwd: mainRepo.dir });
+        } catch {
+          // 忽略：清理失败不影响测试结果
+        }
+      }
+    });
+  });
+
+  describe("非 git 目录的子目录不会被父目录的配置吞掉", () => {
+    it("已注册的非 git 目录的子目录里执行 --new --dry-run：按全新注册处理", async () => {
+      const parentRepo = await tempRepo({ git: false });
+      const home1 = await loginHome();
+      const first = await runKh(["register", "--new", "--yes"], { cwd: parentRepo.dir, khHome: home1.dir });
+      expect(first.code).toBe(0);
+
+      const subDir = path.join(parentRepo.dir, "sub");
+      await fs.mkdir(subDir, { recursive: true });
+      const home2 = await loginHome();
+      const result = await runKh(["register", "--new", "--dry-run"], { cwd: subDir, khHome: home2.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("动作：新建项目");
+      expect(result.stdout).not.toContain("补登记");
+    });
+  });
+
+  describe("已有配置但项目在服务端不存在", () => {
+    it("退出码 5，提示检查 .kanban-hub/config.yaml", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      // 模拟“配置文件指向了一个服务端上不存在的项目”（项目已被删除，或者配置来自另一个服务端）
+      await writeRepoConfig(repo.dir, {
+        projectId: "zzzzzzzzzz",
+        sync: { include: [], exclude: [], maxFileSize: "5MB" },
+        pull: { auto: true },
+      });
+
+      const result = await runKh(["register", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(5);
+      expect(result.stderr).toContain(".kanban-hub/config.yaml");
+    });
+  });
+
+  describe("已有配置时显式参数冲突", () => {
+    it("给了 --new，返回 2，提示先删除配置文件", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      const first = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(first.code).toBe(0);
+      const projectId = server.api.store.listProjects()[0]!.id;
+
+      const result = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(2);
+      expect(result.stderr).toContain(projectId);
+      expect(server.api.store.listProjects()).toHaveLength(1);
+    });
+
+    it("给了不一致的 --bind，返回 2", async () => {
+      const repoA = await tempRepo();
+      const home1 = await loginHome();
+      await runKh(["register", "--new", "--yes"], { cwd: repoA.dir, khHome: home1.dir });
+
+      const repoB = await tempRepo();
+      const home2 = await loginHome();
+      const secondProject = await runKh(["register", "--new", "--yes"], { cwd: repoB.dir, khHome: home2.dir });
+      expect(secondProject.code).toBe(0);
+
+      const result = await runKh(["register", "--bind", server.api.store.listProjects()[0]!.id, "--yes"], {
+        cwd: repoB.dir,
+        khHome: home2.dir,
+      });
+      expect(result.code).toBe(2);
+    });
+
+    it("--include / --name 被忽略时，计划里写明不生效", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+
+      // 制造“本机位置需要补登记”的场景：换一台机器登录，位置和已登记的不一样
+      const home2 = await loginHome();
+      const result = await runKh(
+        ["register", "--include", "docs/**", "--name", "改个名字", "--dry-run"],
+        { cwd: repo.dir, khHome: home2.dir },
+      );
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("--include 不生效");
+      expect(result.stdout).toContain("--name 不生效");
+    });
+  });
+
+  describe("补登记分支", () => {
+    it("--dry-run 不写入任何内容，也不发写请求", async () => {
+      const repo = await tempRepo();
+      const home1 = await loginHome();
+      await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home1.dir });
+      const project = server.api.store.listProjects()[0]!;
+
+      const home2 = await loginHome();
+      const spy = vi.spyOn(server.api.store, "setLocation");
+      const result = await runKh(["register", "--dry-run"], { cwd: repo.dir, khHome: home2.dir });
+      expect(result.code).toBe(0);
+      expect(spy).not.toHaveBeenCalled();
+      expect(server.api.store.getProject(project.id)?.locations).toHaveLength(1);
+    });
+
+    it("非交互环境不带 --yes，返回 2", async () => {
+      const repo = await tempRepo();
+      const home1 = await loginHome();
+      await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home1.dir });
+
+      const home2 = await loginHome();
+      const result = await runKh(["register"], { cwd: repo.dir, khHome: home2.dir });
+      expect(result.code).toBe(2);
     });
   });
 });

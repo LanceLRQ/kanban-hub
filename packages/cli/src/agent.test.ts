@@ -69,4 +69,20 @@ describe("resolveAgent", () => {
     const ok = "a".repeat(50);
     expect(resolveAgent(ok, {})).toBe(ok);
   });
+
+  it("--agent 为空字符串时抛用法错误", () => {
+    expect(() => resolveAgent("", {})).toThrowError(expect.objectContaining({ exitCode: EXIT.USAGE }));
+  });
+
+  it("--agent 含空格时抛用法错误", () => {
+    expect(() => resolveAgent("claude code", {})).toThrowError(expect.objectContaining({ exitCode: EXIT.USAGE }));
+  });
+
+  it("--agent 是中文时抛用法错误", () => {
+    expect(() => resolveAgent("验收脚本", {})).toThrowError(expect.objectContaining({ exitCode: EXIT.USAGE }));
+  });
+
+  it("--agent 含控制字符时抛用法错误", () => {
+    expect(() => resolveAgent("a\nb", {})).toThrowError(expect.objectContaining({ exitCode: EXIT.USAGE }));
+  });
 });

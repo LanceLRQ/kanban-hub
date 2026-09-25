@@ -6,6 +6,41 @@ import { buildProgram } from "./program";
 const COMMANDER_ERROR_PREFIX = "error: ";
 
 /**
+ * commander 内置的几类常见错误固定用英文拼好整句消息，出错时不带错误码地传给 outputError，
+ * 只能按消息的既定格式匹配着翻译（见 node_modules/commander/lib/command.js 的
+ * missingArgument / optionMissingArgument / missingMandatoryOptionValue / unknownOption /
+ * unknownCommand / _excessArguments / _conflictingOption）。这里只翻译这几种已知格式，
+ * 匹配不上的（包括各选项自定义校验函数抛出的 InvalidArgumentError）原样保留英文。
+ */
+const COMMANDER_MESSAGE_TRANSLATIONS: readonly {
+  pattern: RegExp;
+  translate: (m: RegExpMatchArray) => string;
+}[] = [
+  { pattern: /^missing required argument '(.+)'$/, translate: (m) => `缺少必需的参数 '${m[1]}'` },
+  { pattern: /^option '(.+)' argument missing$/, translate: (m) => `选项 '${m[1]}' 缺少参数值` },
+  { pattern: /^required option '(.+)' not specified$/, translate: (m) => `缺少必需的选项 '${m[1]}'` },
+  { pattern: /^unknown option '([^']+)'([\s\S]*)$/, translate: (m) => `未知选项 '${m[1]}'${m[2]}` },
+  { pattern: /^unknown command '([^']+)'([\s\S]*)$/, translate: (m) => `未知命令 '${m[1]}'${m[2]}` },
+  {
+    pattern: /^too many arguments(?: for '(.+?)')?\. Expected (\d+) arguments? but got (\d+): ([\s\S]*)\.$/,
+    translate: (m) => `参数太多${m[1] ? `（命令 '${m[1]}'）` : ""}：预期 ${m[2]} 个，实际收到 ${m[3]} 个：${m[4]}`,
+  },
+  {
+    pattern: /^((?:option|environment variable) '.+?') cannot be used with ((?:option|environment variable) '.+?')$/,
+    translate: (m) => `${m[1]} 不能和 ${m[2]} 同时使用`,
+  },
+];
+
+/** 按已知格式翻译一条 commander 错误消息（不含末尾换行）；匹配不上时原样返回 */
+function translateCommanderMessage(message: string): string {
+  for (const { pattern, translate } of COMMANDER_MESSAGE_TRANSLATIONS) {
+    const match = pattern.exec(message);
+    if (match) return translate(match);
+  }
+  return message;
+}
+
+/**
  * 让 commander 把输出都写到 ctx，并把它自己的“error: ”前缀换成约定的“错误：”。
  *
  * commander 15 的 `.command()` 在创建子命令的那一刻，用 `copyInheritedSettings()`
@@ -25,8 +60,16 @@ function attachOutput(command: Command, ctx: CliContext): void {
   command.exitOverride().configureOutput({
     writeOut: (s) => ctx.stdout.write(s),
     writeErr: (s) => ctx.stderr.write(s),
-    outputError: (str, write) =>
-      write(str.startsWith(COMMANDER_ERROR_PREFIX) ? `错误：${str.slice(COMMANDER_ERROR_PREFIX.length)}` : str),
+    outputError: (str, write) => {
+      if (!str.startsWith(COMMANDER_ERROR_PREFIX)) {
+        write(str);
+        return;
+      }
+      const rest = str.slice(COMMANDER_ERROR_PREFIX.length);
+      const hasTrailingNewline = rest.endsWith("\n");
+      const body = hasTrailingNewline ? rest.slice(0, -1) : rest;
+      write(`错误：${translateCommanderMessage(body)}${hasTrailingNewline ? "\n" : ""}`);
+    },
   });
   for (const sub of command.commands) attachOutput(sub, ctx);
 }

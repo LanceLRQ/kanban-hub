@@ -173,13 +173,14 @@ describe("ApiClient 错误映射", () => {
     expect(err.exitCode).toBe(EXIT.UNREACHABLE);
   });
 
-  it("连接被拒绝：退出码 4", async () => {
+  it("连接被拒绝：退出码 4，错误信息附上 err.cause.code", async () => {
     // 先监听拿一个空闲端口再关掉，确保这个端口上没有服务在监听
     const { url, close } = await serve(() => {});
     await close();
     activeServers = activeServers.filter((s) => s.url !== url);
     const err = await captureError(makeClient(url).get("/x", okSchema));
     expect(err.exitCode).toBe(EXIT.UNREACHABLE);
+    expect(err.message).toContain("ECONNREFUSED");
   });
 
   it("超时：退出码 4", async () => {
@@ -191,6 +192,37 @@ describe("ApiClient 错误映射", () => {
     });
     const err = await captureError(makeClient(url, { timeoutMs: 30 }).get("/x", okSchema));
     expect(err.exitCode).toBe(EXIT.UNREACHABLE);
+  });
+
+  it("发完响应头就不再发数据：超时覆盖到读响应体，退出码 4", async () => {
+    const { url } = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "application/json" });
+      res.write("{"); // 发了响应头和部分正文，之后再也不写、也不 end()
+    });
+    const err = await captureError(makeClient(url, { timeoutMs: 50 }).get("/x", okSchema));
+    expect(err.exitCode).toBe(EXIT.UNREACHABLE);
+  });
+
+  it("重定向（带 Location）：退出码 2，提示改用新地址重新登录", async () => {
+    const { url } = await serve((req, res) => {
+      res.writeHead(302, { location: "https://new.example.test/api" });
+      res.end();
+    });
+    const err = await captureError(makeClient(url).get("/x", okSchema));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).toContain("重定向");
+    expect(err.hint).toContain("https://new.example.test");
+    expect(err.hint).toContain("kh login");
+  });
+
+  it("重定向（没有 Location）：退出码 2，提示检查服务端地址", async () => {
+    const { url } = await serve((req, res) => {
+      res.writeHead(302);
+      res.end();
+    });
+    const err = await captureError(makeClient(url).get("/x", okSchema));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.hint).toContain("检查服务端地址");
   });
 
   it("成功响应的格式对不上 schema：退出码 1", async () => {
@@ -253,5 +285,22 @@ describe("ApiClient 请求头", () => {
     const err = await captureError(makeClient(url, { token: "super-secret-token" }).get("/x", okSchema));
     expect(err.message).not.toContain("super-secret-token");
     expect(err.hint ?? "").not.toContain("super-secret-token");
+  });
+
+  it("agent 含控制字符时在发请求前拒绝，退出码 1，只报头名不报值", async () => {
+    const stub = await serve(jsonHandler(200, { ok: true }));
+    const err = await captureError(makeClient(stub.url, { agent: "bad\nagent-with-secret" }).get("/x", okSchema));
+    expect(err.exitCode).toBe(EXIT.UNEXPECTED);
+    expect(err.message).toContain(HEADER_KH_AGENT);
+    expect(err.message).not.toContain("bad\nagent-with-secret");
+    expect(err.message).not.toContain("secret");
+  });
+
+  it("令牌含非 ASCII 字符时在发请求前拒绝，退出码 1，错误信息不含令牌本身", async () => {
+    const stub = await serve(jsonHandler(200, { ok: true }));
+    const err = await captureError(makeClient(stub.url, { token: "kh_café-token" }).get("/x", okSchema));
+    expect(err.exitCode).toBe(EXIT.UNEXPECTED);
+    expect(err.message).toContain("authorization");
+    expect(err.message).not.toContain("café");
   });
 });

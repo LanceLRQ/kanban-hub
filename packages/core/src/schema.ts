@@ -268,7 +268,7 @@ export const boardSchema = z
   });
 export type Board = z.infer<typeof boardSchema>;
 
-// ---------- 事件（规格 5.2；id 是计划新增的分页游标） ----------
+// ---------- 事件（规格 5.2；id 用作时间线的分页游标） ----------
 
 export const actorSchema = z
   .object({

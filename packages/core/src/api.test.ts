@@ -6,10 +6,12 @@ import {
   API_ERROR_STATUS,
   HEADER_KH_AGENT,
   HEADER_KH_VERSION,
+  agentNameSchema,
   apiErrorSchema,
   decodeEventCursor,
   encodeEventCursor,
   loginInput,
+  machineTokenSchema,
   meResponse,
   pairInput,
   pairResponse,
@@ -21,6 +23,9 @@ import {
   rateLimitDetailsSchema,
   withExpectedVersion,
 } from "./api";
+
+/** 测试用的合法机器令牌：kh_ 加 43 位 [A-Za-z0-9_-] */
+const FAKE_TOKEN = `kh_${"a".repeat(43)}`;
 import { makeBoard, makeProject } from "./test-fixtures";
 
 function thrown(fn: () => unknown): unknown {
@@ -178,8 +183,57 @@ describe("rateLimitDetailsSchema", () => {
 
 describe("pairResponse", () => {
   it("能解析配对成功的响应体", () => {
-    const body = { token: "kh_abc123", machineId: "m000000001" };
+    const body = { token: FAKE_TOKEN, machineId: "m000000001" };
     expect(pairResponse.parse(body)).toEqual(body);
+  });
+
+  it("令牌格式不对时校验失败", () => {
+    expect(pairResponse.safeParse({ token: "not-a-token", machineId: "m000000001" }).success).toBe(false);
+  });
+});
+
+describe("agentNameSchema", () => {
+  it("接受 1-50 个可打印 ASCII 字符", () => {
+    expect(agentNameSchema.safeParse("claude-code").success).toBe(true);
+    expect(agentNameSchema.safeParse("a".repeat(50)).success).toBe(true);
+  });
+
+  it("拒绝空字符串", () => {
+    expect(agentNameSchema.safeParse("").success).toBe(false);
+  });
+
+  it("拒绝包含空格的值", () => {
+    expect(agentNameSchema.safeParse("claude code").success).toBe(false);
+  });
+
+  it("拒绝中文", () => {
+    expect(agentNameSchema.safeParse("验收脚本").success).toBe(false);
+  });
+
+  it("拒绝控制字符", () => {
+    expect(agentNameSchema.safeParse("a\nb").success).toBe(false);
+    expect(agentNameSchema.safeParse("a\tb").success).toBe(false);
+  });
+
+  it("拒绝超过 50 个字符", () => {
+    expect(agentNameSchema.safeParse("a".repeat(51)).success).toBe(false);
+  });
+});
+
+describe("machineTokenSchema", () => {
+  it("接受 kh_ 加 43 位 base64url 字符", () => {
+    expect(machineTokenSchema.safeParse(FAKE_TOKEN).success).toBe(true);
+  });
+
+  it("拒绝缺少前缀或长度不对的值", () => {
+    expect(machineTokenSchema.safeParse("abc").success).toBe(false);
+    expect(machineTokenSchema.safeParse(`kh_${"a".repeat(42)}`).success).toBe(false);
+    expect(machineTokenSchema.safeParse(`kh_${"a".repeat(44)}`).success).toBe(false);
+  });
+
+  it("拒绝含非法字符（例如换行、空格）", () => {
+    expect(machineTokenSchema.safeParse(`kh_${"a".repeat(42)}\n`).success).toBe(false);
+    expect(machineTokenSchema.safeParse(`kh_ ${"a".repeat(42)}`).success).toBe(false);
   });
 });
 

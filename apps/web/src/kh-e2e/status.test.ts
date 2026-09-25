@@ -1,16 +1,15 @@
 /**
  * kh status 的端到端测试：进程内测试服务端 + 临时仓库/KH_HOME 驱动 cli 的 main()。
- * register 是任务 6 的范围，这里直接用 store 建项目、登记位置，再用 writeRepoConfig
- * 写出仓库配置（控制者裁决：三个文件各写一份，波次结束后再决定是否收拢，见 wave4-common.md）。
+ * register 命令自己的行为在 register.test.ts 单独测试，这里用 harness 的
+ * loginFixture / registerProjectFixture 直接搭好前置条件。
  */
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@kanban-hub/core/schema";
-import { readMachineConfig } from "../../../../packages/cli/src/config/home";
 import { writeRepoConfig } from "../../../../packages/cli/src/repo/config";
 import { startTestServer, type TestServer } from "../server/api/test-server";
-import { cleanupAll, makeTempKhHome, makeTempRepo, runKh, type TempDir, type TempRepo } from "./harness";
+import { cleanupAll, loginFixture, makeTempKhHome, makeTempRepo, registerProjectFixture, runKh, type TempDir, type TempRepo } from "./harness";
 
 describe("kh status", () => {
   let server: TestServer;
@@ -34,29 +33,20 @@ describe("kh status", () => {
     return { userId: admin.id, machineId: null, via: "web", agent: null };
   }
 
-  /** 登录 + 建项目 + 登记本机位置 + 写仓库配置：status 的公共前置条件 */
+  /** 登录 + 建项目 + 登记本机位置 + 写仓库配置（含建议的同步范围）：status 的公共前置条件 */
   async function registerProject(): Promise<{ projectId: string; projectName: string }> {
-    const { code } = server.issuePairingCode();
-    const loginResult = await runKh(["login", "--server", server.url, "--code", code, "--name", "测试机"], {
-      cwd: repo.dir,
-      khHome: home.dir,
+    await loginFixture(server, repo, home);
+    const { projectId } = await registerProjectFixture(server, repo, home, {
+      name: "示例项目",
+      focus: "打磨发布前的细节",
     });
-    if (loginResult.code !== 0) throw new Error(`测试前置条件失败：登录失败 ${loginResult.stderr}`);
-    const cfg = await readMachineConfig(home.dir);
-    const machineId = cfg?.machineId;
-    if (machineId === undefined) throw new Error("测试前置条件失败：登录后读不到 machineId");
-
-    const actor = adminActor();
-    const { project } = await server.api.store.createProject({ name: "示例项目", focus: "打磨发布前的细节" }, actor);
-    await server.api.store.setLocation(project.id, machineId, { path: repo.dir }, actor);
-
     await writeRepoConfig(repo.dir, {
-      projectId: project.id,
+      projectId,
       sync: { include: ["docs/**"], exclude: [], maxFileSize: "5MB" },
       pull: { auto: true },
     });
-
-    return { projectId: project.id, projectName: project.name };
+    const projectName = server.api.store.getProject(projectId)?.name ?? "示例项目";
+    return { projectId, projectName };
   }
 
   it("注册后执行 status，退出码 0，输出里有项目名", async () => {

@@ -76,6 +76,11 @@ describe("buildContainerPatch", () => {
     expect(err.exitCode).toBe(EXIT.USAGE);
   });
 
+  it("--status suspended --reason \"\" 时抛 CliError(2)，不发请求", () => {
+    const err = captureError(() => buildContainerPatch({ status: "suspended", reason: "" }));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+
   it("--status suspended 给了 --reason 时正常整理", () => {
     const patch = buildContainerPatch({ status: "suspended", reason: "等待评审" });
     expect(patch).toEqual({ manualStatus: "suspended", manualReason: "等待评审" });

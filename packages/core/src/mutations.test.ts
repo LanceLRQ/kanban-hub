@@ -226,7 +226,7 @@ describe("updateContainer", () => {
     expect(thrown(() => updateContainer(makeBoard(), P, fixtureId("c", 9), { title: "x" }, ctx())).code).toBe("not_found");
   });
 
-  it("挂起（原因 A）改成储备且不给原因：原因被清空（M1 遗留：之前只处理了改回自动的情形）", () => {
+  it("挂起（原因 A）改成储备且不给原因：原因被清空（不只是改回自动才清空）", () => {
     const c = makeContainer({ manualStatus: "suspended", manualReason: "原因 A" });
     const r = updateContainer(makeBoard([c]), P, c.id, { manualStatus: "backlog" }, ctx());
     expect(r.container).toMatchObject({ manualStatus: "backlog", manualReason: null });

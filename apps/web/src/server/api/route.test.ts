@@ -265,6 +265,17 @@ describe("apiRoute：X-KH-Agent", () => {
     expect(res.status).toBe(400);
   });
 
+  it("含空格时返回 400", async () => {
+    api = await setupTestApi();
+    const { token } = await api.pairMachine();
+    const handler = apiRoute({ auth: "machine" }, echoHandler);
+    const res = await handler(
+      api.request("/x", { token, headers: { [HEADER_KH_AGENT]: "bad agent" } }),
+      api.ctx({}),
+    );
+    expect(res.status).toBe(400);
+  });
+
   it("会话请求的 actor.agent 恒为 null，哪怕带了 X-KH-Agent", async () => {
     api = await setupTestApi();
     const handler = apiRoute({ auth: "session" }, echoHandler);

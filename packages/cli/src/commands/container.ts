@@ -5,7 +5,6 @@ import {
   containerCreateInput,
   containerPatchInput,
   containerSchema,
-  dateSchema,
   MANUAL_STATUSES,
   type ManualStatus,
 } from "@kanban-hub/core/schema";
@@ -14,13 +13,19 @@ import { CliError, EXIT } from "../errors";
 import { MANUAL_STATUS_LABELS } from "./labels";
 import {
   afterReport,
+  assertAnyOptionGiven,
+  containerRefLabel,
+  displayEmpty,
+  formatChange,
   globalAgentFlag,
   loadProject,
   parseEnumOption,
+  parseNullableDateOption,
   parseNullableOption,
   requireLogin,
   requireRegisteredRepo,
   resolveContainerOrFail,
+  withAgentOption,
 } from "./shared";
 
 const CONTAINER_KIND_VALUES = ["phase", "feature"] as const;
@@ -39,24 +44,8 @@ function manualStatusLabel(status: ManualStatus | null): string {
   return status === null ? "自动" : MANUAL_STATUS_LABELS[status];
 }
 
-/** 可空字段展示：null 显示成“（无）”，非空原样显示 */
-function displayOrEmpty(value: string | null): string {
-  return value ?? "（无）";
-}
-
-/**
- * 校验命令行传入的可空日期选项：不传（undefined）表示不改动字段，传空字符串表示清空（null），
- * 其余按 core 的 dateSchema 校验格式（YYYY-MM-DD），格式不对时是用法错误。抽成纯函数方便单元测试。
- */
-export function parseTargetDateOption(raw: string | undefined): string | null | undefined {
-  const value = parseNullableOption(raw);
-  if (typeof value !== "string") return value;
-  const result = dateSchema.safeParse(value);
-  if (!result.success) {
-    throw new CliError(EXIT.USAGE, `目标日期格式不对：${value}`, "使用 YYYY-MM-DD 格式，例如 2026-09-25");
-  }
-  return value;
-}
+/** container 的目标日期选项：清空/格式校验逻辑与 task 的截止日期共用，见 shared.ts 的 parseNullableDateOption */
+export const parseTargetDateOption = parseNullableDateOption;
 
 export interface ContainerAddOptions {
   code?: string;
@@ -97,27 +86,25 @@ export function buildContainerCreateInput(rawKind: string, title: string, opts: 
  * 抽成纯函数方便单元测试，不涉及网络。
  */
 export function buildContainerPatch(opts: ContainerSetOptions) {
-  if (
-    opts.status === undefined &&
-    opts.reason === undefined &&
-    opts.title === undefined &&
-    opts.code === undefined &&
-    opts.version === undefined &&
-    opts.targetDate === undefined
-  ) {
-    throw new CliError(
-      EXIT.USAGE,
-      "请至少提供一个要修改的选项",
-      "可选：--status、--reason、--title、--code、--version、--target-date",
-    );
-  }
+  assertAnyOptionGiven(
+    [
+      opts.status !== undefined,
+      opts.reason !== undefined,
+      opts.title !== undefined,
+      opts.code !== undefined,
+      opts.version !== undefined,
+      opts.targetDate !== undefined,
+    ],
+    "可选：--status、--reason、--title、--code、--version、--target-date",
+  );
 
   const patch: Record<string, unknown> = {};
 
   if (opts.status !== undefined) {
     const statusOption = parseEnumOption(opts.status, CONTAINER_STATUS_VALUES, CONTAINER_STATUS_LABELS);
     const manualStatus = statusOption === "auto" ? null : statusOption;
-    if (manualStatus === "suspended" && opts.reason === undefined) {
+    // 原因为空（不给 --reason，或者给了空字符串）都在本地拦下，不让服务端的 400 顶上来
+    if (manualStatus === "suspended" && (opts.reason === undefined || opts.reason === "")) {
       throw new CliError(EXIT.USAGE, "设置挂起状态时必须提供 --reason", '例如：--status suspended --reason "等待联调"');
     }
     patch.manualStatus = manualStatus;
@@ -150,7 +137,7 @@ async function runContainerAdd(
   // POST 只返回新建的容器本身，短 ID 前缀要在整个看板的容器范围内取最短唯一前缀（至少 4 位）
   const prefixes = shortIdPrefixes([...before.board.containers.map((c) => c.id), created.id]);
   const prefix = prefixes.get(created.id) ?? created.id;
-  const codeLabel = created.code ?? "（无编号）";
+  const codeLabel = displayEmpty(created.code);
 
   ctx.stdout.write(`已新建${CONTAINER_KIND_LABELS[kind]}容器 ${codeLabel}（${prefix}）：${created.title}\n`);
   await afterReport(ctx, repo.config.projectId);
@@ -177,15 +164,16 @@ async function runContainerSet(
 
   const changes: string[] = [];
   if (opts.status !== undefined) {
-    changes.push(`状态 ${manualStatusLabel(before.manualStatus)} → ${manualStatusLabel(updated.manualStatus)}`);
+    changes.push(formatChange("状态", manualStatusLabel(before.manualStatus), manualStatusLabel(updated.manualStatus)));
   }
-  if (opts.reason !== undefined) changes.push(`原因 ${displayOrEmpty(before.manualReason)} → ${displayOrEmpty(updated.manualReason)}`);
-  if (opts.title !== undefined) changes.push(`标题 ${before.title} → ${updated.title}`);
-  if (opts.code !== undefined) changes.push(`编号 ${displayOrEmpty(before.code)} → ${displayOrEmpty(updated.code)}`);
-  if (opts.version !== undefined) changes.push(`版本 ${displayOrEmpty(before.targetVersion)} → ${displayOrEmpty(updated.targetVersion)}`);
-  if (opts.targetDate !== undefined) changes.push(`目标日期 ${displayOrEmpty(before.targetDate)} → ${displayOrEmpty(updated.targetDate)}`);
+  if (opts.reason !== undefined) changes.push(formatChange("原因", displayEmpty(before.manualReason), displayEmpty(updated.manualReason)));
+  if (opts.title !== undefined) changes.push(formatChange("标题", before.title, updated.title));
+  if (opts.code !== undefined) changes.push(formatChange("编号", displayEmpty(before.code), displayEmpty(updated.code)));
+  if (opts.version !== undefined) changes.push(formatChange("版本", displayEmpty(before.targetVersion), displayEmpty(updated.targetVersion)));
+  if (opts.targetDate !== undefined) changes.push(formatChange("目标日期", displayEmpty(before.targetDate), displayEmpty(updated.targetDate)));
 
-  const refLabel = before.code ?? before.id;
+  // 杂项容器没有编号时不再输出完整的 10 位 ID：有编号用编号，杂项用 misc，否则用 ID 前缀
+  const refLabel = containerRefLabel(before, project.board.containers);
   ctx.stdout.write(`已更新容器 ${refLabel}：${changes.join("；")}\n`);
   await afterReport(ctx, repo.config.projectId);
 }
@@ -194,29 +182,31 @@ async function runContainerSet(
 export function registerContainer(program: Command, ctx: CliContext): void {
   const container = program.command("container").description("容器相关命令");
 
-  container
-    .command("add")
-    .description("新建阶段或特性容器")
-    .argument("<种类>", "phase（阶段）或 feature（特性）")
-    .argument("<标题>", "容器标题")
-    .option("--code <编号>", "容器编号")
-    .option("--version <版本>", "目标版本号")
-    .option("--target-date <日期>", "目标日期（YYYY-MM-DD）")
-    .action(async (kind: string, title: string, opts: ContainerAddOptions, cmd: Command) => {
-      await runContainerAdd(ctx, kind, title, opts, globalAgentFlag(cmd));
-    });
+  withAgentOption(
+    container
+      .command("add")
+      .description("新建阶段或特性容器")
+      .argument("<种类>", "phase（阶段）或 feature（特性）")
+      .argument("<标题>", "容器标题")
+      .option("--code <编号>", "容器编号")
+      .option("--version <版本>", "目标版本号")
+      .option("--target-date <日期>", "目标日期（YYYY-MM-DD）"),
+  ).action(async (kind: string, title: string, opts: ContainerAddOptions, cmd: Command) => {
+    await runContainerAdd(ctx, kind, title, opts, globalAgentFlag(cmd));
+  });
 
-  container
-    .command("set")
-    .description("修改容器，至少要给一个选项")
-    .argument("<容器>", "容器编号、misc 或 ID 前缀")
-    .option("--status <状态>", `手动状态：${CONTAINER_STATUS_OPTION_HINT}`)
-    .option("--reason <原因>", "手动状态的原因（设为 suspended 时必填）")
-    .option("--title <标题>", "容器标题")
-    .option("--code <编号>", "容器编号，传空字符串清空")
-    .option("--version <版本>", "目标版本号，传空字符串清空")
-    .option("--target-date <日期>", "目标日期（YYYY-MM-DD），传空字符串清空")
-    .action(async (ref: string, opts: ContainerSetOptions, cmd: Command) => {
-      await runContainerSet(ctx, ref, opts, globalAgentFlag(cmd));
-    });
+  withAgentOption(
+    container
+      .command("set")
+      .description("修改容器，至少要给一个选项")
+      .argument("<容器>", "容器编号、misc 或 ID 前缀")
+      .option("--status <状态>", `手动状态：${CONTAINER_STATUS_OPTION_HINT}`)
+      .option("--reason <原因>", "手动状态的原因（设为 suspended 时必填）")
+      .option("--title <标题>", "容器标题")
+      .option("--code <编号>", "容器编号，传空字符串清空")
+      .option("--version <版本>", "目标版本号，传空字符串清空")
+      .option("--target-date <日期>", "目标日期（YYYY-MM-DD），传空字符串清空"),
+  ).action(async (ref: string, opts: ContainerSetOptions, cmd: Command) => {
+    await runContainerSet(ctx, ref, opts, globalAgentFlag(cmd));
+  });
 }

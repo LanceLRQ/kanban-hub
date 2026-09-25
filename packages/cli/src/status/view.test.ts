@@ -130,7 +130,7 @@ describe("buildStatusView", () => {
     expect(misc?.openCount).toBe(1);
   });
 
-  it("项目整体进度不计杂项容器里的任务（Ruling 11）", () => {
+  it("项目整体进度不计杂项容器里的任务（规格 5.4）", () => {
     const c1 = makeContainer({ id: fixtureId("c", 1) });
     const board = makeBoard(
       [c1],
@@ -201,6 +201,29 @@ describe("buildStatusView", () => {
       taskTitle: "要不要发布",
       container: "M1",
     });
+  });
+
+  it("inbox 里的容器标签，容器没有编号时用 ID 前缀而不是标题", () => {
+    const container = makeContainer({ id: fixtureId("c", 1), code: null, title: "阶段标题" });
+    const task = makeTask({
+      id: fixtureId("t", 1),
+      containerId: container.id,
+      human: { kind: "action", note: "去发布" },
+    });
+    const board = makeBoard([container], [task]);
+    const detail = detailFrom({ board });
+    const view = buildStatusView(detail, { machineId: MACHINE_ID, now: new Date(T0) });
+    expect(view.inbox[0]?.container).toBe(container.id);
+    expect(view.inbox[0]?.container).not.toBe("阶段标题");
+  });
+
+  it("容器的 refLabel：有编号用编号，杂项固定 misc", () => {
+    const container = makeContainer({ id: fixtureId("c", 1), code: "M1" });
+    const board = makeBoard([container], []);
+    const detail = detailFrom({ board });
+    const view = buildStatusView(detail, { machineId: MACHINE_ID, now: new Date(T0) });
+    expect(view.containers.find((c) => c.code === "M1")?.refLabel).toBe("M1");
+    expect(view.containers.find((c) => c.kind === "misc")?.refLabel).toBe("misc");
   });
 
   it("没有待你处理标记的任务不进 inbox", () => {

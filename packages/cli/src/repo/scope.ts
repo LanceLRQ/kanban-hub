@@ -27,9 +27,8 @@ async function hasRootMarkdown(root: string): Promise<boolean> {
 }
 
 /**
- * 建议的同步范围（规格没写、本计划定下的细节 / 同步范围建议）：
- * docs/、doc/、design/ 依次检查，存在的目录建议为 <目录>/**；仓库根目录下有 .md 文件时
- * （CLAUDE.local.md 也算），最后再加 *.md。--include 会完全代替这里的建议，由调用方决定。
+ * 建议的同步范围：docs/、doc/、design/ 依次检查，存在的目录建议为 <目录>/**；仓库根目录下有
+ * .md 文件时（CLAUDE.local.md 也算），最后再加 *.md。--include 会完全代替这里的建议，由调用方决定。
  */
 export async function suggestSyncInclude(root: string): Promise<string[]> {
   const result: string[] = [];

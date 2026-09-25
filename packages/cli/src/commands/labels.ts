@@ -1,5 +1,5 @@
 /**
- * 枚举取值的中文名（规格 5.3；容器手动状态见规格 5.1“容器”表格）。
+ * 枚举取值的中文名（规格 5.3；容器手动状态见规格 5.2“容器”表格）。
  * 命令行的选项值一律用 core 的英文取值，这里只用来渲染中文名和拼校验提示。
  */
 import type { Cycle, Health, HumanKind, ManualStatus, TaskStatus } from "@kanban-hub/core/schema";

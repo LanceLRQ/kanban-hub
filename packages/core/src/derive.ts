@@ -1,4 +1,4 @@
-import type { Container, Project, Task } from "./schema";
+import type { Board, Container, Project, Task } from "./schema";
 
 /** 容器的显示状态：推算出的 todo / in_progress / done，或者手动设置的状态 */
 export type ContainerStatus = "todo" | "in_progress" | "done" | "backlog" | "suspended" | "cancelled";
@@ -33,6 +33,16 @@ export function progressOf(tasks: readonly Pick<Task, "status">[]): Progress {
 /** 任务清单的完成度 */
 export function checklistProgress(items: readonly { done: boolean }[]): Progress {
   return { done: items.filter((i) => i.done).length, total: items.length };
+}
+
+/**
+ * 项目整体进度（规格 5.4）：只统计阶段和特性容器里的任务，不含杂项容器；
+ * 已取消的任务不计入分子分母（复用 progressOf）。杂项容器是随手记的东西，不是计划内的工作量。
+ */
+export function projectProgress(board: Pick<Board, "containers" | "tasks">): Progress {
+  const miscContainerId = board.containers.find((c) => c.kind === "misc")?.id;
+  const trackedTasks = board.tasks.filter((t) => t.containerId !== miscContainerId);
+  return progressOf(trackedTasks);
 }
 
 /**

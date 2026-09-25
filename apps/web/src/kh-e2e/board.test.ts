@@ -1,54 +1,34 @@
 /**
  * kh project / container / log 的端到端测试：用进程内测试服务端（真实路由处理函数 + 临时存储）
- * 驱动 cli 的 main()。register 命令是任务 6 并行开发的内容，这里用不到；改为直接用测试服务端的
- * Store 建项目、登记本机位置，再用 repo/config.ts 的 writeRepoConfig 写出仓库配置（控制者裁决，
- * 见 04-M3-kh基础命令/context.md：三个测试文件各写一份，波次结束后再决定是否收拢）。
+ * 驱动 cli 的 main()。register 命令自己的行为在 register.test.ts 单独测试，这里用 harness 的
+ * loginFixture / registerProjectFixture 直接搭好前置条件。
  */
 import fs from "node:fs/promises";
 import path from "node:path";
-import type { Actor } from "@kanban-hub/core/schema";
-import { SYNC_DEFAULT_MAX_FILE_SIZE } from "@kanban-hub/core/sync";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { readMachineConfig } from "../../../../packages/cli/src/config/home";
 import { EXIT } from "../../../../packages/cli/src/errors";
 import { readLastReport } from "../../../../packages/cli/src/report-log";
-import { writeRepoConfig } from "../../../../packages/cli/src/repo/config";
 import { startTestServer, type TestServer } from "../server/api/test-server";
-import { cleanupAll, makeTempKhHome, makeTempRepo, runKh, type TempDir, type TempRepo } from "./harness";
+import {
+  cleanupAll,
+  loginFixture,
+  makeTempKhHome,
+  makeTempRepo,
+  registerProjectFixture,
+  runKh,
+  type RegisterFixtureResult,
+  type TempDir,
+  type TempRepo,
+} from "./harness";
 
-interface ProjectFixture {
-  projectId: string;
-  machineId: string;
-}
-
-/**
- * 建一个项目、登记本机在这个仓库的位置、写出仓库配置：相当于 register 会做的事，
- * 但不经过 kh register（任务 6 并行开发，这里不依赖它），直接用测试服务端的 Store。
- */
-async function setupProject(server: TestServer, repo: TempRepo, khHome: TempDir, name = "看板测试项目"): Promise<ProjectFixture> {
-  const { code } = server.issuePairingCode();
-  const login = await runKh(["login", "--server", server.url, "--code", code, "--name", "测试机"], {
-    cwd: repo.dir,
-    khHome: khHome.dir,
-  });
-  if (login.code !== 0) throw new Error(`测试前置条件失败：登录失败（${login.code}）：${login.stderr}`);
-
-  const cfg = await readMachineConfig(khHome.dir);
-  if (!cfg?.machineId) throw new Error("测试前置条件失败：登录后读不到 machineId");
-
-  const admin = server.api.store.auth.listUsers().find((u) => u.role === "admin");
-  if (!admin) throw new Error("测试前置条件失败：找不到管理员账号");
-  const actor: Actor = { userId: admin.id, machineId: null, via: "web", agent: null };
-
-  const { project } = await server.api.store.createProject({ name }, actor);
-  await server.api.store.setLocation(project.id, cfg.machineId, { path: repo.dir }, actor);
-  await writeRepoConfig(repo.dir, {
-    projectId: project.id,
-    sync: { include: [], exclude: [], maxFileSize: SYNC_DEFAULT_MAX_FILE_SIZE },
-    pull: { auto: true },
-  });
-
-  return { projectId: project.id, machineId: cfg.machineId };
+async function setupProject(
+  server: TestServer,
+  repo: TempRepo,
+  khHome: TempDir,
+  name = "看板测试项目",
+): Promise<RegisterFixtureResult> {
+  await loginFixture(server, repo, khHome);
+  return registerProjectFixture(server, repo, khHome, { name });
 }
 
 describe("kh project / container / log", () => {
@@ -134,6 +114,46 @@ describe("kh project / container / log", () => {
       }
     });
 
+    it("--agent 写在子命令后面也生效", async () => {
+      const repo = await makeTempRepo();
+      const home = await makeTempKhHome();
+      try {
+        const { projectId } = await setupProject(server, repo, home);
+
+        const result = await runKh(["project", "set", "--focus", "阶段三", "--agent", "after-leaf"], {
+          cwd: repo.dir,
+          khHome: home.dir,
+        });
+        expect(result.code).toBe(0);
+
+        const events = await server.api.store.listEvents({ projectId, limit: 10 });
+        const event = events.find((e) => e.type === "project.updated");
+        expect(event?.actor.agent).toBe("after-leaf");
+      } finally {
+        await cleanupAll(repo, home);
+      }
+    });
+
+    it("--agent 前后都给时，以子命令上的为准", async () => {
+      const repo = await makeTempRepo();
+      const home = await makeTempKhHome();
+      try {
+        const { projectId } = await setupProject(server, repo, home);
+
+        const result = await runKh(
+          ["--agent", "before-root", "project", "set", "--focus", "阶段四", "--agent", "after-leaf"],
+          { cwd: repo.dir, khHome: home.dir },
+        );
+        expect(result.code).toBe(0);
+
+        const events = await server.api.store.listEvents({ projectId, limit: 10 });
+        const event = events.find((e) => e.type === "project.updated");
+        expect(event?.actor.agent).toBe("after-leaf");
+      } finally {
+        await cleanupAll(repo, home);
+      }
+    });
+
     it("不给任何选项，退出码 2", async () => {
       const repo = await makeTempRepo();
       const home = await makeTempKhHome();
@@ -186,6 +206,25 @@ describe("kh project / container / log", () => {
         const board = server.api.store.getBoard(projectId);
         expect(board?.containers.some((c) => c.kind === "phase" && c.code === "M1" && c.title === "阶段一")).toBe(true);
         expect(board?.containers.some((c) => c.kind === "feature" && c.code === "F1" && c.title === "某个特性")).toBe(true);
+      } finally {
+        await cleanupAll(repo, home);
+      }
+    });
+
+    it("--version 不会被根命令的 -v/--version 截走，服务端的 targetVersion 正确（回归 C1）", async () => {
+      const repo = await makeTempRepo();
+      const home = await makeTempKhHome();
+      try {
+        const { projectId } = await setupProject(server, repo, home);
+        const result = await runKh(["container", "add", "phase", "阶段一", "--code", "M1", "--version", "v1.1"], {
+          cwd: repo.dir,
+          khHome: home.dir,
+        });
+        expect(result.code).toBe(0);
+        expect(result.stdout).not.toBe("0.1.0\n");
+
+        const board = server.api.store.getBoard(projectId);
+        expect(board?.containers.find((c) => c.code === "M1")?.targetVersion).toBe("v1.1");
       } finally {
         await cleanupAll(repo, home);
       }
@@ -356,6 +395,31 @@ describe("kh project / container / log", () => {
       }
     });
 
+    it("--version 空字符串清空版本号，且不会被根命令的 -v/--version 截走（回归 C1）", async () => {
+      const repo = await makeTempRepo();
+      const home = await makeTempKhHome();
+      try {
+        const { projectId } = await setupProject(server, repo, home);
+        const created = await runKh(["container", "add", "phase", "阶段五", "--code", "M5", "--version", "v1.0"], {
+          cwd: repo.dir,
+          khHome: home.dir,
+        });
+        expect(created.code).toBe(0);
+        expect(server.api.store.getBoard(projectId)?.containers.find((c) => c.code === "M5")?.targetVersion).toBe(
+          "v1.0",
+        );
+
+        const cleared = await runKh(["container", "set", "M5", "--version", ""], { cwd: repo.dir, khHome: home.dir });
+        expect(cleared.code).toBe(0);
+        expect(cleared.stdout).not.toBe("0.1.0\n");
+
+        const container = server.api.store.getBoard(projectId)?.containers.find((c) => c.code === "M5");
+        expect(container?.targetVersion).toBeNull();
+      } finally {
+        await cleanupAll(repo, home);
+      }
+    });
+
     it("找不到容器，退出码 5", async () => {
       const repo = await makeTempRepo();
       const home = await makeTempKhHome();
@@ -389,7 +453,7 @@ describe("kh project / container / log", () => {
   });
 
   describe("上报时间", () => {
-    it("写命令成功后更新 cache/reports/<项目ID>.json；命令失败时不更新", async () => {
+    it("命令失败时不写 cache/reports/<项目ID>.json", async () => {
       const repo = await makeTempRepo();
       const home = await makeTempKhHome();
       try {
@@ -399,17 +463,39 @@ describe("kh project / container / log", () => {
         const failed = await runKh(["container", "set", "找不到的容器", "--title", "x"], { cwd: repo.dir, khHome: home.dir });
         expect(failed.code).not.toBe(0);
         expect(await readLastReport(home.dir, projectId)).toBeNull();
+      } finally {
+        await cleanupAll(repo, home);
+      }
+    });
 
-        expect((await runKh(["project", "set", "--focus", "阶段一"], { cwd: repo.dir, khHome: home.dir })).code).toBe(0);
-        expect(await readLastReport(home.dir, projectId)).not.toBeNull();
+    // 每个看板写命令成功后都要更新上报时间，逐条验证时间戳确实前进了一格，
+    // 而不是只在第一次成功后检查一次“非空”就当作全部覆盖到
+    it.each<[string, string[][], string[]]>([
+      ["project set", [], ["project", "set", "--focus", "阶段一"]],
+      ["container add", [], ["container", "add", "phase", "新阶段", "--code", "P1"]],
+      [
+        "container set",
+        [["container", "add", "phase", "新阶段", "--code", "P1"]],
+        ["container", "set", "P1", "--title", "阶段一（修订）"],
+      ],
+      ["log", [], ["log", "记一笔"]],
+    ])("%s 成功后更新上报时间", async (_name, prepareCommands, args) => {
+      const repo = await makeTempRepo();
+      const home = await makeTempKhHome();
+      try {
+        const { projectId } = await setupProject(server, repo, home);
+        for (const prepare of prepareCommands) {
+          const prepared = await runKh(prepare, { cwd: repo.dir, khHome: home.dir });
+          if (prepared.code !== 0) throw new Error(`准备阶段失败：${prepare.join(" ")}：${prepared.stderr}`);
+        }
 
-        expect(
-          (await runKh(["container", "add", "phase", "阶段一", "--code", "P1"], { cwd: repo.dir, khHome: home.dir })).code,
-        ).toBe(0);
-        expect(
-          (await runKh(["container", "set", "P1", "--title", "阶段一（修订）"], { cwd: repo.dir, khHome: home.dir })).code,
-        ).toBe(0);
-        expect((await runKh(["log", "记一笔"], { cwd: repo.dir, khHome: home.dir })).code).toBe(0);
+        const before = Date.now();
+        const result = await runKh(args, { cwd: repo.dir, khHome: home.dir });
+        expect(result.code).toBe(0);
+
+        const report = await readLastReport(home.dir, projectId);
+        expect(report).not.toBeNull();
+        expect(report!.getTime()).toBeGreaterThanOrEqual(before);
       } finally {
         await cleanupAll(repo, home);
       }

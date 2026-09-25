@@ -10,6 +10,22 @@ export const HEADER_KH_VERSION = "x-kh-version";
 /** kh 用它标识自己，具体校验和使用由鉴权模块负责 */
 export const HEADER_KH_AGENT = "x-kh-agent";
 
+/**
+ * agent 名称的合法字符集：1-50 个可打印 ASCII 字符（0x21-0x7E），不含空格。
+ * 收紧到 ASCII 是因为 agent 名称最终会进入 HTTP 请求头：超出这个范围的字符（包括退格、
+ * 换行等控制字符，以及非 ASCII 字符）在请求头里要么无法发送，要么会被服务端 trim 掉，
+ * 导致 kh 发出的值和服务端记录的值不一致。kh 和服务端共用这一份规则。
+ */
+export const agentNameSchema = z
+  .string()
+  .regex(/^[\x21-\x7E]{1,50}$/, "必须是 1-50 个可打印 ASCII 字符，不能包含空格");
+
+/**
+ * 机器令牌的格式：kh_ 加 43 位 base64url 字符（与服务端签发的格式一致，见
+ * apps/web/src/server/auth/token.ts）。kh 和服务端共用这一份规则，避免格式校验出现分歧。
+ */
+export const machineTokenSchema = z.string().regex(/^kh_[A-Za-z0-9_-]{43}$/, "不是合法的机器令牌格式");
+
 // ---------- 错误响应（规格 15 节） ----------
 
 export const API_ERROR_CODES = [
@@ -91,7 +107,7 @@ export const rateLimitDetailsSchema = z.object({
 export type RateLimitDetails = z.infer<typeof rateLimitDetailsSchema>;
 
 export const pairResponse = z.object({
-  token: z.string(),
+  token: machineTokenSchema,
   machineId: idSchema,
 });
 export type PairResponse = z.infer<typeof pairResponse>;
@@ -103,7 +119,7 @@ export const meResponse = z.object({
 });
 export type MeResponse = z.infer<typeof meResponse>;
 
-/** 项目列表和详情接口共用：项目本体、最近一次事件时间（停滞判定用）、停滞标记（规格 5.5，M3 新增） */
+/** 项目列表和详情接口共用：项目本体、最近一次事件时间（停滞判定用）、停滞标记（规格 5.5） */
 export const projectViewSchema = z.object({
   project: projectSchema,
   lastEventAt: timestampSchema.nullable(),

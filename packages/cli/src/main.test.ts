@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import type { CliContext } from "./context";
 import { CliError, EXIT } from "./errors";
@@ -94,5 +94,98 @@ describe("runProgram", () => {
     const a = fakeContext();
     const program = new Command().exitOverride().action(() => {});
     expect(await runProgram(program, [], a.ctx)).toBe(EXIT.OK);
+  });
+});
+
+/**
+ * commander 15 的 `.command()` 在创建子命令那一刻用 copyInheritedSettings() 复制父命令
+ * *当时* 的 _outputConfiguration/_exitCallback；根命令后来才调用的 exitOverride/configureOutput
+ * 不会回头影响已经创建的子命令。这里手工拼一棵“根 -> child -> grand”的命令树（不经过
+ * buildProgram，覆盖“以后新增的命令”这种一般情况），验证 runProgram 对每一层都生效：
+ * 子命令、孙命令的用法错误也要落到退出码 2、stderr 以“错误：”开头，并且真的不调用
+ * process.exit（用 spy 顶掉它，防止一旦回归真的杀掉测试进程）。
+ */
+function buildNestedTestProgram(): Command {
+  const root = new Command().name("root");
+  const child = root
+    .command("child")
+    .requiredOption("--code <配对码>", "必需的配对码")
+    .action(() => {});
+  child
+    .command("grand")
+    .requiredOption("--code <配对码>", "必需的配对码")
+    .action(() => {});
+  return root;
+}
+
+describe("runProgram 对子命令、孙命令同样生效", () => {
+  let exitSpy: ReturnType<typeof vi.spyOn> | undefined;
+
+  afterEach(() => {
+    exitSpy?.mockRestore();
+    exitSpy = undefined;
+  });
+
+  // 用 spy 顶掉 process.exit：一旦“递归 attachOutput”这个修复回归，commander 会真的调用
+  // process.exit 杀掉这个 worker 进程，spy 能安全拦下来并证明它被调用过
+  function spyOnProcessExit(): ReturnType<typeof vi.spyOn> {
+    exitSpy = vi.spyOn(process, "exit").mockImplementation(() => undefined as never);
+    return exitSpy;
+  }
+
+  it("子命令缺少必需选项：返回 2，stderr 以 错误： 开头，不调用 process.exit", async () => {
+    const spy = spyOnProcessExit();
+    const a = fakeContext();
+    expect(await runProgram(buildNestedTestProgram(), ["child"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("子命令的选项缺参数：返回 2，stderr 以 错误： 开头，不调用 process.exit", async () => {
+    const spy = spyOnProcessExit();
+    const a = fakeContext();
+    expect(await runProgram(buildNestedTestProgram(), ["child", "--code"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("子命令上的未知选项：返回 2，stderr 以 错误： 开头，不调用 process.exit", async () => {
+    const spy = spyOnProcessExit();
+    const a = fakeContext();
+    expect(await runProgram(buildNestedTestProgram(), ["child", "--code", "x", "--bogus"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("孙命令缺少必需选项：同样返回 2，stderr 以 错误： 开头，不调用 process.exit", async () => {
+    const spy = spyOnProcessExit();
+    const a = fakeContext();
+    expect(await runProgram(buildNestedTestProgram(), ["child", "--code", "x", "grand"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("孙命令上的未知选项：同样返回 2，不调用 process.exit", async () => {
+    const spy = spyOnProcessExit();
+    const a = fakeContext();
+    expect(
+      await runProgram(buildNestedTestProgram(), ["child", "--code", "x", "grand", "--code", "y", "--bogus"], a.ctx),
+    ).toBe(EXIT.USAGE);
+    expect(a.stderr().startsWith("错误：")).toBe(true);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("子命令的 --help 返回 0", async () => {
+    const a = fakeContext();
+    expect(await runProgram(buildNestedTestProgram(), ["child", "--help"], a.ctx)).toBe(EXIT.OK);
+    expect(a.stdout()).toContain("Usage:");
+  });
+
+  it("孙命令的 --help 返回 0", async () => {
+    const a = fakeContext();
+    expect(await runProgram(buildNestedTestProgram(), ["child", "--code", "x", "grand", "--help"], a.ctx)).toBe(
+      EXIT.OK,
+    );
+    expect(a.stdout()).toContain("Usage:");
   });
 });

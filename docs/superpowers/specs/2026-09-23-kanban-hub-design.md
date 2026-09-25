@@ -315,11 +315,11 @@ pull:
 ### 8.2 `kh register` 流程
 
 1. 找到仓库根目录。不是 git 仓库也可以注册，只是没有指纹。
-2. 如果 `.kanban-hub/config.yaml` 已经存在，就显示当前的注册信息，然后结束。
+2. 如果 `.kanban-hub/config.yaml` 已经存在，就显示当前的注册信息；如果本机在这个项目上还没有登记位置，或者登记的路径不是当前仓库根，就按第 6 步的方式补登记本机位置（同样遵守 `--dry-run` / `--yes`），否则到此结束。
 3. 计算指纹：`git rev-list --max-parents=0 HEAD` 的结果，有多个时取排序后的第一个。
 4. 向服务端查询指纹相同的项目。找到了，就建议作为已有项目的另一个位置关联起来（`--bind <项目ID>`）；否则新建（`--new`）。
 5. 扫描常见的文档位置（`docs/`、`doc/`、`design/`、根目录下的 `*.md`、`CLAUDE.local.md`），给出建议的同步范围。
-6. 写入 `config.yaml` 和 `.git/info/exclude`，向服务端登记这个位置，然后做一次首次同步。
+6. 写入 `config.yaml` 和 `.git/info/exclude`，向服务端登记这个位置，然后做一次首次同步（文档同步见第 9 节）。
 
 供 agent 使用的非交互写法：`kh register --name <名称> (--bind <ID> | --new) [--include <glob>…] --yes`。先用 `--dry-run` 只显示计划、不执行。
 
@@ -386,6 +386,7 @@ pull:
 ### 10.1 安装与本机文件
 
 - 要求 Node 22 及以上和 git（拉取时的三方合并用 `git merge-file`）。服务端在 `/setup/kh.tgz` 提供与自身版本一致的安装包，用 `npm i -g <服务端地址>/setup/kh.tgz` 安装。第一版不发布到 npm。
+- 本机目录默认 `~/.kanban-hub/`，可以用环境变量 `KH_HOME` 指定（必须是绝对路径）。
 
 ```
 ~/.kanban-hub/
@@ -407,7 +408,7 @@ pull:
 | 容器 | `kh container add <phase\|feature> "<标题>" [--code <编号>] [--version <版本>] [--target-date <日期>]` |
 | | `kh container set <容器> [--status backlog\|suspended\|cancelled\|auto] [--reason "…"] …` |
 | 任务 | `kh task add <容器> "<标题>" [--code <编号>] [--group <标签>] [--doc <路径>]… [--due <日期>]` |
-| | `kh task set <任务> [--status <状态>] [--reason "…"] [--note "…"] [--doc <路径>]…` |
+| | `kh task set <任务> [--status <状态>] [--reason "…"] [--note "…"] [--doc <路径>]… [--title "…"] [--code <编号>] [--group <标签>] [--due <日期>] [--container <容器>]` |
 | | `kh task human <任务> (--decision\|--verify\|--action) "<说明>"`、`kh task human <任务> --clear` |
 | | `kh task check <任务> <清单项序号> [--undo]`、`kh task checklist <任务> --add "…"` |
 | 时间线 | `kh log "<正文>"` |
@@ -419,6 +420,8 @@ pull:
 
 - **指定容器**：用编号（`M2`）或 ID 前缀；杂项容器写 `misc`。
 - **指定任务**：用 `容器编号/任务编号`（`M2/2.3`），或者 `kh status` 里显示的 `#` 短 ID。
+- `kh task set --container <容器>` 把任务移到另一个容器（写法同上）。
+- 可空字段传空串表示清空，例如 `--code ""`、`--group ""`、`--due ""`、`--version ""`。
 - 所有命令都支持 `--agent <名称>`，用来显式标明调用者是哪个 agent。
 
 ### 10.3 退出码
@@ -426,6 +429,7 @@ pull:
 | 退出码 | 含义 |
 |---|---|
 | 0 | 成功 |
+| 1 | 其他意外错误（例如服务端内部错误或响应格式不符） |
 | 2 | 用法错误 |
 | 3 | 未登录或令牌失效，提示去 `/setup` 重新接入 |
 | 4 | 服务端连不上 |

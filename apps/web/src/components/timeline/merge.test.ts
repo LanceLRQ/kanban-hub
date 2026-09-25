@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { TimelineDay, TimelineItem } from "@/server/views/timeline";
-import { mergeTimelineDays } from "./merge";
+import type { TimelineDay, TimelineItem, TimelinePage } from "@/server/views/timeline";
+import { mergeTimelineDays, reconcileRefresh, type TimelineRefreshState } from "./merge";
 
 function item(id: string, text: string): TimelineItem {
   return {
@@ -14,8 +14,18 @@ function item(id: string, text: string): TimelineItem {
   };
 }
 
-function day(key: string, items: TimelineItem[]): TimelineDay {
-  return { key, heading: key, items };
+function day(key: string, items: TimelineItem[], heading = key): TimelineDay {
+  return { key, heading, items };
+}
+
+const EMPTY_FILTER_OPTIONS = { projects: [], groups: [], actors: [] };
+
+function page(days: TimelineDay[], nextCursor: TimelinePage["nextCursor"] = null): TimelinePage {
+  return { days, nextCursor, filterOptions: EMPTY_FILTER_OPTIONS };
+}
+
+function cursor(id: string) {
+  return { ts: "2026-09-24T00:00:00.000Z", id };
 }
 
 describe("mergeTimelineDays", () => {
@@ -60,5 +70,60 @@ describe("mergeTimelineDays", () => {
   it("空的已有状态直接采用新页", () => {
     const incoming = [day("2026-09-24", [item("a", "A")])];
     expect(mergeTimelineDays([], incoming, true)).toEqual(incoming);
+  });
+
+  it("SSE 刷新时，同一天的标题以刷新结果为准（例如跨过午夜后不再显示旧的“今天”）", () => {
+    const prev = [day("2026-09-24", [item("a", "A")], "今天 · 09-24")];
+    const incoming = [day("2026-09-24", [item("a", "A")], "昨天 · 09-24")];
+
+    const merged = mergeTimelineDays(prev, incoming, true);
+
+    expect(merged[0]!.heading).toBe("昨天 · 09-24");
+  });
+
+  it("SSE 刷新时，已知事件的内容以刷新结果为准（例如任务改名后的描述）", () => {
+    const prev = [day("2026-09-24", [item("a", "旧标题")])];
+    const incoming = [day("2026-09-24", [item("a", "新标题")])];
+
+    const merged = mergeTimelineDays(prev, incoming, true);
+
+    expect(merged[0]!.items).toEqual([item("a", "新标题")]);
+  });
+});
+
+describe("reconcileRefresh", () => {
+  function state(partial: Partial<TimelineRefreshState>): TimelineRefreshState {
+    return { days: [], cursor: null, loadedMore: false, ...partial };
+  }
+
+  it("没有“加载更多”过：合并新首页，游标换成新首页的游标", () => {
+    const prev = state({ days: [day("2026-09-24", [item("a", "A")])], cursor: cursor("e0000000001"), loadedMore: false });
+    const incoming = page([day("2026-09-24", [item("a", "A"), item("b", "B")])], cursor("e0000000002"));
+
+    const result = reconcileRefresh(prev, incoming);
+
+    expect(result.loadedMore).toBe(false);
+    expect(result.cursor).toEqual(cursor("e0000000002"));
+    expect(result.days[0]!.items.map((i) => i.id)).toEqual(["b", "a"]);
+  });
+
+  it("已经“加载更多”过：合并新首页，但游标保持不变，避免“加载更多”重新取到已加载的页", () => {
+    const prev = state({ days: [day("2026-09-24", [item("a", "A")])], cursor: cursor("e0000000001"), loadedMore: true });
+    const incoming = page([day("2026-09-24", [item("a", "A"), item("b", "B")])], null);
+
+    const result = reconcileRefresh(prev, incoming);
+
+    expect(result.loadedMore).toBe(true);
+    expect(result.cursor).toEqual(cursor("e0000000001"));
+    expect(result.days[0]!.items.map((i) => i.id)).toEqual(["b", "a"]);
+  });
+
+  it("已加载内容非空，且新首页与已加载事件完全不重叠（出现断层）：整体替换为新页，重置游标和加载更多状态", () => {
+    const prev = state({ days: [day("2026-09-20", [item("z", "Z")])], cursor: null, loadedMore: true });
+    const incoming = page([day("2026-09-24", [item("a", "A")])], cursor("e0000000002"));
+
+    const result = reconcileRefresh(prev, incoming);
+
+    expect(result).toEqual({ days: incoming.days, cursor: cursor("e0000000002"), loadedMore: false });
   });
 });

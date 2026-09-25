@@ -3,18 +3,19 @@ import { InboxSection } from "@/components/overview/inbox-section";
 import { looseTranslator } from "@/components/overview/loose-translator";
 import { ProjectSection } from "@/components/overview/project-section";
 import type { EnumLabelFn } from "@/lib/events";
-import { pageServices } from "@/server/web/services";
+import { authedPageServices } from "@/server/web/services";
 import { buildOverview } from "@/server/views/overview";
 
 /** 总览页：跨项目“待你处理”收件箱 + 项目卡片 */
 export default async function OverviewPage() {
-  const services = pageServices();
+  const { services } = await authedPageServices();
   const now = services.now();
 
   const te = looseTranslator(await getTranslations("enums"));
   const enumLabel: EnumLabelFn = (group, value) => te(`${group}.${value}`);
+  const tev = await getTranslations("events");
 
-  const view = await buildOverview(services, now, enumLabel);
+  const view = await buildOverview(services, now, enumLabel, tev("common.none"));
 
   return (
     <div className="flex flex-col gap-11">

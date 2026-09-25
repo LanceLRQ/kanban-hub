@@ -48,7 +48,7 @@ describe("inboxItemText", () => {
 describe("resolveLastEvent", () => {
   it("没有事件（undefined）时为 null", () => {
     const board = makeBoard();
-    const ctx = { board, projectName: "示例项目", enumLabel, userName: (id: string) => id, machineName: (id: string) => id };
+    const ctx = { board, projectName: "示例项目", enumLabel, noneLabel: "（无）", userName: (id: string) => id, machineName: (id: string) => id };
     expect(resolveLastEvent(undefined, ctx)).toBeNull();
   });
 
@@ -60,6 +60,7 @@ describe("resolveLastEvent", () => {
       board,
       projectName: "示例项目",
       enumLabel,
+      noneLabel: "（无）",
       userName: (id: string) => id,
       machineName: (id: string) => (id === event.actor.machineId ? "mac-mini" : id),
     };
@@ -89,7 +90,7 @@ describe("buildOverview：收件箱", () => {
       actor,
     );
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     const allIds = view.inbox.flatMap((g) => g.items.map((i) => i.taskId));
     expect(allIds).toEqual([included.id]);
   });
@@ -100,7 +101,7 @@ describe("buildOverview：收件箱", () => {
     const older = await api.store.createTask(project.id, { containerId: container.id, title: "早", human: { kind: "decision", note: "早" } }, actor);
     const newer = await api.store.createTask(project.id, { containerId: container.id, title: "晚", human: { kind: "decision", note: "晚" } }, actor);
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     expect(view.inbox.map((g) => g.kind)).toEqual(["decision", "verify", "action"]);
     expect(view.inbox[1]!.items).toEqual([]);
     expect(view.inbox[2]!.items).toEqual([]);
@@ -112,7 +113,7 @@ describe("buildOverview：收件箱", () => {
     const { project, container, actor } = await projectWithContainer(api, "kanban-hub");
     const task = await api.store.createTask(project.id, { containerId: container.id, title: "标题兜底", human: { kind: "verify", note: "备注" } }, actor);
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     const item = view.inbox.find((g) => g.kind === "verify")!.items.find((i) => i.taskId === task.id)!;
     expect(item.text).toBe("备注");
   });
@@ -124,7 +125,7 @@ describe("buildOverview：收件箱", () => {
     await api.store.createTask(a.project.id, { containerId: a.container.id, title: "A 任务", human: { kind: "verify", note: "校验" } }, a.actor);
     await api.store.createTask(b.project.id, { containerId: b.container.id, title: "B 任务", human: { kind: "verify", note: "校验" } }, b.actor);
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     const verifyGroup = view.inbox.find((g) => g.kind === "verify")!;
     expect(verifyGroup.items).toHaveLength(2);
     expect(verifyGroup.items.map((i) => i.projectName).sort()).toEqual(["项目 A", "项目 B"]);
@@ -141,7 +142,7 @@ describe("buildOverview：项目卡片", () => {
     const misc = board.containers.find((c) => c.kind === "misc")!;
     await api.store.createTask(project.id, { containerId: misc.id, title: "杂项任务" }, actor);
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     const card = view.projects.find((p) => p.id === project.id)!;
     expect(card.progress).toEqual({ done: 1, total: 1 });
     expect(card.location).toBeNull();
@@ -153,7 +154,7 @@ describe("buildOverview：项目卡片", () => {
     await api.store.createTask(project.id, { containerId: container.id, title: "任务一" }, actor);
     const task2 = await api.store.createTask(project.id, { containerId: container.id, title: "任务二" }, actor);
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     const card = view.projects.find((p) => p.id === project.id)!;
     expect(card.lastEvent).not.toBeNull();
     expect(card.lastEvent?.ts).toBe(task2.updatedAt);
@@ -164,11 +165,11 @@ describe("buildOverview：项目卡片", () => {
     api = await setupTestApi();
     const { project } = await projectWithContainer(api, "kanban-hub");
 
-    const fresh = await buildOverview(api.services, new Date(), enumLabel);
+    const fresh = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     expect(fresh.projects.find((p) => p.id === project.id)?.stale).toBeNull();
 
     const staleNow = new Date(Date.now() + 10 * DAY_MS);
-    const staleView = await buildOverview(api.services, staleNow, enumLabel);
+    const staleView = await buildOverview(api.services, staleNow, enumLabel, "（无）");
     const card = staleView.projects.find((p) => p.id === project.id)!;
     expect(card.stale).not.toBeNull();
     expect(card.stale?.days).toBeGreaterThanOrEqual(10);
@@ -186,7 +187,7 @@ describe("buildOverview：项目卡片", () => {
     await api.store.updateProject(p3.id, { cycle: "archived" }, actor);
     await api.store.appendLog(p1.id, { text: "bump" }, actor);
 
-    const view = await buildOverview(api.services, new Date(), enumLabel);
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
     expect(view.projects.map((p) => p.id)).toEqual([p1.id, p2.id, p3.id]);
   });
 });

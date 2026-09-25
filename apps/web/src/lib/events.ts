@@ -1,5 +1,5 @@
 /**
- * 事件的分组、显示排序、结构化描述（细节「事件类型的分组」「同一时刻的多条事件」）。
+ * 事件的分组、显示排序、结构化描述。
  * 总览的“最近活动”和时间线共用 describeEvent 产出的描述：组件用 t(key, values) 渲染，
  * 消息文本在 messages/zh-CN/events.json 里。events.json 是嵌套结构，key 用点号分隔的路径
  * （例如 "task.updated.title"），与 next-intl 按命名空间嵌套解析 key 的方式对应。
@@ -73,6 +73,8 @@ export interface EventDescribeCtx {
   board: Pick<Board, "containers" | "tasks">;
   projectName: string;
   enumLabel: EnumLabelFn;
+  /** 字段被清空时的占位文案（events.json 的 common.none），不在这里硬编码 */
+  noneLabel: string;
 }
 
 export interface EventDescription {
@@ -118,16 +120,14 @@ function describeContainerUpdated(event: Event, ctx: EventDescribeCtx): EventDes
   const container = containerLabel(ctx.board, event.target?.containerId ?? "");
   if ("manualStatus" in change) {
     const to = change.manualStatus!.to as ManualStatus | null;
-    return {
-      key: "container.updated.manualStatus",
-      values: { container, status: to === null ? "恢复正常" : ctx.enumLabel("manualStatus", to) },
-    };
+    if (to === null) return { key: "container.updated.manualStatusCleared", values: { container } };
+    return { key: "container.updated.manualStatus", values: { container, status: ctx.enumLabel("manualStatus", to) } };
   }
   if ("targetVersion" in change) {
-    return { key: "container.updated.targetVersion", values: { container, version: String(change.targetVersion!.to ?? "（无）") } };
+    return { key: "container.updated.targetVersion", values: { container, version: String(change.targetVersion!.to ?? ctx.noneLabel) } };
   }
   if ("targetDate" in change) {
-    return { key: "container.updated.targetDate", values: { container, date: String(change.targetDate!.to ?? "（无）") } };
+    return { key: "container.updated.targetDate", values: { container, date: String(change.targetDate!.to ?? ctx.noneLabel) } };
   }
   if ("title" in change) return { key: "container.updated.title", values: { container, title: String(change.title!.to ?? "") } };
   return genericChange("container.updated.generic", change, { container });
@@ -142,8 +142,8 @@ function describeTaskUpdated(event: Event, ctx: EventDescribeCtx): EventDescript
     return { key: "task.updated.checklist", values: { task, done, total: items.length } };
   }
   if ("title" in change) return { key: "task.updated.title", values: { task, title: String(change.title!.to ?? "") } };
-  if ("group" in change) return { key: "task.updated.group", values: { task, group: String(change.group!.to ?? "（无）") } };
-  if ("dueDate" in change) return { key: "task.updated.dueDate", values: { task, date: String(change.dueDate!.to ?? "（无）") } };
+  if ("group" in change) return { key: "task.updated.group", values: { task, group: String(change.group!.to ?? ctx.noneLabel) } };
+  if ("dueDate" in change) return { key: "task.updated.dueDate", values: { task, date: String(change.dueDate!.to ?? ctx.noneLabel) } };
   if ("note" in change) return { key: "task.updated.note", values: { task } };
   return genericChange("task.updated.generic", change, { task });
 }

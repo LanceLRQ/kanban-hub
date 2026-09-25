@@ -23,7 +23,7 @@ function describeAndRender(event: Parameters<typeof describeEvent>[0], ctx: Para
 const container = makeContainer({ id: fixtureId("c", 1), code: "M1", title: "阶段一" });
 const task = makeTask({ id: fixtureId("t", 1), containerId: container.id, title: "写文档" });
 const board = makeBoard([container], [task]);
-const ctx = { board, projectName: "看板中枢", enumLabel };
+const ctx = { board, projectName: "看板中枢", enumLabel, noneLabel: tEvents("common.none") };
 
 describe("describeEvent：12 种事件类型各一个用例", () => {
   it("project.created", () => {
@@ -126,6 +126,26 @@ describe("describeEvent：12 种事件类型各一个用例", () => {
 });
 
 describe("describeEvent：container.updated / task.updated 的其余专门分支", () => {
+  it("container.updated 的 manualStatus 清空为 null 时用专门的整句文案，不是硬编码字符串", () => {
+    const event = makeEvent({
+      type: "container.updated",
+      target: { containerId: container.id },
+      change: { manualStatus: { from: "suspended", to: null } },
+      text: null,
+    });
+    expect(describeAndRender(event, ctx)).toBe("将 M1 阶段一 的状态恢复正常");
+  });
+
+  it("container.updated 的 targetVersion 清空为 null 时用 ctx.noneLabel 兜底", () => {
+    const event = makeEvent({
+      type: "container.updated",
+      target: { containerId: container.id },
+      change: { targetVersion: { from: "v1.0", to: null } },
+      text: null,
+    });
+    expect(describeAndRender(event, ctx)).toBe("将 M1 阶段一 的目标版本改为 （无）");
+  });
+
   it("container.updated 的 targetVersion", () => {
     const event = makeEvent({
       type: "container.updated",

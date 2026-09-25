@@ -7,7 +7,7 @@ import type { TimelineFilterOption, TimelineFilterOptions, TimelineFilters } fro
 
 /**
  * 时间线的三组筛选（项目、类型、操作者）：点击后用 `router.replace` 把筛选条件写进 URL 查询
- * 参数，服务端按新条件重新渲染第一页（细节「行为要点」）。项目内时间线固定本项目，
+ * 参数，服务端按新条件重新渲染第一页。项目内时间线固定本项目，
  * 不显示项目筛选组（`showProjectFilter=false`）。
  */
 export function TimelineFilterBar({

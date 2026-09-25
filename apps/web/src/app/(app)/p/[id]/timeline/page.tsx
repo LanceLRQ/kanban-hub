@@ -1,6 +1,6 @@
 import { TimelineView } from "@/components/timeline/timeline-view";
 import { buildTimelineLabels } from "@/components/timeline/labels";
-import { pageServices } from "@/server/web/services";
+import { authedPageServices } from "@/server/web/services";
 import { buildTimelinePage, parseTimelineFilters } from "@/server/views/timeline";
 
 /**
@@ -16,7 +16,7 @@ export default async function ProjectTimelinePage({
 }) {
   const { id } = await params;
   const sp = await searchParams;
-  const services = pageServices();
+  const { services } = await authedPageServices();
   const now = services.now();
 
   const filters = parseTimelineFilters(services, sp, { fixedProjectId: id });

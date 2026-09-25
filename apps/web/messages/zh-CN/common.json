@@ -14,6 +14,9 @@
     "admin": "管理员",
     "member": "普通用户"
   },
+  "actor": {
+    "withMachine": "{primary}（{machine}）"
+  },
   "disabledEntry": {
     "tooltip": "后续版本提供"
   },
@@ -47,8 +50,7 @@
   },
   "error": {
     "unavailable": {
-      "heading": "服务还在启动",
-      "body": "请稍后刷新页面重试。"
+      "body": "如果服务刚启动，请稍等片刻再重试。"
     },
     "generic": {
       "heading": "出了点问题",

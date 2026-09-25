@@ -6,7 +6,7 @@ import type { OverviewView } from "@/server/views/overview";
 import { ProjectCard } from "./project-card";
 import { SectionHead } from "./section-head";
 
-/** 总览页“项目”区块：卡片网格；没有项目时显示提示和去接入页的链接（细节「空状态」） */
+/** 总览页“项目”区块：卡片网格；没有项目时显示提示和去接入页的链接 */
 export async function ProjectSection({ view, now }: { view: OverviewView; now: Date }) {
   const t = await getTranslations("overview");
 

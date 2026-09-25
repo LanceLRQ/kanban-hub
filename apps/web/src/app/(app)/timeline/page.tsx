@@ -1,6 +1,6 @@
 import { TimelineView } from "@/components/timeline/timeline-view";
 import { buildTimelineLabels } from "@/components/timeline/labels";
-import { pageServices } from "@/server/web/services";
+import { authedPageServices } from "@/server/web/services";
 import { buildTimelinePage, parseTimelineFilters } from "@/server/views/timeline";
 
 /** 跨项目时间线：三组筛选都显示，筛选条件放在 URL 查询参数里（project、type、actor） */
@@ -10,7 +10,7 @@ export default async function TimelinePage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const sp = await searchParams;
-  const services = pageServices();
+  const { services } = await authedPageServices();
   const now = services.now();
 
   const filters = parseTimelineFilters(services, sp);

@@ -13,7 +13,7 @@ import { dayKey, formatDayHeading, formatTime, serverTimeZone } from "@/lib/time
 import type { Services } from "@/server/services";
 import type { EventCursor } from "@/server/store/store";
 
-/** 每页事件数（细节「时间线」：每页 50 条） */
+/** 每页事件数 */
 export const TIMELINE_PAGE_SIZE = 50;
 
 export interface TimelineFilters {
@@ -27,6 +27,8 @@ export interface TimelineFilters {
 export interface TimelineLabels {
   /** describeEvent 用到的枚举中文名，见 lib/events.ts 的 EnumLabelFn */
   enumLabel: EnumLabelFn;
+  /** 字段被清空时的占位文案（events.json 的 common.none），透传给 describeEvent */
+  noneLabel: string;
   /** 类型筛选分组的中文名（enums.json 的 eventTypeGroup） */
   groupLabel: (group: EventGroup) => string;
   /** 操作者筛选里“网页”一项的中文名 */
@@ -125,7 +127,7 @@ function buildItem(services: Services, event: Event, tz: string, labels: Timelin
   // 用类型断言桥接结构性只读数组带来的赋值不兼容（与 project-header.ts 的做法一致）
   const boardForDescribe = (board as unknown as Pick<Board, "containers" | "tasks">) ?? { containers: [], tasks: [] };
   const projectName = project?.name ?? event.projectId;
-  const description = describeEvent(event, { board: boardForDescribe, projectName, enumLabel: labels.enumLabel });
+  const description = describeEvent(event, { board: boardForDescribe, projectName, enumLabel: labels.enumLabel, noneLabel: labels.noneLabel });
   const actor = actorLabel(event.actor, {
     userName: (id) => services.store.auth.getUser(id)?.name ?? id,
     machineName: (id) => services.store.auth.getMachine(id)?.name ?? id,
@@ -158,7 +160,7 @@ function buildFilterOptions(services: Services, labels: TimelineLabels): Timelin
   return { projects, groups, actors };
 }
 
-// ---------- 查询参数解析（细节「时间线」：project / type / actor，都放在 URL 查询参数里） ----------
+// ---------- 查询参数解析：project / type / actor，都放在 URL 查询参数里 ----------
 
 const GROUP_KEYS = new Set(Object.keys(EVENT_GROUPS) as EventGroup[]);
 
@@ -166,7 +168,7 @@ const GROUP_KEYS = new Set(Object.keys(EVENT_GROUPS) as EventGroup[]);
  * 单个字段的校验：不合法、或引用不存在的项目/机器时返回 `undefined`（不区分“缺省”和“不合法”，
  * 两种情况调用方都当作没有这个筛选处理）。`parseTimelineFilters`（URL 查询参数，宽松：忽略
  * 不合法值）和 `validateTimelineFilters`（Server Action 的入参，严格：只要提供了就必须合法，
- * 否则整体拒绝）共用这三个函数，保证判断标准只有一处（细节「行为要点」）。
+ * 否则整体拒绝）共用这三个函数，保证判断标准只有一处。
  */
 function normalizeGroup(value: unknown): EventGroup | undefined {
   return typeof value === "string" && GROUP_KEYS.has(value as EventGroup) ? (value as EventGroup) : undefined;
@@ -191,7 +193,7 @@ export interface TimelineFilterContext {
 
 /**
  * 解析 `/timeline`、`/p/[id]/timeline` 的查询参数（project、type、actor）。
- * 参数缺省、不合法、或引用不存在的项目/机器时一律忽略，不报错（细节「行为要点」）——这是给
+ * 参数缺省、不合法、或引用不存在的项目/机器时一律忽略，不报错——这是给
  * 真实页面导航用的宽松策略，一个过期的书签链接不应该让页面出错，只是筛选条件被清空。
  */
 export function parseTimelineFilters(

@@ -31,7 +31,7 @@ const RADIUS_CLASS: Record<HumanKind, string> = {
 };
 
 /**
- * 收件箱的一个分组：可展开收起（细节「收件箱三组可以展开、收起，默认都展开」），
+ * 收件箱的一个分组：可展开收起，默认都展开，
  * `title` 已经是调用方拼好的“待决策 ×2”这种形式。点击条目跳到 `/p/<项目>?task=<任务>`。
  */
 export function InboxGroupCard({

@@ -9,6 +9,7 @@
   "codeExpiresIn": "有效期剩余 {time}",
   "codeExpired": "配对码已过期，请重新生成",
   "generateCode": "生成配对码",
+  "generateFailed": "生成配对码失败，服务端返回的数据无法识别",
   "steps": {
     "install": {
       "title": "安装 kh",

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useTranslations } from "next-intl";
+import { toast } from "sonner";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { useMutation } from "@/lib/client/api";
@@ -34,8 +35,13 @@ export function PairingPanel({ publicUrl }: { publicUrl: string }) {
     try {
       const result = await mutate<unknown>("/api/v1/pairing-codes", "POST");
       if (result === null) return;
-      const parsed = pairingResponseSchema.parse(result);
-      setPairing(parsed);
+      const parsed = pairingResponseSchema.safeParse(result);
+      if (!parsed.success) {
+        toast.error(t("generateFailed"));
+        return;
+      }
+      setPairing(parsed.data);
+      setRemaining(remainingSeconds(parsed.data.expiresAt, new Date()));
     } finally {
       setPending(false);
     }

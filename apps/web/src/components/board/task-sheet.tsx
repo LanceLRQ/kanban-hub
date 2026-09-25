@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useState, type ChangeEvent, type KeyboardEvent, type ReactNode } from "react";
 import { useTranslations } from "next-intl";
 import { XIcon } from "lucide-react";
 import { checklistProgress } from "@kanban-hub/core/derive";
@@ -185,21 +185,52 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
   );
 }
 
-/** 截止日期：选完日期立即保存，可清除 */
+const FULL_DATE_PATTERN = /^\d{4}-\d{2}-\d{2}$/;
+
+/** 完整、合法的日期：年份 >= 1970，避免逐位输入年份时产生的中间值（如 0002-…）被当成合法日期 */
+function isCompleteDate(value: string): boolean {
+  return FULL_DATE_PATTERN.test(value) && Number(value.slice(0, 4)) >= 1970;
+}
+
+/**
+ * 截止日期：失焦或回车时保存，避免用键盘逐位输入年份时每一步都触发一次保存。
+ * 用日期选择器直接选中一个完整日期时，浏览器同样会触发 `onChange`——这种情况下满足
+ * `isCompleteDate` 就立即保存，保留“选中即存”的体验。
+ */
 function DueDateField({ value, onSave }: { value: string | null; onSave: (next: string | null) => Promise<boolean> }) {
   const t = useTranslations("board");
   const [draft, setDraft, reset] = useDraft(value ?? "");
 
   async function commit(next: string) {
-    setDraft(next);
-    // 手动输入时，日期没填完整前值为空串，不保存
     if (next === "" || next === value) return;
     if (!(await onSave(next))) reset();
   }
 
+  function handleChange(e: ChangeEvent<HTMLInputElement>) {
+    const next = e.target.value;
+    setDraft(next);
+    if (isCompleteDate(next)) void commit(next);
+  }
+
+  function handleBlur() {
+    void commit(draft);
+  }
+
+  function handleKeyDown(e: KeyboardEvent<HTMLInputElement>) {
+    if (e.key === "Enter") void commit(draft);
+  }
+
   return (
     <div className="flex items-center gap-2">
-      <Input type="date" value={draft} aria-label={t("sheet.dueDate")} onChange={(e) => void commit(e.target.value)} className="kh-sheet-field kh-num h-8 w-44 bg-card text-[13px] md:text-[13px]" />
+      <Input
+        type="date"
+        value={draft}
+        aria-label={t("sheet.dueDate")}
+        onChange={handleChange}
+        onBlur={handleBlur}
+        onKeyDown={handleKeyDown}
+        className="kh-sheet-field kh-num h-8 w-44 bg-card text-[13px] md:text-[13px]"
+      />
       {value !== null && (
         <button
           type="button"

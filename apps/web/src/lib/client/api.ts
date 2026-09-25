@@ -88,7 +88,8 @@ function extractIssues(details: unknown): string[] {
 
 /**
  * 页面写操作的统一入口：成功后 `router.refresh()` 让服务端组件重新读取最新数据；
- * 按“细节·其他错误的提示”的规则处理各类失败，失败时返回 null（调用方不需要再自己 catch）。
+ * 按状态码分别处理各类失败（409 冲突、401 未登录、400 校验失败、网络错误等），
+ * 失败时返回 null（调用方不需要再自己 catch）。
  */
 export function useMutation() {
   const router = useRouter();
@@ -109,7 +110,7 @@ export function useMutation() {
           return null;
         }
         if (e.status === 401) {
-          const next = typeof window !== "undefined" ? sanitizeNextPath(window.location.pathname) : "/";
+          const next = typeof window !== "undefined" ? sanitizeNextPath(window.location.pathname + window.location.search) : "/";
           router.push(`/login?next=${encodeURIComponent(next)}`);
           return null;
         }

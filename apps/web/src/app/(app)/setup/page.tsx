@@ -1,24 +1,19 @@
 import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
-import { getPageSession } from "@/server/web/session";
-import { pageServices } from "@/server/web/services";
+import { authedPageServices } from "@/server/web/services";
 import { buildSetupView } from "@/server/views/setup";
 import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/section-card";
 import { CopyCommand } from "@/components/setup/copy-command";
 import { PairingPanel } from "@/components/setup/pairing-panel";
 import { MachineList } from "@/components/setup/machine-list";
 
-/**
- * 接入引导：安装 kh、生成配对码登录本机、注册仓库，加机器列表。
- * `(app)/layout.tsx` 已经校验过会话，这里的 session 一定存在。
- */
+/** 接入引导：安装 kh、生成配对码登录本机、注册仓库，加机器列表。 */
 export default async function SetupPage() {
   const t = await getTranslations("setup");
-  const session = await getPageSession();
-  const services = pageServices();
+  const { services, user } = await authedPageServices();
   const h = await headers();
 
-  const view = buildSetupView(services, session!.user.id, {
+  const view = buildSetupView(services, user.id, {
     forwardedProto: h.get("x-forwarded-proto"),
     forwardedHost: h.get("x-forwarded-host"),
     host: h.get("host"),

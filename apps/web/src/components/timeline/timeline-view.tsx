@@ -4,13 +4,13 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { useTranslations } from "next-intl";
 import { toast } from "sonner";
-import { encodeEventCursor, type EventCursor } from "@kanban-hub/core/api";
+import { encodeEventCursor } from "@kanban-hub/core/api";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { TimelineFilters, TimelinePage } from "@/server/views/timeline";
 import { hasActiveFilters } from "./active-filters";
 import { loadMoreTimelineAction } from "./actions";
-import { mergeTimelineDays } from "./merge";
+import { mergeTimelineDays, reconcileRefresh, type TimelineRefreshState } from "./merge";
 import "./timeline.css";
 import { TimelineFilterBar } from "./timeline-filter-bar";
 import { TimelineItemRow } from "./timeline-item-row";
@@ -24,7 +24,8 @@ const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-
  * `page`（服务端按当前筛选渲染的第一页）变化时分两种情况：
  * - 筛选条件变了：父组件（页面）用 `key` 让这个组件整体重新挂载，状态从头开始，不走这里的合并；
  * - 筛选没变、只是 SSE 刷新触发了服务端重新渲染：这里把新的首页合并进已加载的状态
- *   （`mergeTimelineDays(..., true)`），已经“加载更多”出来的部分原样保留（细节「SSE 刷新」）。
+ *   （`reconcileRefresh`），已经“加载更多”出来的部分原样保留，分页游标和按钮状态也一并处理，
+ *   见 `merge.ts` 的说明。
  */
 export function TimelineView({
   page,
@@ -38,19 +39,18 @@ export function TimelineView({
   const t = useTranslations("timeline");
   const router = useRouter();
   const pathname = usePathname();
-  const [days, setDays] = useState(page.days);
-  const [cursor, setCursor] = useState<EventCursor | null>(page.nextCursor);
+  const [state, setState] = useState<TimelineRefreshState>({ days: page.days, cursor: page.nextCursor, loadedMore: false });
   const [pending, startTransition] = useTransition();
   const knownPage = useRef(page);
 
   useEffect(() => {
     if (knownPage.current === page) return;
     knownPage.current = page;
-    setDays((prev) => mergeTimelineDays(prev, page.days, true));
-    setCursor(page.nextCursor);
+    setState((prev) => reconcileRefresh(prev, page));
   }, [page]);
 
   function handleLoadMore() {
+    const cursor = state.cursor;
     if (!cursor) return;
     startTransition(async () => {
       const result = await loadMoreTimelineAction(filters, encodeEventCursor(cursor));
@@ -58,11 +58,15 @@ export function TimelineView({
         toast.error(t("loadMoreFailed"));
         return;
       }
-      setDays((prev) => mergeTimelineDays(prev, result.page.days, false));
-      setCursor(result.page.nextCursor);
+      setState((prev) => ({
+        days: mergeTimelineDays(prev.days, result.page.days, false),
+        cursor: result.page.nextCursor,
+        loadedMore: true,
+      }));
     });
   }
 
+  const { days, cursor } = state;
   const hasFilters = hasActiveFilters(filters, fixedProjectId);
   const itemCount = days.reduce((sum, day) => sum + day.items.length, 0);
   const showProject = fixedProjectId === undefined;

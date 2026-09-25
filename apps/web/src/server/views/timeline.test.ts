@@ -22,6 +22,7 @@ import {
 /** 简单占位标签：本文件的断言只关心结构（分组、筛选、分页、操作者），不校验翻译文本本身 */
 const labels: TimelineLabels = {
   enumLabel: (group, value) => `${group}:${value}`,
+  noneLabel: "（无）",
   groupLabel: (group) => `group:${group}`,
   webActorLabel: "网页",
 };

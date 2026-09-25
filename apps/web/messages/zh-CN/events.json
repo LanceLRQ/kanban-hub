@@ -1,4 +1,7 @@
 {
+  "common": {
+    "none": "（无）"
+  },
   "project": {
     "created": "创建了项目 {project}",
     "updated": {
@@ -13,6 +16,7 @@
     "created": "新建了容器 {container}",
     "updated": {
       "manualStatus": "将 {container} 的状态改为{status}",
+      "manualStatusCleared": "将 {container} 的状态恢复正常",
       "targetVersion": "将 {container} 的目标版本改为 {version}",
       "targetDate": "将 {container} 的目标日期改为 {date}",
       "title": "将 {container} 改名为 {title}",

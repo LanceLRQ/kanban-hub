@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import type { Health } from "@kanban-hub/core/schema";
+import { formatActorLabel } from "@/lib/actor";
 import { formatRelative } from "@/lib/time";
 import { cn } from "@/lib/utils";
 import { formatLocationLine } from "@/lib/location";
@@ -20,12 +21,13 @@ const HEALTH_BG_CLASS: Record<Health, string> = {
 const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
 
 /**
- * 一张项目卡片：周期、健康度、焦点、进度、最近活动、主位置、停滞标记（细节「项目卡片」）。
+ * 一张项目卡片：周期、健康度、焦点、进度、最近活动、主位置、停滞标记。
  * 归档的项目整体淡化显示（`opacity`），点击进入 `/p/<id>`。`index` 只用来在主题 B 下循环纸色
  * 和圆角（`data-tone`，见 overview.css），不影响数据或排序。
  */
 export async function ProjectCard({ project, now, index }: { project: ProjectCardView; now: Date; index: number }) {
   const t = await getTranslations("overview");
+  const tc = await getTranslations("common");
   const te = looseTranslator(await getTranslations("enums"));
   const tev = looseTranslator(await getTranslations("events"));
   const archived = project.cycle === "archived";
@@ -75,8 +77,7 @@ export async function ProjectCard({ project, now, index }: { project: ProjectCar
           <>
             {tev(project.lastEvent.description.key, project.lastEvent.description.values)}
             {" · "}
-            {project.lastEvent.actor.primary}
-            {project.lastEvent.actor.secondary !== null ? ` (${project.lastEvent.actor.secondary})` : ""}
+            {formatActorLabel(project.lastEvent.actor, (primary, machine) => tc("actor.withMachine", { primary, machine }))}
             {" · "}
             {formatRelative(project.lastEvent.ts, now)}
           </>

@@ -17,7 +17,7 @@ import type { Store } from "@/server/store/store";
 
 const DAY_MS = 86_400_000;
 
-/** 收件箱三组固定的顺序（细节「收件箱」） */
+/** 收件箱三组固定的顺序 */
 const INBOX_KINDS: readonly HumanKind[] = ["decision", "verify", "action"];
 
 export interface OverviewInboxItem {
@@ -67,7 +67,7 @@ export function inboxItemText(task: Pick<Task, "human" | "title">): string {
   return note !== "" ? task.human!.note : task.title;
 }
 
-/** 收件箱只收 human 不为空、且状态不是已完成或已取消的任务（细节「收件箱」） */
+/** 收件箱只收 human 不为空、且状态不是已完成或已取消的任务 */
 function isInboxTask(task: Pick<Task, "human" | "status">): boolean {
   return task.human !== null && task.status !== "done" && task.status !== "cancelled";
 }
@@ -96,6 +96,8 @@ export interface LastEventContext {
   board: Pick<Board, "containers" | "tasks">;
   projectName: string;
   enumLabel: EnumLabelFn;
+  /** 字段被清空时的占位文案（events.json 的 common.none），透传给 describeEvent */
+  noneLabel: string;
   userName: (id: string) => string;
   machineName: (id: string) => string;
 }
@@ -104,7 +106,12 @@ export interface LastEventContext {
 export function resolveLastEvent(event: Event | undefined, ctx: LastEventContext): ProjectCardLastEvent | null {
   if (!event) return null;
   return {
-    description: describeEvent(event as unknown as Event, { board: ctx.board as unknown as Board, projectName: ctx.projectName, enumLabel: ctx.enumLabel }),
+    description: describeEvent(event as unknown as Event, {
+      board: ctx.board as unknown as Board,
+      projectName: ctx.projectName,
+      enumLabel: ctx.enumLabel,
+      noneLabel: ctx.noneLabel,
+    }),
     actor: actorLabel(event.actor, { userName: ctx.userName, machineName: ctx.machineName }),
     ts: event.ts,
   };
@@ -115,7 +122,7 @@ function nameOf(store: Store, kind: "user" | "machine", id: string): string {
   return store.auth.getMachine(id)?.name ?? id;
 }
 
-export async function buildOverview(services: Services, now: Date, enumLabel: EnumLabelFn): Promise<OverviewView> {
+export async function buildOverview(services: Services, now: Date, enumLabel: EnumLabelFn, noneLabel: string): Promise<OverviewView> {
   const { store } = services;
   const projects = store.listProjects();
 
@@ -137,6 +144,7 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
       board: board as unknown as Board,
       projectName: project.name,
       enumLabel,
+      noneLabel,
       userName: (id) => nameOf(store, "user", id),
       machineName: (id) => nameOf(store, "machine", id),
     });
@@ -174,7 +182,7 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
   };
 }
 
-/** 排序：未归档按最近事件时间倒序（没有事件的排在同组最后）；归档的整体排在最后（细节「项目卡片」） */
+/** 排序：未归档按最近事件时间倒序（没有事件的排在同组最后）；归档的整体排在最后 */
 function compareRows(a: { card: ProjectCardView; lastEventAt: string | null }, b: { card: ProjectCardView; lastEventAt: string | null }): number {
   const archivedA = a.card.cycle === "archived";
   const archivedB = b.card.cycle === "archived";

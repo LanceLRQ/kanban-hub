@@ -1,5 +1,5 @@
 import { getTranslations } from "next-intl/server";
-import { pageServices } from "@/server/web/services";
+import { authedPageServices } from "@/server/web/services";
 import { buildSettingsView } from "@/server/views/settings";
 import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/section-card";
 import { AppearanceSection } from "@/components/settings/appearance-section";
@@ -8,7 +8,7 @@ import { ConnectSection } from "@/components/settings/connect-section";
 
 export default async function SettingsPage() {
   const t = await getTranslations("settings");
-  const services = pageServices();
+  const { services } = await authedPageServices();
   const view = buildSettingsView(services);
 
   const pendingCommitsText =

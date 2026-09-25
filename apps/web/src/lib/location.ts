@@ -1,5 +1,5 @@
 /**
- * 项目位置的显示（细节「主位置」「项目页头部」）：主位置摘要
+ * 项目位置的显示：主位置摘要
  * “机器名:路径 · 分支 · ↑a ↓b · dirty n · 同步于 X”，缺失的字段为 null，由组件决定是否显示。
  */
 import type { Location, Project } from "@kanban-hub/core/schema";

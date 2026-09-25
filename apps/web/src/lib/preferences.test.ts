@@ -3,7 +3,9 @@ import {
   DEFAULT_PREFERENCES,
   PREFERENCE_KEYS,
   PREFERENCE_SCRIPT,
+  diffPreferenceAttributes,
   parsePreferences,
+  preferenceAttributes,
 } from "./preferences";
 
 describe("parsePreferences", () => {
@@ -37,6 +39,40 @@ describe("parsePreferences", () => {
       ...DEFAULT_PREFERENCES,
       cjk: "noto-serif-sc",
     });
+  });
+});
+
+describe("preferenceAttributes", () => {
+  it("把偏好映射成对应的 data-* 属性名和值", () => {
+    expect(preferenceAttributes({ theme: "collage", mono: "fira-code", cjk: "noto-serif-sc" })).toEqual({
+      "data-theme": "collage",
+      "data-font-mono": "fira-code",
+      "data-font-cjk": "noto-serif-sc",
+    });
+  });
+});
+
+describe("diffPreferenceAttributes", () => {
+  it("全部一致时返回空对象", () => {
+    const target = preferenceAttributes(DEFAULT_PREFERENCES);
+    expect(diffPreferenceAttributes(target, target)).toEqual({});
+  });
+
+  it("只返回值不同的属性", () => {
+    const current = preferenceAttributes(DEFAULT_PREFERENCES);
+    const target = preferenceAttributes({ ...DEFAULT_PREFERENCES, theme: "collage" });
+    expect(diffPreferenceAttributes(current, target)).toEqual({ "data-theme": "collage" });
+  });
+
+  it("当前值缺失（例如没有这个属性）时算作不同", () => {
+    const target = preferenceAttributes(DEFAULT_PREFERENCES);
+    expect(diffPreferenceAttributes({}, target)).toEqual(target);
+  });
+
+  it("三个属性都不同时全部返回", () => {
+    const current = preferenceAttributes(DEFAULT_PREFERENCES);
+    const target = preferenceAttributes({ theme: "collage", mono: "fira-code", cjk: "noto-serif-sc" });
+    expect(diffPreferenceAttributes(current, target)).toEqual(target);
   });
 });
 

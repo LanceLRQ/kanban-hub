@@ -91,7 +91,8 @@ export const PREFERENCE_SCRIPT = `
 })();
 `;
 
-function readPreferences(): Preferences {
+/** 读取 localStorage 里的偏好；不可用（隐私模式等）或没设置过时回退到默认值 */
+export function readPreferences(): Preferences {
   if (typeof window === "undefined") return DEFAULT_PREFERENCES;
   try {
     return parsePreferences({
@@ -104,11 +105,42 @@ function readPreferences(): Preferences {
   }
 }
 
-function applyPreferences(preferences: Preferences) {
+/** `<html>` 上三个偏好属性的名字到目标值的映射 */
+export type PreferenceAttributes = Record<"data-theme" | "data-font-mono" | "data-font-cjk", string>;
+
+export function preferenceAttributes(preferences: Preferences): PreferenceAttributes {
+  return {
+    "data-theme": preferences.theme,
+    "data-font-mono": preferences.mono,
+    "data-font-cjk": preferences.cjk,
+  };
+}
+
+/**
+ * 纯函数：比较 `<html>` 上已有的属性值和目标偏好，只返回值不同的那几项。
+ * 供 `applyPreferences` 判断要不要写 DOM，也单独导出方便测试——不依赖 `document`。
+ */
+export function diffPreferenceAttributes(
+  current: Partial<PreferenceAttributes>,
+  target: PreferenceAttributes,
+): Partial<PreferenceAttributes> {
+  const diff: Partial<PreferenceAttributes> = {};
+  for (const key of Object.keys(target) as (keyof PreferenceAttributes)[]) {
+    if (current[key] !== target[key]) diff[key] = target[key];
+  }
+  return diff;
+}
+
+/** 把偏好写到 `<html>` 的 data-* 属性上；已经是目标值的属性不重复写入 */
+export function applyPreferences(preferences: Preferences): void {
   const html = document.documentElement;
-  html.setAttribute("data-theme", preferences.theme);
-  html.setAttribute("data-font-mono", preferences.mono);
-  html.setAttribute("data-font-cjk", preferences.cjk);
+  const current: Partial<PreferenceAttributes> = {
+    "data-theme": html.getAttribute("data-theme") ?? undefined,
+    "data-font-mono": html.getAttribute("data-font-mono") ?? undefined,
+    "data-font-cjk": html.getAttribute("data-font-cjk") ?? undefined,
+  };
+  const diff = diffPreferenceAttributes(current, preferenceAttributes(preferences));
+  for (const [attr, value] of Object.entries(diff)) html.setAttribute(attr, value);
 }
 
 /*

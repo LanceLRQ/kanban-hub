@@ -8,7 +8,7 @@ import { AuthRepo } from "../store/auth";
 import { WriteQueue } from "../store/queue";
 import { SESSION_COOKIE, signSession } from "./session";
 import { generateMachineToken, hashToken } from "./token";
-import { authenticate, LastSeenTracker, toActor, type AuthenticateDeps } from "./authenticate";
+import { authenticate, LastSeenTracker, toActor, verifySessionCookie, type AuthenticateDeps } from "./authenticate";
 
 const NOW = "2026-09-24T10:00:00.000Z";
 const HASH = "a".repeat(64);
@@ -224,6 +224,53 @@ describe("authenticate：会话鉴权", () => {
   it("没有 Authorization 也没有 cookie 时返回 null", async () => {
     const auth = await openRepo();
     expect(await authenticate(request({}), makeDeps(auth))).toBeNull();
+  });
+});
+
+describe("verifySessionCookie：网页会话专用的校验函数，直接注入 cookie 值", () => {
+  it("正确的会话值返回对应用户", async () => {
+    const auth = await openRepo();
+    const user = await auth.createUser({ name: "Alice", role: "admin", passwordHash: "x" });
+    const value = signSession(
+      { userId: user.id, sessionVersion: user.sessionVersion, expiresAt: Date.parse(NOW) + 1000 },
+      auth.sessionSecret(),
+    );
+
+    expect(verifySessionCookie(value, { auth, now: () => new Date(NOW) })).toEqual({ user });
+  });
+
+  it("cookie 值为 null（未登录）时返回 null", async () => {
+    const auth = await openRepo();
+    expect(verifySessionCookie(null, { auth, now: () => new Date(NOW) })).toBeNull();
+  });
+
+  it("签名不对时返回 null", async () => {
+    const auth = await openRepo();
+    const user = await auth.createUser({ name: "Alice", role: "admin", passwordHash: "x" });
+    const value = signSession(
+      { userId: user.id, sessionVersion: user.sessionVersion, expiresAt: Date.parse(NOW) + 1000 },
+      "another-secret",
+    );
+
+    expect(verifySessionCookie(value, { auth, now: () => new Date(NOW) })).toBeNull();
+  });
+
+  it("sessionVersion 过期（改密码之后）时返回 null", async () => {
+    const auth = await openRepo();
+    const user = await auth.createUser({ name: "Alice", role: "admin", passwordHash: "x" });
+    const value = signSession(
+      { userId: user.id, sessionVersion: user.sessionVersion, expiresAt: Date.parse(NOW) + 1000 },
+      auth.sessionSecret(),
+    );
+    await auth.updateUser(user.id, { sessionVersion: user.sessionVersion + 1 });
+
+    expect(verifySessionCookie(value, { auth, now: () => new Date(NOW) })).toBeNull();
+  });
+
+  it("机器令牌不是会话值，格式不对返回 null（机器令牌不能用于页面会话）", async () => {
+    const auth = await openRepo();
+    const token = generateMachineToken();
+    expect(verifySessionCookie(token, { auth, now: () => new Date(NOW) })).toBeNull();
   });
 });
 

@@ -1,10 +1,72 @@
 {
   "wordmark": "kanban-hub",
   "tagline": "自托管 · 多项目进度看板",
-  "styleCheck": {
-    "heading": "外观地基自检",
-    "body": "这段正文用的是所选中文字体；下面这一串用等宽字体。",
-    "sample": "#a82f 12/19 v1.2.0",
-    "action": "示例按钮"
+  "nav": {
+    "ariaLabel": "主导航",
+    "overview": "总览",
+    "timeline": "时间线",
+    "settings": "设置"
+  },
+  "topBar": {
+    "logout": "退出"
+  },
+  "role": {
+    "admin": "管理员",
+    "member": "普通用户"
+  },
+  "disabledEntry": {
+    "tooltip": "后续版本提供"
+  },
+  "projectTabs": {
+    "ariaLabel": "项目视图",
+    "board": "看板",
+    "timeline": "时间线",
+    "docs": "文档",
+    "settings": "设置"
+  },
+  "projectHeader": {
+    "back": "返回总览",
+    "focus": "焦点",
+    "focusEmpty": "（无）",
+    "syncedAt": "同步于 {value}"
+  },
+  "placeholderBoard": {
+    "heading": "看板开发中",
+    "body": "项目看板正在开发中，敬请期待。"
+  },
+  "liveStatus": {
+    "disconnected": "实时更新已断开"
+  },
+  "placeholderHome": {
+    "heading": "总览页开发中",
+    "body": "总览页正在开发中，敬请期待。"
+  },
+  "notFound": {
+    "project": {
+      "heading": "项目不存在",
+      "body": "这个项目可能已被删除，或者链接不对。",
+      "back": "返回总览"
+    },
+    "page": {
+      "heading": "页面不存在",
+      "body": "这个地址可能已经失效，或者链接不对。",
+      "back": "返回总览"
+    }
+  },
+  "error": {
+    "unavailable": {
+      "heading": "服务还在启动",
+      "body": "请稍后刷新页面重试。"
+    },
+    "generic": {
+      "heading": "出了点问题",
+      "body": "请刷新页面重试。",
+      "retry": "重试"
+    }
+  },
+  "api": {
+    "networkError": "无法连接到服务端",
+    "unexpectedResponse": "服务端返回了无法解析的响应",
+    "conflict": "数据已被更新"
   }
 }

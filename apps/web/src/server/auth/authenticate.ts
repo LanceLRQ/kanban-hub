@@ -100,8 +100,20 @@ async function authenticateByToken(authHeader: string, deps: AuthenticateDeps): 
   return { kind: "machine", user, machine };
 }
 
-function authenticateBySession(cookieHeader: string | null, deps: AuthenticateDeps): Principal | null {
-  const value = readCookie(cookieHeader, SESSION_COOKIE);
+/** 会话校验只需要用到的那部分依赖：网页会话不涉及机器令牌，不需要 seen tracker */
+export interface VerifySessionCookieDeps {
+  auth: Pick<AuthRepo, "sessionSecret" | "getUser">;
+  now: () => Date;
+}
+
+/**
+ * 只接收 cookie 值（不是整段 Cookie 请求头）校验网页会话，返回对应的用户。
+ * 签名不对、格式不对、已过期、sessionVersion 不匹配（改密码后旧会话失效）、
+ * 用户不存在，都返回 null；cookie 值本身为 null（未登录）也返回 null。
+ * 供 server/web/session.ts 的 getPageSession 使用，也是这个函数单元测试的入口——
+ * 不依赖 Next 的请求上下文，直接传入 cookie 值即可。
+ */
+export function verifySessionCookie(value: string | null, deps: VerifySessionCookieDeps): { user: User } | null {
   if (value === null) return null;
 
   const payload = verifySession(value, deps.auth.sessionSecret(), deps.now().getTime());
@@ -110,5 +122,11 @@ function authenticateBySession(cookieHeader: string | null, deps: AuthenticateDe
   const user = deps.auth.getUser(payload.userId);
   if (!user || user.sessionVersion !== payload.sessionVersion) return null;
 
-  return { kind: "session", user };
+  return { user };
+}
+
+function authenticateBySession(cookieHeader: string | null, deps: AuthenticateDeps): Principal | null {
+  const value = readCookie(cookieHeader, SESSION_COOKIE);
+  const result = verifySessionCookie(value, deps);
+  return result ? { kind: "session", user: result.user } : null;
 }

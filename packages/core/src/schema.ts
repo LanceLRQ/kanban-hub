@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { idSchema } from "./ids";
+import { SYNC_MAX_FILE_SIZE_LIMIT } from "./sync";
 
 // 校验提示统一用中文（全局设置，对所有 zod schema 生效）
 z.config(z.locales.zhCN());
@@ -129,7 +130,7 @@ export type GitState = z.infer<typeof gitStateSchema>;
 export const syncScopeSchema = z.object({
   include: z.array(z.string().min(1)),
   exclude: z.array(z.string().min(1)),
-  maxFileSize: z.number().int().positive(),
+  maxFileSize: z.number().int().positive().max(SYNC_MAX_FILE_SIZE_LIMIT, `不能超过 ${SYNC_MAX_FILE_SIZE_LIMIT} 字节`),
 });
 export type SyncScope = z.infer<typeof syncScopeSchema>;
 

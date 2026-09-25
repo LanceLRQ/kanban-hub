@@ -7,10 +7,12 @@ import {
   isRepoRelativePath,
   locationInput,
   projectCreateInput,
+  syncScopeSchema,
   taskPatchInput,
   taskSchema,
   timestampSchema,
 } from "./schema";
+import { SYNC_MAX_FILE_SIZE_LIMIT } from "./sync";
 import { cliActor, fixtureId, makeBoard, makeContainer, makeEvent, makeMisc, makeTask } from "./test-fixtures";
 
 /** 校验失败时各个问题的字段路径，用点连接 */
@@ -149,5 +151,20 @@ describe("变更输入", () => {
 
   it("登记位置：拒绝未知字段", () => {
     expect(locationInput.safeParse({ path: "/repo", machineId: "m1" }).success).toBe(false);
+  });
+});
+
+describe("同步范围", () => {
+  it("接受不超过硬上限的 maxFileSize", () => {
+    expect(
+      syncScopeSchema.safeParse({ include: ["docs/**"], exclude: [], maxFileSize: SYNC_MAX_FILE_SIZE_LIMIT }).success,
+    ).toBe(true);
+  });
+
+  it("拒绝超过硬上限（20MB）的 maxFileSize", () => {
+    expect(
+      syncScopeSchema.safeParse({ include: ["docs/**"], exclude: [], maxFileSize: SYNC_MAX_FILE_SIZE_LIMIT + 1 })
+        .success,
+    ).toBe(false);
   });
 });

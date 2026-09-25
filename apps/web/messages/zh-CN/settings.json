@@ -1,1 +1,48 @@
-{}
+{
+  "heading": "设置",
+  "appearance": {
+    "title": "外观",
+    "theme": "主题",
+    "monoFont": "等宽字体",
+    "cjkFont": "中文字体",
+    "themes": {
+      "print": "褪色印刷",
+      "collage": "纸本拼贴"
+    },
+    "monoFonts": {
+      "jetbrains-mono": "JetBrains Mono",
+      "ibm-plex-mono": "IBM Plex Mono",
+      "fira-code": "Fira Code"
+    },
+    "cjkFonts": {
+      "lxgw-wenkai": "霞鹜文楷",
+      "noto-sans-sc": "思源黑体",
+      "noto-serif-sc": "思源宋体"
+    }
+  },
+  "service": {
+    "title": "服务信息",
+    "version": "版本",
+    "dataDirectory": "数据目录",
+    "pendingCommits": "待提交改动",
+    "pendingCommitsNone": "无",
+    "pendingCommitsSome": "{count} 个文件，下次写入时自动提交",
+    "publicUrl": "服务地址",
+    "publicUrlUnset": "未设置（按请求地址推断）",
+    "staleDays": "停滞阈值",
+    "staleDaysValue": "{days} 天"
+  },
+  "backup": {
+    "title": "加密备份",
+    "create": "创建备份",
+    "passwordPlaceholder": "备份密码（AES-256）",
+    "includeHistory": "含历史",
+    "createButton": "创建加密备份"
+  },
+  "connect": {
+    "title": "接入",
+    "label": "新仓库",
+    "description": "生成配对码，把新机器上的仓库注册进来。",
+    "action": "接入引导 →"
+  }
+}

@@ -1,0 +1,19 @@
+/*
+ * 设置页“外观”区块专用：两张主题卡片的缩略配色预览。
+ *
+ * 这组变量描述的是“另一套主题的样子”，用途是给用户对比两套主题好选——不是当前生效的主题，
+ * 所以故意不跟着 [data-theme] 切换，取值恒等于 ../../styles/tokens.css（主题 A）和
+ * ../../styles/themes/collage.css（主题 B）里对应 token 的实际值。改了那两处的取值，
+ * 这里要跟着更新。
+ */
+:root {
+  --theme-swatch-print-bg: #f5f0e1;
+  --theme-swatch-print-card: #fffcf1;
+  --theme-swatch-print-border: #4a4033;
+  --theme-swatch-print-accent: #d9b554;
+
+  --theme-swatch-collage-bg: #efece3;
+  --theme-swatch-collage-card: #fffdf6;
+  --theme-swatch-collage-border: #33302a;
+  --theme-swatch-collage-accent: #b5922f;
+}

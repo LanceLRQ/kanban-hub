@@ -1,1 +1,47 @@
-{}
+{
+  "back": "返回设置",
+  "heading": "接入引导",
+  "copy": "复制",
+  "copied": "已复制",
+  "copyFailed": "复制失败，已为你选中命令文字，请手动复制",
+  "codePlaceholder": "<配对码>",
+  "serverPlaceholder": "<服务端地址>",
+  "codeExpiresIn": "有效期剩余 {time}",
+  "codeExpired": "配对码已过期，请重新生成",
+  "generateCode": "生成配对码",
+  "steps": {
+    "install": {
+      "title": "安装 kh",
+      "requirement": "任意机器（Node 22 及以上）"
+    },
+    "login": {
+      "title": "登录本机",
+      "label": "生成配对码"
+    },
+    "register": {
+      "title": "注册仓库",
+      "label": "仓库根目录",
+      "repoPlaceholder": "<仓库根目录>",
+      "noteLabel": "说明",
+      "note": "kh 只在仓库里写 .kanban-hub/（默认写进本地排除），其余一律只读。"
+    }
+  },
+  "machines": {
+    "title": "已接入的机器",
+    "empty": "还没有机器接入，完成上面的步骤后会出现在这里。",
+    "os": {
+      "darwin": "macOS",
+      "linux": "Linux",
+      "windows": "Windows"
+    },
+    "lastSeen": "最后在线 {value}",
+    "never": "从未",
+    "joinedAt": "接入于 {value}",
+    "revoke": "吊销",
+    "revokedAt": "已吊销于 {value}",
+    "revokeConfirmTitle": "吊销机器“{name}”？",
+    "revokeConfirmBody": "吊销后这台机器上的 kh 将无法再上报。",
+    "revokeCancel": "取消",
+    "revokeConfirm": "确认吊销"
+  }
+}

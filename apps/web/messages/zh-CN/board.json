@@ -1,1 +1,97 @@
-{}
+{
+  "empty": "这个项目还没有容器。",
+  "section": {
+    "taskCount": "{count} 个任务",
+    "openCount": "{count} 个未完成",
+    "allDone": "{count} 个任务全部完成",
+    "completedOn": "{date}完成",
+    "cancelledNote": "另有 {count} 个已取消",
+    "targetDate": "目标日期 {date}",
+    "expand": "展开 {title}",
+    "collapse": "收起 {title}",
+    "edit": "编辑容器 {title}"
+  },
+  "meta": {
+    "completed": "完成于 {date}",
+    "due": "截止 {date}",
+    "started": "开始于 {date}",
+    "startedToday": "开始于今天",
+    "checklist": "清单 {done}/{total}",
+    "group": "分组：{group}",
+    "docs": "文档 {paths}"
+  },
+  "human": {
+    "badge": "{kind}：{note}"
+  },
+  "newTask": {
+    "placeholder": "新建任务：输入标题后回车",
+    "ariaLabel": "在 {container} 里新建任务"
+  },
+  "sheet": {
+    "description": "修改后逐项自动保存",
+    "close": "关闭",
+    "checklistCount": "清单 {done}/{total}",
+    "title": "标题",
+    "status": "状态",
+    "suspendReason": "挂起原因",
+    "suspendReasonPlaceholder": "为什么挂起？必须填写",
+    "suspendConfirm": "挂起",
+    "cancel": "取消",
+    "human": "待你处理",
+    "humanKind": "类型",
+    "humanNotePlaceholder": "需要你做什么",
+    "humanSave": "保存",
+    "humanClear": "清除",
+    "checklist": "清单",
+    "checklistAddPlaceholder": "添加一项，回车保存",
+    "checklistRemove": "删除这一项：{text}",
+    "checklistToggle": "勾选：{text}",
+    "note": "备注",
+    "notePlaceholder": "失焦或 Ctrl/⌘ + 回车保存",
+    "container": "所属容器",
+    "code": "编号",
+    "codePlaceholder": "例如 2.3",
+    "group": "分组",
+    "groupPlaceholder": "例如 安全",
+    "dueDate": "截止日期",
+    "dueDateClear": "清除截止日期",
+    "docRefs": "关联文档",
+    "docRefsAddPlaceholder": "仓库内的相对路径，回车添加",
+    "docRefsRemove": "移除 {path}"
+  },
+  "containerDialog": {
+    "title": "编辑容器",
+    "description": "修改编号、标题、目标与手动状态",
+    "code": "编号",
+    "codePlaceholder": "例如 M2",
+    "titleField": "标题",
+    "targetVersion": "目标版本",
+    "targetVersionPlaceholder": "例如 v0.2",
+    "targetDate": "目标日期",
+    "manualStatus": "手动状态",
+    "manualStatusNone": "无（按任务推算）",
+    "manualReason": "原因",
+    "manualReasonPlaceholder": "挂起时必须填写",
+    "miscHint": "杂项容器不参与状态推算，也不能手动设置状态。",
+    "reasonRequired": "挂起时必须填写原因",
+    "titleRequired": "标题不能为空",
+    "save": "保存",
+    "saving": "保存中……",
+    "cancel": "取消"
+  },
+  "projectDialog": {
+    "open": "编辑",
+    "title": "编辑项目",
+    "description": "修改名称、简介、周期、健康度与焦点",
+    "name": "名称",
+    "descriptionField": "简介",
+    "cycle": "周期",
+    "health": "健康度",
+    "focus": "焦点",
+    "focusPlaceholder": "当前在做什么",
+    "nameRequired": "名称不能为空",
+    "save": "保存",
+    "saving": "保存中……",
+    "cancel": "取消"
+  }
+}

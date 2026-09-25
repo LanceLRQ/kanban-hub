@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import type { Health } from "@kanban-hub/core/schema";
@@ -17,8 +18,9 @@ const HEALTH_BG_CLASS: Record<Health, string> = {
  * `.kh-project-header`/`.kh-project-header-divider`/`.kh-health-badge`/`.kh-health-icon`
  * 是主题相关的样式钩子（见 globals.css）：主题 B 用不对称圆角、虚线分隔线、描边徽标 + 圆点，
  * 主题 A 保留实心圆角卡片、实线分隔线、实心徽标 + 对勾方框，组件本身不分叉。
+ * `actions` 放在第一行最右侧（项目页放“编辑”按钮）。
  */
-export async function ProjectHeader({ project }: { project: ProjectHeaderView }) {
+export async function ProjectHeader({ project, actions }: { project: ProjectHeaderView; actions?: ReactNode }) {
   const t = await getTranslations("common");
   const te = await getTranslations("enums");
 
@@ -38,6 +40,7 @@ export async function ProjectHeader({ project }: { project: ProjectHeaderView })
             {te(`health.${project.health}`)}
           </span>
         </div>
+        {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}
       </div>
       <div className="mt-3 flex items-center gap-2.5">
         <span className="text-[11px] font-bold tracking-[0.14em] text-muted-foreground">{t("projectHeader.focus")}</span>

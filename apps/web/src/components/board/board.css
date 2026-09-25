@@ -1,0 +1,138 @@
+/*
+ * 项目看板在主题 B「纸本拼贴」下的覆盖。主题 A 的外观全部写在组件的 Tailwind 类里，
+ * 这里只放 [data-theme="collage"] 作用域的规则，颜色、阴影、圆角都引用 token。
+ * 这些规则不在任何 @layer 里，优先级高于 Tailwind 工具类，所以不需要 !important。
+ */
+
+/* ---------- 容器分区：相邻容器换纸色，表头是同色系略深的纸条，分隔线用虚线 ---------- */
+[data-theme="collage"] .kh-board-section {
+  --kh-paper: var(--paper-cream);
+  border: 1.5px solid var(--border);
+  background: var(--kh-paper);
+}
+[data-theme="collage"] .kh-board-section[data-paper="1"] {
+  --kh-paper: var(--paper-gray);
+}
+[data-theme="collage"] .kh-board-section[data-paper="2"] {
+  --kh-paper: var(--paper-sage);
+}
+[data-theme="collage"] .kh-board-section[data-paper="3"] {
+  --kh-paper: var(--paper-kraft);
+}
+[data-theme="collage"] .kh-board-head {
+  background: color-mix(in srgb, var(--kh-paper) 88%, var(--fg) 6%);
+  border-bottom-style: dashed;
+  border-bottom-color: var(--border-soft);
+}
+[data-theme="collage"] .kh-board-head:hover {
+  background: color-mix(in srgb, var(--kh-paper) 82%, var(--fg) 10%);
+}
+[data-theme="collage"] .kh-board-code {
+  border: 0;
+  border-radius: 2px 4px 2px 4px;
+  background: var(--fg);
+  color: var(--bg-card);
+  font-size: 12px;
+  font-weight: 700;
+}
+[data-theme="collage"] .kh-board-title {
+  font-weight: var(--cjk-heading-weight);
+  letter-spacing: 0.5px;
+}
+[data-theme="collage"] .kh-board-chip,
+[data-theme="collage"] .kh-human-badge,
+[data-theme="collage"] .kh-doc-chip {
+  border-width: 1px;
+  border-color: var(--border);
+  border-radius: 2px 6px 3px 6px;
+  background: var(--bg-card);
+  color: var(--fg);
+}
+[data-theme="collage"] .kh-board-icon-btn {
+  border-width: 1px;
+  border-radius: 3px 6px 2px 5px;
+  background: var(--bg-card);
+}
+
+/* ---------- 任务行：虚线分隔，悬停只加浅影，不换底色 ---------- */
+[data-theme="collage"] .kh-task-row {
+  border-bottom-style: dashed;
+}
+[data-theme="collage"] .kh-task-row:hover,
+[data-theme="collage"] .kh-task-row:focus-visible {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--focus-ring);
+}
+
+/* ---------- 状态标记：主题 A 是带字符的小方块，主题 B 是小圆点（待开始空心，已取消虚线空心） ---------- */
+[data-theme="collage"] .kh-status-mark {
+  width: 9px;
+  height: 9px;
+  border-width: 1px;
+  border-radius: 999px;
+  font-size: 0;
+}
+[data-theme="collage"] .kh-status-mark[data-size="sm"] {
+  width: 8px;
+  height: 8px;
+}
+[data-theme="collage"] .kh-status-mark[data-status="suspended"] {
+  background: var(--health-blocked);
+}
+[data-theme="collage"] .kh-status-mark[data-status="cancelled"] {
+  background: transparent;
+  border-style: dashed;
+}
+
+/* ---------- 待你处理徽标：米白纸底 + 语义色小圆点 ---------- */
+[data-theme="collage"] .kh-human-dot {
+  display: inline-block;
+}
+
+/* ---------- 侧栏：牛皮纸浮层，虚线分块，状态选项是虚线纸片 ---------- */
+[data-theme="collage"] .kh-sheet {
+  border-left: 1.5px solid var(--border);
+  border-radius: 6px 0 0 0;
+  background: var(--paper-kraft);
+  box-shadow: var(--shadow-hover);
+}
+[data-theme="collage"] .kh-sheet-top {
+  background: color-mix(in srgb, var(--paper-kraft) 85%, var(--fg) 8%);
+  border-bottom: 1.5px solid var(--border);
+}
+[data-theme="collage"] .kh-sheet-close {
+  border-width: 1px;
+  border-radius: 3px 7px 3px 7px;
+}
+[data-theme="collage"] .kh-sheet-close:hover {
+  transform: var(--press-hover);
+}
+[data-theme="collage"] .kh-sheet-block {
+  border-bottom-style: dashed;
+}
+[data-theme="collage"] .kh-sheet-label {
+  letter-spacing: 0.04em;
+  color: var(--fg);
+}
+[data-theme="collage"] .kh-status-opt {
+  border: 1px dashed var(--border-soft);
+  border-radius: 2px 6px 3px 6px;
+  background: color-mix(in srgb, var(--bg-card) 55%, transparent);
+  font-weight: 600;
+}
+[data-theme="collage"] .kh-status-opt:hover {
+  transform: var(--press-hover);
+}
+[data-theme="collage"] .kh-status-opt[data-active="true"] {
+  border: 1.5px solid var(--border);
+  background: var(--bg-card);
+  box-shadow: var(--shadow-raised);
+  font-weight: 800;
+}
+[data-theme="collage"] .kh-check-box {
+  border-radius: 2px 4px 2px 4px;
+}
+[data-theme="collage"] .peer:checked + .kh-check-box {
+  border-color: var(--task-done);
+  background: var(--task-done);
+}

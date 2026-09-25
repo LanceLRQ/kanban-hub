@@ -18,10 +18,11 @@ export async function InboxSection({ view, now }: { view: OverviewView; now: Dat
           {t("inbox.empty")}
         </p>
       ) : (
-        <div className="grid items-start gap-5 md:grid-cols-3">
+        <div className="grid gap-5 md:grid-cols-3">
           {view.inbox.map((group) => (
             <InboxGroupCard
               key={group.kind}
+              kind={group.kind}
               title={t("inbox.groupTitle", { label: te(`humanKind.${group.kind}`), count: group.items.length })}
               items={group.items.map((item) => ({
                 projectId: item.projectId,

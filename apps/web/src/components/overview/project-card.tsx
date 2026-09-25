@@ -6,6 +6,7 @@ import { cn } from "@/lib/utils";
 import type { LocationSummary } from "@/lib/location";
 import type { ProjectCardView } from "@/server/views/overview";
 import { looseTranslator } from "./loose-translator";
+import "./overview.css";
 import { ProgressBar } from "./progress-bar";
 
 /** 健康度徽标的颜色：语义色，来自 tokens.css 的 --health-*，与项目页头部同一套 */
@@ -14,6 +15,9 @@ const HEALTH_BG_CLASS: Record<Health, string> = {
   at_risk: "bg-health-at-risk",
   blocked: "bg-health-blocked",
 };
+
+/** 卡片的不对称圆角按卡片序号循环，只在主题 B 生效（overview.css），主题 A 下四个值都等于 --radius */
+const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
 
 function formatLocationLine(location: LocationSummary, syncedAtLabel: (value: string) => string): string {
   const parts = [`${location.machineName}:${location.path}`];
@@ -26,24 +30,28 @@ function formatLocationLine(location: LocationSummary, syncedAtLabel: (value: st
 
 /**
  * 一张项目卡片：周期、健康度、焦点、进度、最近活动、主位置、停滞标记（细节「项目卡片」）。
- * 归档的项目整体淡化显示（`opacity`），点击进入 `/p/<id>`。
+ * 归档的项目整体淡化显示（`opacity`），点击进入 `/p/<id>`。`index` 只用来在主题 B 下循环纸色
+ * 和圆角（`data-tone`，见 overview.css），不影响数据或排序。
  */
-export async function ProjectCard({ project, now }: { project: ProjectCardView; now: Date }) {
+export async function ProjectCard({ project, now, index }: { project: ProjectCardView; now: Date; index: number }) {
   const t = await getTranslations("overview");
   const te = looseTranslator(await getTranslations("enums"));
   const tev = looseTranslator(await getTranslations("events"));
   const archived = project.cycle === "archived";
+  const tone = index % 4;
 
   return (
     <Link
       href={`/p/${project.id}`}
+      data-tone={tone}
       className={cn(
-        "kh-radius-c flex flex-col gap-3 rounded-md border bg-card p-4.5 shadow-[var(--shadow-raised)] transition-transform hover:-translate-y-0.5",
+        "kh-overview-card flex flex-col gap-3 rounded-md border bg-card p-4.5 shadow-[var(--shadow-raised)] transition-transform hover:-translate-y-0.5",
+        RADIUS_CLASSES[tone],
         archived && "opacity-60",
       )}
     >
       <div className="flex items-center justify-between gap-2">
-        <span className="text-lg font-bold">{project.name}</span>
+        <span className="break-all text-lg font-bold">{project.name}</span>
         <span className="inline-flex shrink-0 items-center rounded-sm border bg-card px-2.5 py-0.5 text-xs font-bold">
           {te(`cycle.${project.cycle}`)}
         </span>
@@ -71,7 +79,7 @@ export async function ProjectCard({ project, now }: { project: ProjectCardView; 
         </span>
       </div>
 
-      <p className="min-h-[1.25rem] text-xs font-medium text-muted-foreground">
+      <p className="kh-overview-divider min-h-[1.25rem] border-t border-border/60 pt-2 text-xs font-medium break-all text-muted-foreground">
         {project.lastEvent ? (
           <>
             {tev(project.lastEvent.description.key, project.lastEvent.description.values)}
@@ -87,13 +95,13 @@ export async function ProjectCard({ project, now }: { project: ProjectCardView; 
       </p>
 
       {project.location && (
-        <p className="kh-num border-t border-border/60 pt-2 text-[11px] font-medium text-muted-foreground">
+        <p className="kh-overview-divider kh-num border-t border-border/60 pt-2 text-[11px] font-medium break-all text-muted-foreground">
           {formatLocationLine(project.location, (value) => t("projects.syncedAt", { value }))}
         </p>
       )}
 
       {project.stale && (
-        <span className="inline-flex w-fit items-center rounded-sm border border-stale/60 bg-stale/10 px-2.5 py-0.5 text-[11px] font-bold text-stale">
+        <span className="mt-auto inline-flex w-fit items-center self-start rounded-sm border border-stale/60 bg-stale/10 px-2.5 py-0.5 text-[11px] font-bold text-stale">
           {t("projects.stale", { days: project.stale.days })}
         </span>
       )}

@@ -17,7 +17,7 @@ export default async function OverviewPage() {
   const view = await buildOverview(services, now, enumLabel);
 
   return (
-    <div className="flex flex-col">
+    <div className="flex flex-col gap-11">
       <InboxSection view={view} now={now} />
       <ProjectSection view={view} now={now} />
     </div>

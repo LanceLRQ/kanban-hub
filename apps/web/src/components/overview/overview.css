@@ -1,0 +1,98 @@
+/*
+ * 总览页专属的主题 B（纸本拼贴）样式：收件箱分组与项目卡片的纸色区分、胶带装饰、虚线分隔、
+ * 圆形收起按钮、区块标题的双线与去方框。主题 A 不受影响——规则都限定在
+ * `[data-theme="collage"]` 下，颜色和圆角只引用 tokens.css / themes/collage.css 里已有的变量，
+ * 这里不新定义任何色值。这份文件不放在 @layer 里，好让它稳定盖过 Tailwind 生成的工具类
+ * （globals.css 里同类的主题覆盖也是这个理由，只是那边用 @layer components 加 !important）。
+ */
+
+/* ---------- 区块标题：主题 B 去掉编号的方框，分隔线改双线 ---------- */
+[data-theme="collage"] .kh-overview-sec-no {
+  border: none;
+  background: transparent;
+  padding: 0;
+}
+[data-theme="collage"] .kh-overview-sec-rule {
+  border-bottom-style: double;
+  border-bottom-width: 3px;
+  border-bottom-color: var(--border-soft);
+}
+
+/* ---------- 收件箱分组：纸色、胶带、圆形收起按钮 ---------- */
+.kh-overview-tape {
+  display: none;
+}
+[data-theme="collage"] .kh-overview-group {
+  border-width: 1.5px;
+}
+[data-theme="collage"] .kh-overview-group[data-tone="decision"] {
+  background: var(--paper-kraft);
+}
+[data-theme="collage"] .kh-overview-group[data-tone="verify"] {
+  background: var(--paper-sage);
+}
+[data-theme="collage"] .kh-overview-group[data-tone="action"] {
+  background: var(--paper-gray);
+}
+[data-theme="collage"] .kh-overview-tape {
+  display: block;
+  position: absolute;
+  top: -7px;
+  left: 28px;
+  width: 46px;
+  height: 13px;
+  background: var(--paper-tape);
+  border: 1px solid var(--border-soft);
+  border-radius: 1px;
+  transform: rotate(-1.5deg);
+  pointer-events: none;
+}
+[data-theme="collage"] .kh-overview-fold {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--card);
+  font-size: 0.8125rem;
+}
+
+/* ---------- 待你处理的语义色徽标：主题 A 填充，主题 B 描边加圆点 ---------- */
+.kh-overview-kind-dot {
+  display: none;
+}
+[data-theme="collage"] .kh-overview-kind-badge {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--foreground);
+}
+[data-theme="collage"] .kh-overview-kind-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  flex: none;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+}
+
+/* ---------- 项目卡片：纸色区分 ---------- */
+[data-theme="collage"] .kh-overview-card[data-tone="0"] {
+  background: var(--paper-cream);
+}
+[data-theme="collage"] .kh-overview-card[data-tone="1"] {
+  background: var(--paper-gray);
+}
+[data-theme="collage"] .kh-overview-card[data-tone="2"] {
+  background: var(--paper-sage);
+}
+[data-theme="collage"] .kh-overview-card[data-tone="3"] {
+  background: var(--paper-kraft);
+}
+
+/* ---------- 卡片内的分隔线：主题 B 一律改成虚线 ---------- */
+[data-theme="collage"] .kh-overview-divider {
+  border-style: dashed;
+  border-color: var(--border-soft);
+}

@@ -22,9 +22,9 @@ export async function ProjectSection({ view, now }: { view: OverviewView; now: D
           </Link>
         </div>
       ) : (
-        <div className="grid items-start gap-5 sm:grid-cols-2 xl:grid-cols-4">
-          {view.projects.map((project) => (
-            <ProjectCard key={project.id} project={project} now={now} />
+        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4">
+          {view.projects.map((project, index) => (
+            <ProjectCard key={project.id} project={project} now={now} index={index} />
           ))}
         </div>
       )}

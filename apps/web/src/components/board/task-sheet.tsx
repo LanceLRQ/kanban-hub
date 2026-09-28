@@ -80,7 +80,7 @@ function TaskSheetBody({ projectId, task, containerOptions }: { projectId: strin
       side="right"
       showCloseButton={false}
       aria-describedby={undefined}
-      className="kh-sheet w-[400px] gap-0 overflow-y-auto overscroll-contain border-l bg-card p-0 shadow-[var(--shadow-raised)] sm:max-w-[420px]"
+      className="kh-sheet w-full gap-0 overflow-y-auto overscroll-contain border-l bg-card p-0 shadow-[var(--shadow-raised)] sm:w-[520px] sm:max-w-[520px] xl:w-[760px] xl:max-w-[760px]"
     >
       <div className="kh-sheet-top sticky top-0 z-10 flex items-center justify-between gap-3 border-b bg-[var(--mustard)] px-5 py-3">
         <div className="flex items-center gap-3">
@@ -109,60 +109,66 @@ function TaskSheetBody({ projectId, task, containerOptions }: { projectId: strin
         />
       </div>
 
-      <Block label={t("sheet.status")}>
-        <StatusPicker status={task.status} onChange={saveStatus} />
-        {task.status === "suspended" && (
-          <div className="mt-2.5 flex flex-col gap-1.5">
-            <span className="text-[11px] font-bold text-muted-foreground">{t("sheet.suspendReason")}</span>
-            <EditableText value={task.suspendReason ?? ""} required ariaLabel={t("sheet.suspendReason")} onSave={(suspendReason) => save({ suspendReason })} />
+      <div className="xl:grid xl:grid-cols-[minmax(0,1fr)_280px]">
+        <div className="kh-sheet-aside xl:col-start-2 xl:row-start-1 xl:border-l xl:border-[var(--border-soft)]">
+          <Block label={t("sheet.status")}>
+            <StatusPicker status={task.status} onChange={saveStatus} />
+            {task.status === "suspended" && (
+              <div className="mt-2.5 flex flex-col gap-1.5">
+                <span className="text-[11px] font-bold text-muted-foreground">{t("sheet.suspendReason")}</span>
+                <EditableText value={task.suspendReason ?? ""} required ariaLabel={t("sheet.suspendReason")} onSave={(suspendReason) => save({ suspendReason })} />
+              </div>
+            )}
+          </Block>
+
+          <Block label={t("sheet.human")}>
+            <HumanEditor human={task.human} onSave={(human: HumanFlag | null) => save({ human })} />
+          </Block>
+
+          <Block label={t("sheet.container")}>
+            <Select value={task.containerId} onValueChange={(containerId) => void save({ containerId })}>
+              <SelectTrigger size="sm" aria-label={t("sheet.container")} className="kh-sheet-field w-full bg-card text-[13px] font-semibold">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {containerOptions.map((c) => (
+                  <SelectItem key={c.id} value={c.id}>
+                    <span className="kh-num text-xs text-muted-foreground">{c.label}</span>
+                    {c.title}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Block>
+
+          <div className="kh-sheet-block grid grid-cols-2 gap-3 border-b border-[var(--border-soft)] px-5 py-4">
+            <Field label={t("sheet.code")}>
+              <EditableText value={task.code ?? ""} ariaLabel={t("sheet.code")} placeholder={t("sheet.codePlaceholder")} onSave={(v) => save({ code: v === "" ? null : v })} />
+            </Field>
+            <Field label={t("sheet.group")}>
+              <EditableText value={task.group ?? ""} ariaLabel={t("sheet.group")} placeholder={t("sheet.groupPlaceholder")} onSave={(v) => save({ group: v === "" ? null : v })} />
+            </Field>
           </div>
-        )}
-      </Block>
 
-      <Block label={t("sheet.human")}>
-        <HumanEditor human={task.human} onSave={(human: HumanFlag | null) => save({ human })} />
-      </Block>
+          <Block label={t("sheet.dueDate")}>
+            <DueDateField value={task.dueDate} onSave={(dueDate) => save({ dueDate })} />
+          </Block>
+        </div>
 
-      <Block label={t("sheet.checklist")}>
-        <ChecklistEditor items={checklist} onChange={saveChecklist} />
-      </Block>
+        <div className="xl:col-start-1 xl:row-start-1">
+          <Block label={t("sheet.checklist")}>
+            <ChecklistEditor items={checklist} onChange={saveChecklist} />
+          </Block>
 
-      <Block label={t("sheet.note")}>
-        <EditableText value={task.note} multiline ariaLabel={t("sheet.note")} placeholder={t("sheet.notePlaceholder")} onSave={(note) => save({ note })} />
-      </Block>
+          <Block label={t("sheet.note")}>
+            <EditableText value={task.note} multiline ariaLabel={t("sheet.note")} placeholder={t("sheet.notePlaceholder")} onSave={(note) => save({ note })} />
+          </Block>
 
-      <Block label={t("sheet.container")}>
-        <Select value={task.containerId} onValueChange={(containerId) => void save({ containerId })}>
-          <SelectTrigger size="sm" aria-label={t("sheet.container")} className="kh-sheet-field w-full bg-card text-[13px] font-semibold">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {containerOptions.map((c) => (
-              <SelectItem key={c.id} value={c.id}>
-                <span className="kh-num text-xs text-muted-foreground">{c.label}</span>
-                {c.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </Block>
-
-      <div className="kh-sheet-block grid grid-cols-2 gap-3 border-b border-[var(--border-soft)] px-5 py-4">
-        <Field label={t("sheet.code")}>
-          <EditableText value={task.code ?? ""} ariaLabel={t("sheet.code")} placeholder={t("sheet.codePlaceholder")} onSave={(v) => save({ code: v === "" ? null : v })} />
-        </Field>
-        <Field label={t("sheet.group")}>
-          <EditableText value={task.group ?? ""} ariaLabel={t("sheet.group")} placeholder={t("sheet.groupPlaceholder")} onSave={(v) => save({ group: v === "" ? null : v })} />
-        </Field>
+          <Block label={t("sheet.docRefs")} last>
+            <DocRefsEditor projectId={projectId} paths={task.docRefs} onChange={(docRefs) => save({ docRefs })} />
+          </Block>
+        </div>
       </div>
-
-      <Block label={t("sheet.dueDate")}>
-        <DueDateField value={task.dueDate} onSave={(dueDate) => save({ dueDate })} />
-      </Block>
-
-      <Block label={t("sheet.docRefs")} last>
-        <DocRefsEditor projectId={projectId} paths={task.docRefs} onChange={(docRefs) => save({ docRefs })} />
-      </Block>
     </SheetContent>
   );
 }

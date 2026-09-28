@@ -14,13 +14,13 @@ export default function RootLayout({ children }: { children: ReactNode }) {
     // 首帧脚本（见下）在浏览器绘制前就把 data-theme / data-font-* 写到 <html> 上，
     // 而服务端渲染的这份 HTML 天然不知道用户存在 localStorage 里的偏好，两边的属性值
     // 免不了会短暂不一致；React 拿服务端标记去做 hydration diff 时会把这当成真的
-    // 属性不匹配而报警，但这里是预期内的、只影响这三个属性的差异，加
+    // 属性不匹配而报警，但这里是预期内的、只影响这几个偏好属性的差异，加
     // suppressHydrationWarning 让 React 不为这个已知差异报警，其余属性/子树的
     // hydration 校验不受影响（这个属性只作用于它所在的这一个元素）。
     <html lang="zh-CN" suppressHydrationWarning>
       <body>
         {/*
-          首帧脚本：在浏览器绘制前设置好 data-theme / data-font-mono / data-font-cjk，
+          首帧脚本：在浏览器绘制前设置好 data-theme / data-font-mono / data-font-cjk / data-layout，
           避免刷新时先出现默认外观再跳到用户偏好的闪烁。用 next/script 的 beforeInteractive
           策略而不是手写 <script dangerouslySetInnerHTML>：两者都能在 hydration 之前执行，
           但后者是 React 渲染出的裸 <script> DOM 节点，会触发 React 的

@@ -80,6 +80,10 @@
     "print": "褪色印刷",
     "collage": "纸本拼贴"
   },
+  "layout": {
+    "wide": "宽屏（拉满浏览器宽度）",
+    "narrow": "窄屏（最宽 1240px）"
+  },
   "monoFont": {
     "jetbrains-mono": "JetBrains Mono",
     "ibm-plex-mono": "IBM Plex Mono",

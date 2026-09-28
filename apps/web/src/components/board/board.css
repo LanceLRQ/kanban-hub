@@ -112,6 +112,9 @@
   [data-theme="collage"] .kh-sheet-block {
     border-bottom-style: dashed;
   }
+  [data-theme="collage"] .kh-sheet-aside {
+    border-left-style: dashed;
+  }
   [data-theme="collage"] .kh-sheet-label {
     letter-spacing: 0.04em;
     color: var(--fg);

@@ -8,7 +8,9 @@
     "settings": "设置"
   },
   "topBar": {
-    "logout": "退出"
+    "logout": "退出",
+    "layoutToNarrow": "切换到窄屏",
+    "layoutToWide": "切换到宽屏"
   },
   "role": {
     "admin": "管理员",

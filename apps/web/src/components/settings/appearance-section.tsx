@@ -4,7 +4,7 @@ import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Label } from "@/components/ui/label";
-import { CJK_FONTS, MONO_FONTS, THEMES, usePreferences, type CjkFont, type MonoFont, type Theme } from "@/lib/preferences";
+import { CJK_FONTS, LAYOUTS, MONO_FONTS, THEMES, usePreferences, type CjkFont, type Layout, type MonoFont, type Theme } from "@/lib/preferences";
 import { SectionRow } from "./section-card";
 import "./settings.css";
 
@@ -55,7 +55,7 @@ const THEME_SWATCH_CLASS: Record<Theme, ThemeSwatch> = {
 export function AppearanceSection() {
   const t = useTranslations("settings");
   const tEnums = useTranslations("enums");
-  const { preferences, setTheme, setMonoFont, setCjkFont } = usePreferences();
+  const { preferences, setTheme, setMonoFont, setCjkFont, setLayout } = usePreferences();
 
   return (
     <>
@@ -66,17 +66,24 @@ export function AppearanceSection() {
           ))}
         </div>
       </SectionRow>
+      <SectionRow label={t("appearance.layout")}>
+        <RadioGroup value={preferences.layout} onValueChange={(v) => setLayout(v as Layout)} className="flex flex-wrap gap-x-5 gap-y-2">
+          {LAYOUTS.map((layout) => (
+            <RadioOption key={layout} id={`layout-${layout}`} value={layout} label={tEnums(`layout.${layout}`)} />
+          ))}
+        </RadioGroup>
+      </SectionRow>
       <SectionRow label={t("appearance.monoFont")}>
         <RadioGroup value={preferences.mono} onValueChange={(v) => setMonoFont(v as MonoFont)} className="flex flex-wrap gap-x-5 gap-y-2">
           {MONO_FONTS.map((font) => (
-            <FontOption key={font} id={`mono-${font}`} value={font} label={tEnums(`monoFont.${font}`)} />
+            <RadioOption key={font} id={`mono-${font}`} value={font} label={tEnums(`monoFont.${font}`)} />
           ))}
         </RadioGroup>
       </SectionRow>
       <SectionRow label={t("appearance.cjkFont")}>
         <RadioGroup value={preferences.cjk} onValueChange={(v) => setCjkFont(v as CjkFont)} className="flex flex-wrap gap-x-5 gap-y-2">
           {CJK_FONTS.map((font) => (
-            <FontOption key={font} id={`cjk-${font}`} value={font} label={tEnums(`cjkFont.${font}`)} />
+            <RadioOption key={font} id={`cjk-${font}`} value={font} label={tEnums(`cjkFont.${font}`)} />
           ))}
         </RadioGroup>
       </SectionRow>
@@ -112,7 +119,7 @@ function ThemeCard({ theme, active, onSelect, label }: { theme: Theme; active: b
   );
 }
 
-function FontOption({ id, value, label }: { id: string; value: string; label: string }) {
+function RadioOption({ id, value, label }: { id: string; value: string; label: string }) {
   return (
     <div className="flex items-center gap-2">
       <RadioGroupItem value={value} id={id} />

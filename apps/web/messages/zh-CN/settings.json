@@ -3,6 +3,7 @@
   "appearance": {
     "title": "外观",
     "theme": "主题",
+    "layout": "页面宽度",
     "monoFont": "等宽字体",
     "cjkFont": "中文字体"
   },

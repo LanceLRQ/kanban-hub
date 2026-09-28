@@ -6,6 +6,7 @@ import { buttonVariants } from "@/components/ui/button";
 import { NavLinks } from "./nav-links";
 import { LogoutButton } from "./logout-button";
 import { LiveIndicator } from "./live-indicator";
+import { LayoutToggle } from "./layout-toggle";
 
 /** 顶栏：wordmark、导航（总览/时间线/设置）、当天日期、用户区、退出。日期按服务端时区显示 */
 export async function TopBar({ user, now }: { user: User; now: Date }) {
@@ -20,7 +21,7 @@ export async function TopBar({ user, now }: { user: User; now: Date }) {
 
   return (
     <header className="border-b bg-card">
-      <div className="mx-auto flex max-w-[1240px] flex-wrap items-center gap-x-6 gap-y-2 px-8 py-3.5">
+      <div className="mx-auto flex flex-wrap items-center gap-x-6 gap-y-2 px-8 py-3.5 narrow:max-w-[1240px]">
         <div className="kh-wordmark text-2xl font-semibold tracking-tight">{t("wordmark")}</div>
         <span className="hidden self-end pb-0.5 text-[11px] font-bold tracking-[0.14em] text-muted-foreground sm:inline">
           {t("tagline")}
@@ -29,6 +30,7 @@ export async function TopBar({ user, now }: { user: User; now: Date }) {
         <div className="ml-auto flex items-center gap-3">
           <LiveIndicator />
           <span className="kh-topbar-date kh-num text-xs font-medium text-muted-foreground">{formatToday(now, tz)}</span>
+          <LayoutToggle />
           <span className={cn(buttonVariants({ variant: "outline", size: "sm" }), "cursor-default shadow-none")}>
             {user.name} · {t(`role.${user.role}`)}
           </span>

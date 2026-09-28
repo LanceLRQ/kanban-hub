@@ -31,6 +31,9 @@
  */
 @custom-variant dark (&:where(.kh-disable-dark-mode));
 
+/* 窄屏偏好：`<html data-layout="narrow">` 时生效，用来给内容区套回旧的 1240px 居中宽度 */
+@custom-variant narrow (&:where([data-layout="narrow"] *));
+
 /*
  * 把 CSS 变量映射成 Tailwind 4 的 @theme 变量：用 `@theme inline` 而不是 `@theme`，
  * 因为这里引用的是会随 [data-theme] / [data-font-*] 切换而变化的变量，

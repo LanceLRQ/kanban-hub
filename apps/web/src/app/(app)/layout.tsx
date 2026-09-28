@@ -11,7 +11,7 @@ export default async function AppLayout({ children }: { children: ReactNode }) {
     <>
       <TopBar user={user} now={services.now()} />
       <LiveRefresh />
-      <main className="mx-auto max-w-[1240px] px-8 py-8">{children}</main>
+      <main className="@container mx-auto px-8 py-8 narrow:max-w-[1240px]">{children}</main>
     </>
   );
 }

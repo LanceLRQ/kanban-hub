@@ -14,16 +14,22 @@ export type MonoFont = (typeof MONO_FONTS)[number];
 export const CJK_FONTS = ["lxgw-wenkai", "noto-sans-sc", "noto-serif-sc"] as const;
 export type CjkFont = (typeof CJK_FONTS)[number];
 
+/** 页面宽度：宽屏拉满浏览器宽度（默认），窄屏最宽 1240px 居中 */
+export const LAYOUTS = ["wide", "narrow"] as const;
+export type Layout = (typeof LAYOUTS)[number];
+
 export interface Preferences {
   theme: Theme;
   mono: MonoFont;
   cjk: CjkFont;
+  layout: Layout;
 }
 
 export const DEFAULT_PREFERENCES: Preferences = {
   theme: THEMES[0],
   mono: MONO_FONTS[0],
   cjk: CJK_FONTS[0],
+  layout: LAYOUTS[0],
 };
 
 /** localStorage 键名 */
@@ -31,6 +37,7 @@ export const PREFERENCE_KEYS = {
   theme: "kh-theme",
   mono: "kh-font-mono",
   cjk: "kh-font-cjk",
+  layout: "kh-layout",
 } as const;
 
 /** raw 值不合法（缺失、空串、未知值）时回退到默认值 */
@@ -38,11 +45,13 @@ export function parsePreferences(raw: {
   theme?: string | null;
   mono?: string | null;
   cjk?: string | null;
+  layout?: string | null;
 }): Preferences {
   return {
     theme: isTheme(raw.theme) ? raw.theme : DEFAULT_PREFERENCES.theme,
     mono: isMonoFont(raw.mono) ? raw.mono : DEFAULT_PREFERENCES.mono,
     cjk: isCjkFont(raw.cjk) ? raw.cjk : DEFAULT_PREFERENCES.cjk,
+    layout: isLayout(raw.layout) ? raw.layout : DEFAULT_PREFERENCES.layout,
   };
 }
 
@@ -58,6 +67,10 @@ function isCjkFont(v: string | null | undefined): v is CjkFont {
   return typeof v === "string" && v.length > 0 && (CJK_FONTS as readonly string[]).includes(v);
 }
 
+function isLayout(v: string | null | undefined): v is Layout {
+  return typeof v === "string" && v.length > 0 && (LAYOUTS as readonly string[]).includes(v);
+}
+
 /**
  * 首帧内联脚本：在页面绘制前从 localStorage 读取偏好并设置 <html> 的 data-* 属性，避免闪烁。
  * localStorage 不可用（隐私模式等）或读取抛异常时静默回退到默认值。
@@ -68,6 +81,7 @@ export const PREFERENCE_SCRIPT = `
   var THEMES = ${JSON.stringify(THEMES)};
   var MONO_FONTS = ${JSON.stringify(MONO_FONTS)};
   var CJK_FONTS = ${JSON.stringify(CJK_FONTS)};
+  var LAYOUTS = ${JSON.stringify(LAYOUTS)};
   var KEYS = ${JSON.stringify(PREFERENCE_KEYS)};
   var DEFAULTS = ${JSON.stringify(DEFAULT_PREFERENCES)};
 
@@ -84,10 +98,12 @@ export const PREFERENCE_SCRIPT = `
   var theme = read(KEYS.theme, THEMES, DEFAULTS.theme);
   var mono = read(KEYS.mono, MONO_FONTS, DEFAULTS.mono);
   var cjk = read(KEYS.cjk, CJK_FONTS, DEFAULTS.cjk);
+  var layout = read(KEYS.layout, LAYOUTS, DEFAULTS.layout);
 
   document.documentElement.setAttribute("data-theme", theme);
   document.documentElement.setAttribute("data-font-mono", mono);
   document.documentElement.setAttribute("data-font-cjk", cjk);
+  document.documentElement.setAttribute("data-layout", layout);
 })();
 `;
 
@@ -99,20 +115,22 @@ export function readPreferences(): Preferences {
       theme: window.localStorage.getItem(PREFERENCE_KEYS.theme),
       mono: window.localStorage.getItem(PREFERENCE_KEYS.mono),
       cjk: window.localStorage.getItem(PREFERENCE_KEYS.cjk),
+      layout: window.localStorage.getItem(PREFERENCE_KEYS.layout),
     });
   } catch {
     return DEFAULT_PREFERENCES;
   }
 }
 
-/** `<html>` 上三个偏好属性的名字到目标值的映射 */
-export type PreferenceAttributes = Record<"data-theme" | "data-font-mono" | "data-font-cjk", string>;
+/** `<html>` 上四个偏好属性的名字到目标值的映射 */
+export type PreferenceAttributes = Record<"data-theme" | "data-font-mono" | "data-font-cjk" | "data-layout", string>;
 
 export function preferenceAttributes(preferences: Preferences): PreferenceAttributes {
   return {
     "data-theme": preferences.theme,
     "data-font-mono": preferences.mono,
     "data-font-cjk": preferences.cjk,
+    "data-layout": preferences.layout,
   };
 }
 
@@ -138,6 +156,7 @@ export function applyPreferences(preferences: Preferences): void {
     "data-theme": html.getAttribute("data-theme") ?? undefined,
     "data-font-mono": html.getAttribute("data-font-mono") ?? undefined,
     "data-font-cjk": html.getAttribute("data-font-cjk") ?? undefined,
+    "data-layout": html.getAttribute("data-layout") ?? undefined,
   };
   const diff = diffPreferenceAttributes(current, preferenceAttributes(preferences));
   for (const [attr, value] of Object.entries(diff)) html.setAttribute(attr, value);
@@ -180,6 +199,7 @@ export function usePreferences() {
       window.localStorage.setItem(PREFERENCE_KEYS.theme, next.theme);
       window.localStorage.setItem(PREFERENCE_KEYS.mono, next.mono);
       window.localStorage.setItem(PREFERENCE_KEYS.cjk, next.cjk);
+      window.localStorage.setItem(PREFERENCE_KEYS.layout, next.layout);
     } catch {
       // localStorage 不可用时，偏好仍在本次会话内生效，只是不持久化
     }
@@ -198,6 +218,10 @@ export function usePreferences() {
     (cjk: CjkFont) => persist({ ...preferences, cjk }),
     [preferences, persist],
   );
+  const setLayout = useCallback(
+    (layout: Layout) => persist({ ...preferences, layout }),
+    [preferences, persist],
+  );
 
-  return { preferences, setTheme, setMonoFont, setCjkFont };
+  return { preferences, setTheme, setMonoFont, setCjkFont, setLayout };
 }

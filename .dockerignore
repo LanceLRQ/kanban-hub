@@ -6,6 +6,8 @@
 .kanban-hub
 # AI 工作流的本地工作区（含计划摘录等私有内容）
 .superpowers
+# 本机生成的代码索引
+.codegraph
 **/node_modules
 **/.next
 **/dist

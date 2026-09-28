@@ -26,6 +26,8 @@ docs/_internal/
 .claude/
 CLAUDE.local.md
 AGENTS.md
+# 代码索引（本机生成）
+.codegraph/
 
 # ============================================================
 # Node / Next.js

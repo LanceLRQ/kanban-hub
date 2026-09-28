@@ -50,7 +50,7 @@ class NoRetryError extends Error {
 }
 
 /** 校验仓库配置里 include / exclude 每一条 glob 的写法，不合法时指出具体是哪一条 */
-function assertValidScope(config: RegisteredRepo["config"]): void {
+export function assertValidScope(config: RegisteredRepo["config"]): void {
   for (const glob of config.sync.include) {
     const problem = validateSyncGlob(glob);
     if (problem !== null) throw new CliError(EXIT.USAGE, `include 里的同步范围写法不对：${problem}`);

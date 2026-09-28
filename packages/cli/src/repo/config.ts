@@ -9,7 +9,7 @@ import { z } from "zod";
 import { CliError, EXIT } from "../errors";
 import { isNoEntError, writeFileAtomic } from "../fs-utils";
 
-const REPO_CONFIG_DIR = ".kanban-hub";
+export const REPO_CONFIG_DIR = ".kanban-hub";
 const REPO_CONFIG_FILE = "config.yaml";
 const CONFIG_HEADER = [
   "# kanban-hub 的仓库配置文件",

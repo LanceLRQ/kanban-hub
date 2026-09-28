@@ -56,8 +56,8 @@ async function resolveRemoteFiles(
   return { files: latest.files, nameOf: (machineId: string) => nameById.get(machineId) ?? machineId };
 }
 
-/** 与 M4 一致的做法：按本机时区格式化，时区可以注入（测试用） */
-function formatUpdatedAt(iso: string, timeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone): string {
+/** 与 M4 一致的做法：按本机时区格式化，时区可以注入（测试用）；kh conflicts 也用它显示登记时间 */
+export function formatUpdatedAt(iso: string, timeZone: string = Intl.DateTimeFormat().resolvedOptions().timeZone): string {
   return new Intl.DateTimeFormat("zh-CN", {
     timeZone,
     year: "numeric",

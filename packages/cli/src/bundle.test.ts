@@ -99,4 +99,12 @@ describe("kh 打包产物", () => {
     const docsLs = await execFileAsync(process.execPath, [outfile, "docs", "ls", "--help"]);
     expect(docsLs.stdout).toContain("ls");
   });
+
+  it("kh pull --help、kh conflicts show --help：退出码 0", async () => {
+    const pull = await execFileAsync(process.execPath, [outfile, "pull", "--help"]);
+    expect(pull.stdout).toContain("--dry-run");
+
+    const show = await execFileAsync(process.execPath, [outfile, "conflicts", "show", "--help"]);
+    expect(show.stdout).toContain("show");
+  });
 });

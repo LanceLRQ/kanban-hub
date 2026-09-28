@@ -27,7 +27,7 @@ const GIT_TEST_ENV: NodeJS.ProcessEnv = {
 const IDENTITY_ARGS = ["-c", "user.name=kh-e2e", "-c", "user.email=kh-e2e@example.com", "-c", "commit.gpgsign=false"];
 
 /** 在给定目录下执行 git（固定测试身份、不弹交互式签名、不受开发机全局配置影响） */
-function gitFixture(args: string[], cwd: string): string {
+export function gitFixture(args: string[], cwd: string): string {
   return execFileSync("git", [...IDENTITY_ARGS, ...args], { cwd, env: GIT_TEST_ENV, encoding: "utf8", stdio: "pipe" });
 }
 
@@ -68,6 +68,14 @@ export async function makeTempRepo(opts: MakeTempRepoOptions = {}): Promise<Temp
   return { dir, commitHashes, cleanup: () => fs.rm(dir, { recursive: true, force: true }) };
 }
 
+/** 把 source 仓库 git clone 到一个新的临时目录：模拟同一个仓库在另一台机器上的工作区 */
+export async function cloneTempRepo(source: string): Promise<TempRepo> {
+  const dir = await makeRealTempDir("kh-e2e-clone-");
+  gitFixture(["clone", "-q", source, dir], dir);
+  const head = gitFixture(["rev-parse", "HEAD"], dir).trim();
+  return { dir, commitHashes: [head], cleanup: () => fs.rm(dir, { recursive: true, force: true }) };
+}
+
 /** 建一个空的临时目录当 KH_HOME 用（runKh 需要一个隔离的本机数据目录） */
 export async function makeTempKhHome(): Promise<TempDir> {
   const dir = await makeRealTempDir("kh-e2e-home-");
@@ -99,8 +107,8 @@ export interface RunKhResult {
   stderr: string;
 }
 
-/** 用捕获输出的 CliContext 调用 cli 的 main()，驱动一次 kh 命令；不 fork 真实进程 */
-export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhResult> {
+/** 按 runKh 的同一套规则构造 CliContext，输出写进返回的缓冲区；直接调用 kh 内部函数的测试用它 */
+export function makeKhContext(opts: RunKhOptions): { ctx: CliContext; output(): { stdout: string; stderr: string } } {
   let stdout = "";
   let stderr = "";
   const ctx: CliContext = {
@@ -110,12 +118,12 @@ export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhRe
     env: { ...process.env, ...opts.env, KH_HOME: opts.khHome },
     stdout: {
       write: (s) => {
-        stdout += s;
+        stdout += typeof s === "string" ? s : Buffer.from(s).toString("utf8");
       },
     },
     stderr: {
       write: (s) => {
-        stderr += s;
+        stderr += typeof s === "string" ? s : Buffer.from(s).toString("utf8");
       },
     },
     stdin: opts.stdin !== undefined ? Readable.from([opts.stdin]) : Readable.from([]),
@@ -126,8 +134,14 @@ export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhRe
     homeDir: opts.homeDir ?? os.homedir(),
     fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
   };
+  return { ctx, output: () => ({ stdout, stderr }) };
+}
+
+/** 用捕获输出的 CliContext 调用 cli 的 main()，驱动一次 kh 命令；不 fork 真实进程 */
+export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhResult> {
+  const { ctx, output } = makeKhContext(opts);
   const code = await main(args, ctx);
-  return { code, stdout, stderr };
+  return { code, ...output() };
 }
 
 export interface LoginFixtureOptions {
@@ -192,4 +206,30 @@ export async function registerProjectFixture(
   });
 
   return { projectId: project.id, machineId };
+}
+
+/**
+ * 让另一台已登录的机器加入一个已有项目（不新建项目）：登记本机位置、写出仓库配置。
+ * 调用前必须先对这个 KH_HOME 调用 loginFixture()。
+ */
+export async function joinProjectFixture(
+  server: TestServer,
+  repo: Pick<TempRepo, "dir">,
+  khHome: Pick<TempDir, "dir">,
+  projectId: string,
+  sync: { include: string[]; exclude?: string[] },
+): Promise<string> {
+  const cfg = await readMachineConfig(khHome.dir);
+  const machineId = cfg?.machineId;
+  if (!machineId) throw new Error("测试前置条件失败：还没有登录，请先调用 loginFixture");
+  const admin = server.api.store.auth.listUsers().find((u) => u.role === "admin");
+  if (!admin) throw new Error("测试前置条件失败：找不到管理员账号");
+  const actor: Actor = { userId: admin.id, machineId: null, via: "web", agent: null };
+  await server.api.store.setLocation(projectId, machineId, { path: repo.dir }, actor);
+  await writeRepoConfig(repo.dir, {
+    projectId,
+    sync: { include: sync.include, exclude: sync.exclude ?? [], maxFileSize: SYNC_DEFAULT_MAX_FILE_SIZE },
+    pull: { auto: true },
+  });
+  return machineId;
 }

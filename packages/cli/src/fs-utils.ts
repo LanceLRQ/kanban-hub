@@ -30,16 +30,19 @@ export interface WriteFileAtomicOptions {
 /**
  * 原子写入：先写同目录下的临时文件，成功后再 rename 到目标路径，避免留下写到一半的文件。
  * data 是字符串时按 UTF-8 写入，是字节数组时原样写入（用于二进制内容，例如同步的 blob）。
- * 写入或改名失败时删除临时文件再把原始异常继续抛出。
+ * 临时文件用 "wx" 排他创建：同名文件（或同名软链接）已经存在时直接失败，不会写到别处，
+ * 也不会删除这个不是本次创建的文件。写入或改名失败时，只删除本次创建的临时文件，再把原始异常继续抛出。
  */
 export async function writeFileAtomic(file: string, data: string | Uint8Array, opts: WriteFileAtomicOptions = {}): Promise<void> {
   if (opts.mkdir) await fs.mkdir(path.dirname(file), { recursive: true });
   const tmp = tmpPathFor(file);
+  // 排他创建失败（临时文件名已被占用）时直接抛出：这个文件不是本次创建的，不能删
+  const handle = await fs.open(tmp, "wx", opts.mode);
   try {
-    if (typeof data === "string") {
-      await fs.writeFile(tmp, data, opts.mode !== undefined ? { encoding: "utf8", mode: opts.mode } : "utf8");
-    } else {
-      await fs.writeFile(tmp, data, opts.mode !== undefined ? { mode: opts.mode } : undefined);
+    try {
+      await handle.writeFile(typeof data === "string" ? Buffer.from(data, "utf8") : data);
+    } finally {
+      await handle.close();
     }
     await fs.rename(tmp, file);
   } catch (e) {

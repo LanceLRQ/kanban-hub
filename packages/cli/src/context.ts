@@ -1,8 +1,11 @@
 import os from "node:os";
 
-/** 只需要一个 write 方法的输出目标，方便测试用内存缓冲区替换 */
+/**
+ * 只需要一个 write 方法的输出目标，方便测试用内存缓冲区替换。
+ * 传字节数组时原样写出（例如冲突差异里的文件内容），不经过文本解码。
+ */
 export interface Writer {
-  write(s: string): void;
+  write(s: string | Uint8Array): void;
 }
 
 /**

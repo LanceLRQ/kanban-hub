@@ -1,10 +1,12 @@
 import { Command } from "commander";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { registerAuth } from "./commands/auth";
+import { registerConflicts } from "./commands/conflicts";
 import { registerContainer } from "./commands/container";
 import { registerDocs } from "./commands/docs";
 import { registerLog } from "./commands/log";
 import { registerProject } from "./commands/project";
+import { registerPull } from "./commands/pull";
 import { registerRegister } from "./commands/register";
 import { registerStatus } from "./commands/status";
 import { registerSync } from "./commands/sync";
@@ -34,6 +36,8 @@ export function buildProgram(ctx: CliContext): Command {
   registerLog(program, ctx);
   registerSync(program, ctx);
   registerDocs(program, ctx);
+  registerPull(program, ctx);
+  registerConflicts(program, ctx);
 
   return program;
 }

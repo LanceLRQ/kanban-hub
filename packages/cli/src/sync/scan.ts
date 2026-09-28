@@ -42,10 +42,16 @@ function isMatch(relPath: string, matchers: Matchers): boolean {
 
 /**
  * 单个路径是否在同步范围内：命中始终排除或 exclude 的一律排除，其余再看是否命中 include。
- * 每次调用都会重新编译 glob，不适合在扫描这类循环里反复调用；扫描内部另有一份只编译一次的实现。
+ * 每次调用都会重新编译 glob，不适合在循环里反复调用；循环里用 createSyncScopeMatcher。
  */
 export function matchesSyncScope(relPath: string, scope: SyncScope): boolean {
   return isMatch(relPath, buildMatchers(scope));
+}
+
+/** 与 matchesSyncScope 同样的判定，但 glob 只编译一次，适合逐个判断一批路径 */
+export function createSyncScopeMatcher(scope: SyncScope): (relPath: string) => boolean {
+  const matchers = buildMatchers(scope);
+  return (relPath) => isMatch(relPath, matchers);
 }
 
 function isLiteralSegment(seg: string): boolean {

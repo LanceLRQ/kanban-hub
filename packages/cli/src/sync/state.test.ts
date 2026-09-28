@@ -47,6 +47,21 @@ describe("openSyncState", () => {
     expect(shaSecond).toBe(shaFirst);
   });
 
+  it("recordHash：记下的 size、mtime、hash 之后被 hashOf 直接命中，保存后重新打开仍在", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    const filePath = path.join(repo, "a.md");
+    await fs.writeFile(filePath, "real content");
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const state = await openSyncState(ctx, "p000000001", repo);
+    state.recordHash("a.md", 12, 1234, SHA_A);
+    expect(await state.hashOf({ path: "a.md", size: 12, mtimeMs: 1234, absPath: filePath })).toBe(SHA_A);
+    await state.save();
+
+    const reopened = await openSyncState(ctx, "p000000001", repo);
+    expect(await reopened.hashOf({ path: "a.md", size: 12, mtimeMs: 1234, absPath: filePath })).toBe(SHA_A);
+  });
+
   it("hashOf：size 或 mtime 变化时重新计算", async () => {
     const home = await tempDir("kh-state-home-");
     const repo = await tempDir("kh-state-repo-");

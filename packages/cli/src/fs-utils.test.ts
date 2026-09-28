@@ -20,6 +20,19 @@ async function tempDir(): Promise<string> {
 }
 
 describe("writeFileAtomic", () => {
+  it("临时文件名已被占用（例如同名软链接）时失败，不经过它写入，也不删除它", async () => {
+    const dir = await tempDir();
+    const outside = await tempDir();
+    const file = path.join(dir, "a.txt");
+    // 临时文件名的序号在进程内从 1 递增，本文件里的写入次数远少于 200：把这一段序号全部占掉
+    for (let i = 1; i <= 200; i++) {
+      await fs.symlink(path.join(outside, `t${i}`), path.join(dir, `.a.txt.kh-tmp-${process.pid}-${i}`));
+    }
+    await expect(writeFileAtomic(file, "x")).rejects.toMatchObject({ code: "EEXIST" });
+    expect(await fs.readdir(outside)).toEqual([]);
+    expect((await fs.readdir(dir)).filter((n) => n.startsWith(".a.txt.kh-tmp-"))).toHaveLength(200);
+  });
+
   it("写入字符串内容", async () => {
     const dir = await tempDir();
     const file = path.join(dir, "a.txt");

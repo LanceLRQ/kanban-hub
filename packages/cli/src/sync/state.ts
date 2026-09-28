@@ -24,6 +24,8 @@ export interface SyncFileRef {
 export interface ConflictRecord {
   remoteSha: string;
   remoteMachineId: string;
+  /** 登记时对方机器的名称，供离线查看冲突时显示；缺失时显示机器 ID */
+  remoteMachineName?: string;
   /** 本机当时的基准内容；两边都改了同一份基准之外的内容时为 null（没有可用的基准） */
   baseSha: string | null;
   detectedAt: string;
@@ -32,6 +34,8 @@ export interface ConflictRecord {
 export interface SyncState {
   /** 命中 size+mtime 都不变的缓存就直接返回，不重新读文件；否则流式读取计算并写入缓存 */
   hashOf(file: SyncFileRef): Promise<string>;
+  /** kh 自己刚写入一个文件后，直接记下它的 size、mtime 和 hash，免得下次同步重新读取计算 */
+  recordHash(filePath: string, size: number, mtimeMs: number, sha: string): void;
   /** 路径 → 基准内容的 sha256：拉取写入、两边内容相同、自动合并、解决冲突时更新 */
   base: Map<string, string>;
   /** 路径 → 本机曾经推送过 / 写入过 / 确认过的内容 hash，最多保留最近若干个（由调用方决定） */
@@ -57,6 +61,7 @@ const hashCacheEntrySchema = z.object({
 const conflictRecordSchema = z.object({
   remoteSha: shaSchema,
   remoteMachineId: idSchema,
+  remoteMachineName: z.string().optional(),
   baseSha: shaSchema.nullable(),
   detectedAt: timestampSchema,
 });
@@ -156,6 +161,10 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
       const sha = await hashFile(target.absPath);
       hashCache.set(target.path, { size: target.size, mtimeMs: target.mtimeMs, sha });
       return sha;
+    },
+
+    recordHash(filePath, size, mtimeMs, sha) {
+      hashCache.set(filePath, { size, mtimeMs, sha });
     },
 
     async putBlob(sha, bytes) {

@@ -227,10 +227,12 @@
    * 天然就能盖过 cva 生成的组件类和 Tailwind 的工具类——层的优先级只看层顺序，不看选择器
    * 优先级。
    */
+  /*
+   * 顶栏字标：主题 B 换成中文标题字体。字重、字距由组件上的 `font-semibold`/`tracking-tight`
+   * 决定，这一层排在 utilities 之后，在这里写同名属性会盖掉它们，所以不写。
+   */
   [data-theme="collage"] .kh-wordmark {
     font-family: var(--cjk-heading);
-    font-weight: var(--cjk-heading-weight);
-    letter-spacing: 0.02em;
   }
 
   /* 顶栏日期：主题 B 加下划线（手账页首的气质），主题 A 不带 */
@@ -267,14 +269,13 @@
     background: transparent;
   }
 
+  /* 文字颜色由 `ProjectTab` 传入的 `text-foreground`/`text-secondary-foreground` 决定，这里不写 color */
   [data-theme="collage"] .kh-tab {
     border: 1px dashed var(--border-soft);
     border-radius: var(--radius-a);
-    color: var(--fg-muted);
   }
   [data-theme="collage"] .kh-tab[data-active="true"] {
     border: 1.5px solid var(--border);
-    color: var(--foreground);
     font-weight: 800;
   }
   [data-theme="collage"] .kh-tab[data-disabled="true"] {
@@ -285,10 +286,7 @@
     display: block;
   }
 
-  /* 项目头部卡片：主题 B 用不对称圆角，分隔线换成虚线 */
-  [data-theme="collage"] .kh-project-header {
-    border-radius: var(--radius-d);
-  }
+  /* 项目头部卡片的分隔线：主题 B 换成虚线（卡片圆角沿用组件上的 `rounded-md`） */
   [data-theme="collage"] .kh-project-header-divider {
     border-top-style: dashed;
     border-top-color: var(--border-soft);

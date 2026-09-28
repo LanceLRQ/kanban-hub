@@ -6,6 +6,7 @@ import {
   createLogEvent,
   createProject,
   createTask,
+  recordLocationSync,
   setLocation,
   transitionTask,
   updateContainer,
@@ -183,6 +184,37 @@ describe("setLocation", () => {
   it("输入非法（空路径、未知字段）时报 invalid", () => {
     expect(thrown(() => setLocation(makeProject(), M, { path: "" }, ctx())).code).toBe("invalid");
     expect(thrown(() => setLocation(makeProject(), M, { path: "/x", extra: 1 } as never, ctx())).code).toBe("invalid");
+  });
+});
+
+describe("recordLocationSync", () => {
+  const M = MACHINE_ID;
+  const git = { branch: "main", head: "a".repeat(40), headSubject: "x", headAt: T0, dirtyCount: 0, ahead: 0, behind: 0 };
+  const sync = { include: ["docs/**"], exclude: [], maxFileSize: 1024 };
+
+  it("更新 lastSyncAt、git、sync、skippedFiles，保留 path，version 加 1", () => {
+    const project = makeProject({
+      locations: [{ machineId: M, path: "/repo", lastSyncAt: null, sync: null, git: null, skippedFiles: [] }],
+    });
+    const r = recordLocationSync(
+      project,
+      M,
+      { lastSyncAt: NOW, git, sync, skippedFiles: [{ path: "big.bin", size: 999 }] },
+      ctx(),
+    );
+    expect(r.project.locations).toEqual([{ machineId: M, path: "/repo", lastSyncAt: NOW, sync, git, skippedFiles: [{ path: "big.bin", size: 999 }] }]);
+    expect(r.project.version).toBe(2);
+  });
+
+  it("不产生事件", () => {
+    const project = makeProject({ locations: [{ machineId: M, path: "/repo", lastSyncAt: null, sync: null, git: null, skippedFiles: [] }] });
+    const r = recordLocationSync(project, M, { lastSyncAt: NOW, git: null, sync: null, skippedFiles: [] }, ctx());
+    expect(r.events).toEqual([]);
+  });
+
+  it("位置不存在时抛 not_found", () => {
+    const err = thrown(() => recordLocationSync(makeProject(), M, { lastSyncAt: NOW, git: null, sync: null, skippedFiles: [] }, ctx()));
+    expect(err.code).toBe("not_found");
   });
 });
 

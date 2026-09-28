@@ -7,12 +7,14 @@ import {
   type ContainerPatchInput,
   type Event,
   type EventType,
+  type GitState,
   type Location,
   type LocationInput,
   type LogInput,
   type Project,
   type ProjectCreateInput,
   type ProjectPatchInput,
+  type SyncScope,
   type Task,
   type TaskCreateInput,
   type TaskPatchInput,
@@ -170,6 +172,33 @@ export function setLocation(project: Project, machineId: string, input: Location
   const locations = current ? replaceLocation(project.locations, location) : [...project.locations, location];
   const next = parseInput(projectSchema, { ...project, locations, version: project.version + 1, updatedAt: ctx.now });
   return { project: next, events: [makeEvent(ctx, project.id, "project.updated", { change: { location: { from, to } } })] };
+}
+
+export interface LocationSyncInput {
+  lastSyncAt: string;
+  git: GitState | null;
+  sync: SyncScope | null;
+  skippedFiles: { path: string; size: number }[];
+}
+
+/**
+ * 记录一次文档同步在服务端留下的痕迹：更新位置的 lastSyncAt、git、sync、skippedFiles，
+ * 保留 path 不变。是否新增 docs.synced 事件由存储层按有没有实际变化决定，这里只管字段，
+ * 不产生事件。
+ */
+export function recordLocationSync(project: Project, machineId: string, input: LocationSyncInput, ctx: MutationContext): ProjectResult {
+  const current = project.locations.find((l) => l.machineId === machineId);
+  if (!current) throw new KhError("not_found", "本机没有登记这个项目的位置，请执行 kh register");
+  const location: Location = {
+    ...current,
+    lastSyncAt: input.lastSyncAt,
+    git: input.git,
+    sync: input.sync,
+    skippedFiles: input.skippedFiles,
+  };
+  const locations = replaceLocation(project.locations, location);
+  const next = parseInput(projectSchema, { ...project, locations, version: project.version + 1, updatedAt: ctx.now });
+  return { project: next, events: [] };
 }
 
 export function createContainer(

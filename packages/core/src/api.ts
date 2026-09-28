@@ -1,7 +1,19 @@
 import { z } from "zod";
 import { KhError } from "./errors";
 import { idSchema } from "./ids";
-import { boardSchema, eventTypeSchema, machineOsSchema, projectSchema, timestampSchema, userRoleSchema, type EventType } from "./schema";
+import {
+  boardSchema,
+  eventTypeSchema,
+  gitStateSchema,
+  machineOsSchema,
+  projectSchema,
+  snapshotPathSchema,
+  syncScopeSchema,
+  timestampSchema,
+  userRoleSchema,
+  type EventType,
+} from "./schema";
+import { findManifestPathProblem, incomingFileSchema, manifestFileSchema, sha256HexSchema, SYNC_MAX_MANIFEST_FILES } from "./sync";
 
 // ---------- 网页与 kh 共用的请求头 ----------
 
@@ -9,6 +21,8 @@ import { boardSchema, eventTypeSchema, machineOsSchema, projectSchema, timestamp
 export const HEADER_KH_VERSION = "x-kh-version";
 /** kh 用它标识自己，具体校验和使用由鉴权模块负责 */
 export const HEADER_KH_AGENT = "x-kh-agent";
+/** 快照文件内容的响应头，值是文件内容的 sha256，供 kh 校验下载是否完整 */
+export const HEADER_KH_SHA256 = "X-KH-Sha256";
 
 /**
  * agent 名称的合法字符集：1-50 个可打印 ASCII 字符（0x21-0x7E），不含空格。
@@ -244,3 +258,82 @@ export function eventsQueryToSearchParams(query: EventsQuery): URLSearchParams {
   if (query.actor !== undefined) params.set("actor", query.actor);
   return params;
 }
+
+// ---------- 文档同步（规格第 9、11 节） ----------
+
+/** POST /projects/:id/sync/manifest 的请求体 */
+export const syncManifestInput = z
+  .object({
+    files: z
+      .array(incomingFileSchema)
+      .max(SYNC_MAX_MANIFEST_FILES, `一份清单最多 ${SYNC_MAX_MANIFEST_FILES} 个文件`)
+      .superRefine((files, ctx) => {
+        const problem = findManifestPathProblem(files.map((f) => f.path));
+        if (problem !== null) ctx.addIssue({ code: "custom", message: problem });
+      }),
+    git: gitStateSchema.nullable(),
+    skipped: z.array(z.object({ path: snapshotPathSchema, size: z.number().int().min(0) })),
+    scope: syncScopeSchema,
+  })
+  .strict();
+export type SyncManifestInput = z.input<typeof syncManifestInput>;
+
+export const syncManifestResponse = z.object({
+  syncId: z.string(),
+  missing: z.array(sha256HexSchema),
+  expiresAt: timestampSchema,
+});
+export type SyncManifestResponse = z.infer<typeof syncManifestResponse>;
+
+/** POST /projects/:id/sync/commit 的请求体 */
+export const syncCommitInput = z.object({ syncId: z.string() }).strict();
+export type SyncCommitInput = z.input<typeof syncCommitInput>;
+
+export const syncCommitResponse = z.object({
+  added: z.number().int().min(0),
+  modified: z.number().int().min(0),
+  removed: z.number().int().min(0),
+  unchanged: z.number().int().min(0),
+  lastSyncAt: timestampSchema,
+});
+export type SyncCommitResponse = z.infer<typeof syncCommitResponse>;
+
+/** GET /projects/:id/snapshots/:machineId/manifest 的响应 */
+export const snapshotManifestResponse = z.object({
+  machineId: idSchema,
+  machineName: z.string(),
+  lastSyncAt: timestampSchema.nullable(),
+  files: z.array(manifestFileSchema),
+});
+export type SnapshotManifestResponse = z.infer<typeof snapshotManifestResponse>;
+
+/** GET /projects/:id/snapshots/latest-manifest 的响应 */
+export const latestManifestResponse = z.object({
+  files: z.array(manifestFileSchema.extend({ machineId: idSchema })),
+  machines: z.array(z.object({ id: idSchema, name: z.string(), lastSyncAt: timestampSchema.nullable() })),
+});
+export type LatestManifestResponse = z.infer<typeof latestManifestResponse>;
+
+/**
+ * POST /projects/:id/sync/pulled 的请求体：kh 拉取完成后上报结果，服务端据此记 docs.pulled
+ * 事件。至少一项计数大于 0 才需要上报，全为 0 时没有必要调用这个接口。
+ */
+export const pullReportInput = z
+  .object({
+    created: z.number().int().min(0),
+    overwritten: z.number().int().min(0),
+    merged: z.number().int().min(0),
+    conflicts: z.number().int().min(0),
+    stale: z.number().int().min(0),
+    fromMachineIds: z.array(idSchema),
+  })
+  .strict()
+  .superRefine((counts, ctx) => {
+    const total = counts.created + counts.overwritten + counts.merged + counts.conflicts + counts.stale;
+    if (total === 0) ctx.addIssue({ code: "custom", message: "至少要有一项计数大于 0" });
+  });
+export type PullReportInput = z.input<typeof pullReportInput>;
+
+/** commit 因为缺少内容而返回 400 时，details 的形状；kh 用它识别“缺少内容”这种失败原因 */
+export const syncMissingDetails = z.object({ missingBlobs: z.array(sha256HexSchema) });
+export type SyncMissingDetails = z.infer<typeof syncMissingDetails>;

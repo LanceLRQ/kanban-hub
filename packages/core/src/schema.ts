@@ -1,6 +1,5 @@
 import { z } from "zod";
 import { idSchema } from "./ids";
-import { SYNC_MAX_FILE_SIZE_LIMIT } from "./sync";
 
 // 校验提示统一用中文（全局设置，对所有 zod schema 生效）
 z.config(z.locales.zhCN());
@@ -28,6 +27,38 @@ export const repoPathSchema = z
   .string()
   .max(500)
   .refine(isRepoRelativePath, "必须是仓库内的相对路径（POSIX 形式，不含 ..）");
+
+/**
+ * 文档同步范围相关的常量：规格未规定具体数值，这里统一定下，服务端和 kh 共用。
+ * 定义在这里（而不是 sync.ts）是因为 syncScopeSchema 需要用到 SYNC_MAX_FILE_SIZE_LIMIT，
+ * 而 sync.ts 反过来要用这个文件里的 snapshotPathSchema，两个文件不能互相 import。
+ */
+/** sync.maxFileSize 的默认上限：5MB */
+export const SYNC_DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024;
+/** sync.maxFileSize 允许的硬上限：20MB。超过这个值，登记位置时服务端也会拒绝 */
+export const SYNC_MAX_FILE_SIZE_LIMIT = 20 * 1024 * 1024;
+/** 无论仓库配置怎么写，这些 glob 始终被排除在同步范围之外 */
+export const SYNC_ALWAYS_EXCLUDE = ["**/node_modules/**", "**/.git/**", "**/.next/**"] as const;
+
+/**
+ * 快照路径：在 repoPathSchema 的基础上，额外拒绝反斜杠、控制字符（\x00-\x1f），
+ * 以及路径里任何一段等于 .git（不分大小写）——这类路径会让存放快照的数据仓库把它
+ * 当成子仓库或 gitfile 处理。
+ */
+function hasControlChar(p: string): boolean {
+  for (let i = 0; i < p.length; i++) {
+    const code = p.charCodeAt(i);
+    if (code <= 0x1f) return true;
+  }
+  return false;
+}
+export const snapshotPathSchema = repoPathSchema.refine(
+  (p) => !hasControlChar(p) && !p.includes("\\") && !p.split("/").some((seg) => seg.toLowerCase() === ".git"),
+  "路径不能包含控制字符或反斜杠，也不能有 .git 段",
+);
+
+/** 内容的 sha256，64 位小写十六进制 */
+export const sha256HexSchema = z.string().regex(/^[0-9a-f]{64}$/, "必须是 64 位小写十六进制的 sha256");
 
 // ---------- 工具类型 ----------
 
@@ -140,7 +171,7 @@ export const locationSchema = z.object({
   lastSyncAt: timestampSchema.nullable(),
   sync: syncScopeSchema.nullable(),
   git: gitStateSchema.nullable(),
-  skippedFiles: z.array(z.object({ path: repoPathSchema, size: z.number().int().min(0) })),
+  skippedFiles: z.array(z.object({ path: snapshotPathSchema, size: z.number().int().min(0) })),
 });
 export type Location = z.infer<typeof locationSchema>;
 

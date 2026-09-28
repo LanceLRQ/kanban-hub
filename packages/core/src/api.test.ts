@@ -5,12 +5,14 @@ import {
   API_ERROR_CODES,
   API_ERROR_STATUS,
   HEADER_KH_AGENT,
+  HEADER_KH_SHA256,
   HEADER_KH_VERSION,
   agentNameSchema,
   apiErrorSchema,
   decodeEventCursor,
   encodeEventCursor,
   eventsQueryToSearchParams,
+  latestManifestResponse,
   loginInput,
   machineTokenSchema,
   meResponse,
@@ -21,7 +23,14 @@ import {
   projectDetailResponse,
   projectListResponse,
   projectViewSchema,
+  pullReportInput,
   rateLimitDetailsSchema,
+  snapshotManifestResponse,
+  syncCommitInput,
+  syncCommitResponse,
+  syncManifestInput,
+  syncManifestResponse,
+  syncMissingDetails,
   withExpectedVersion,
 } from "./api";
 
@@ -385,5 +394,80 @@ describe("eventsQueryToSearchParams", () => {
     const original = parseEventsQuery(new URLSearchParams());
     const roundTripped = parseEventsQuery(eventsQueryToSearchParams(original));
     expect(roundTripped).toEqual(original);
+  });
+});
+
+const SHA = "a".repeat(64);
+const M1 = "m000000001";
+const M2 = "m000000002";
+
+describe("同步相关的响应头与 schema", () => {
+  it("请求头名字固定为 X-KH-Sha256", () => {
+    expect(HEADER_KH_SHA256).toBe("X-KH-Sha256");
+  });
+
+  it("syncManifestInput：合法输入通过", () => {
+    const result = syncManifestInput.safeParse({
+      files: [{ path: "docs/a.md", sha256: SHA, size: 10, mtime: 0, base: null }],
+      git: null,
+      skipped: [{ path: "big.bin", size: 999 }],
+      scope: { include: ["docs/**"], exclude: [], maxFileSize: 1024 },
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("syncManifestInput：skipped 里的路径不合法时被拒", () => {
+    const result = syncManifestInput.safeParse({
+      files: [],
+      git: null,
+      skipped: [{ path: "../secret.bin", size: 999 }],
+      scope: { include: ["docs/**"], exclude: [], maxFileSize: 1024 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("syncManifestInput：路径冲突时被拒", () => {
+    const result = syncManifestInput.safeParse({
+      files: [
+        { path: "a", sha256: SHA, size: 1, mtime: 0, base: null },
+        { path: "a/b", sha256: SHA, size: 1, mtime: 0, base: null },
+      ],
+      git: null,
+      skipped: [],
+      scope: { include: ["docs/**"], exclude: [], maxFileSize: 1024 },
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it("syncManifestResponse、syncCommitInput、syncCommitResponse 的形状", () => {
+    expect(syncManifestResponse.safeParse({ syncId: "s1", missing: [SHA], expiresAt: "2026-09-23T10:00:00.000Z" }).success).toBe(true);
+    expect(syncCommitInput.safeParse({ syncId: "s1" }).success).toBe(true);
+    expect(
+      syncCommitResponse.safeParse({ added: 1, modified: 0, removed: 0, unchanged: 3, lastSyncAt: "2026-09-23T10:00:00.000Z" }).success,
+    ).toBe(true);
+  });
+
+  it("snapshotManifestResponse、latestManifestResponse 的形状", () => {
+    const file = { path: "a.md", sha256: SHA, size: 1, mtime: 0, base: null, changedAt: "2026-09-23T10:00:00.000Z" };
+    expect(
+      snapshotManifestResponse.safeParse({ machineId: M1, machineName: "笔记本", lastSyncAt: null, files: [file] }).success,
+    ).toBe(true);
+    expect(
+      latestManifestResponse.safeParse({
+        files: [{ ...file, machineId: M1 }],
+        machines: [{ id: M1, name: "笔记本", lastSyncAt: null }],
+      }).success,
+    ).toBe(true);
+  });
+
+  it("pullReportInput：至少一项计数大于 0", () => {
+    const allZero = { created: 0, overwritten: 0, merged: 0, conflicts: 0, stale: 0, fromMachineIds: [] };
+    expect(pullReportInput.safeParse(allZero).success).toBe(false);
+    expect(pullReportInput.safeParse({ ...allZero, created: 1, fromMachineIds: [M1, M2] }).success).toBe(true);
+  });
+
+  it("syncMissingDetails 的形状", () => {
+    expect(syncMissingDetails.safeParse({ missingBlobs: [SHA] }).success).toBe(true);
+    expect(syncMissingDetails.safeParse({ missingBlobs: ["not-a-sha"] }).success).toBe(false);
   });
 });

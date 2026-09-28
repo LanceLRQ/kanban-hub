@@ -89,6 +89,8 @@ export interface RunKhOptions {
   isTTY?: boolean;
   /** ctx.homeDir，默认取真实的 os.homedir()；用来测试“默认 KH_HOME 与仓库配置撞路径”这类场景 */
   homeDir?: string;
+  /** ctx.fetch，默认取全局 fetch；用来在个别测试里包一层拦截请求（例如模拟暂存被提前清理） */
+  fetch?: typeof fetch;
 }
 
 export interface RunKhResult {
@@ -122,7 +124,7 @@ export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhRe
     platform: process.platform,
     hostname: os.hostname(),
     homeDir: opts.homeDir ?? os.homedir(),
-    fetch: globalThis.fetch.bind(globalThis),
+    fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
   };
   const code = await main(args, ctx);
   return { code, stdout, stderr };

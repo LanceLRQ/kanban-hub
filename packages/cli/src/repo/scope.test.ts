@@ -1,9 +1,8 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { EXIT } from "../errors";
 import { cleanupDir, makeTempDir } from "./test-helpers";
-import { suggestSyncInclude, validateSyncGlob } from "./scope";
+import { suggestSyncInclude } from "./scope";
 
 describe("suggestSyncInclude", () => {
   const dirs: string[] = [];
@@ -64,33 +63,5 @@ describe("suggestSyncInclude", () => {
     const root = await tempDir();
     await fs.writeFile(path.join(root, "docs"), "not a dir", "utf8");
     expect(await suggestSyncInclude(root)).toEqual([]);
-  });
-});
-
-describe("validateSyncGlob", () => {
-  it.each(["docs/**", "*.md", "design/foo.md"])("接受 %s", (glob) => {
-    expect(() => validateSyncGlob(glob)).not.toThrow();
-  });
-
-  it("拒绝空串", () => {
-    expect(() => validateSyncGlob("")).toThrowError(expect.objectContaining({ name: "CliError", exitCode: EXIT.USAGE }));
-  });
-
-  it("拒绝绝对路径", () => {
-    expect(() => validateSyncGlob("/docs/**")).toThrowError(
-      expect.objectContaining({ name: "CliError", exitCode: EXIT.USAGE }),
-    );
-  });
-
-  it("拒绝含 .. 段的路径", () => {
-    expect(() => validateSyncGlob("docs/../secret/**")).toThrowError(
-      expect.objectContaining({ name: "CliError", exitCode: EXIT.USAGE }),
-    );
-  });
-
-  it("拒绝反斜杠（非 POSIX 形式）", () => {
-    expect(() => validateSyncGlob("docs\\**")).toThrowError(
-      expect.objectContaining({ name: "CliError", exitCode: EXIT.USAGE }),
-    );
   });
 });

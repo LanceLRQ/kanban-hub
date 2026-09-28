@@ -4,7 +4,7 @@ import type { z } from "zod";
 import { projectCreatedResponse, projectListResponse, type ProjectView } from "@kanban-hub/core/api";
 import { formatZodError } from "@kanban-hub/core/errors";
 import { locationInput, projectCreateInput, projectSchema, type Project } from "@kanban-hub/core/schema";
-import { SYNC_DEFAULT_MAX_FILE_SIZE } from "@kanban-hub/core/sync";
+import { SYNC_DEFAULT_MAX_FILE_SIZE, validateSyncGlob } from "@kanban-hub/core/sync";
 import type { CliContext } from "../context";
 import { resolveKhHome } from "../config/home";
 import { CliError, EXIT } from "../errors";
@@ -14,8 +14,30 @@ import { readRepoConfig, formatByteSize, toSyncScope, writeRepoConfig, type Repo
 import { planExclude, ensureExcluded } from "../repo/exclude";
 import { fingerprint } from "../repo/fingerprint";
 import { collidesWithKhHome, findRegisteredRepoInGit, inspectRepo, type RegisteredRepo, type RepoInspection } from "../repo/root";
-import { suggestSyncInclude, validateSyncGlob } from "../repo/scope";
+import { suggestSyncInclude } from "../repo/scope";
+import { pushDocs } from "../sync/push";
 import { globalAgentFlag, loadProjectOrFail, requireLogin, withAgentOption } from "./shared";
+
+/** 校验 --include 里每一条 glob 的写法，不合法时抛用法错误（2），并指出是哪一条 */
+function assertValidIncludeGlobs(globs: readonly string[]): void {
+  for (const glob of globs) {
+    const problem = validateSyncGlob(glob);
+    if (problem !== null) throw new CliError(EXIT.USAGE, problem, "写成仓库内的相对路径，例如 docs/**");
+  }
+}
+
+/**
+ * register 完成（新建、绑定、补登记位置）之后执行一次首次同步（规格 8.2 第 6 步）：
+ * 同步失败不影响注册结果，只在标准输出里提示一句，退出码仍为 0。
+ */
+async function runInitialSync(ctx: CliContext, repo: RegisteredRepo, client: ApiClient): Promise<void> {
+  try {
+    await pushDocs(ctx, repo, client, { quiet: true });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    ctx.stdout.write(`首次同步失败：${message}，稍后执行 kh sync\n`);
+  }
+}
 
 /** --bind 接受完整 ID 或至少 4 位的前缀，字符集和 core 的 ID 前缀写法一致（见 refs.ts） */
 const BIND_REF_RE = /^[0-9a-z]{4,10}$/;
@@ -211,6 +233,7 @@ async function handleExistingConfig(
   const sync = toSyncScope(repo.config);
   const updated = await putLocation(client, project.id, machine.id, repo.root, sync);
   printRegistered(ctx, updated, repo.root);
+  await runInitialSync(ctx, repo, client);
 }
 
 /** 决定绑定已有项目还是新建（规格 8.2 第 5 步） */
@@ -268,7 +291,7 @@ async function registerFresh(
 
   let include: string[];
   if (opts.include !== undefined) {
-    for (const glob of opts.include) validateSyncGlob(glob);
+    assertValidIncludeGlobs(opts.include);
     include = opts.include;
   } else {
     include = await suggestSyncInclude(root);
@@ -317,6 +340,7 @@ async function registerFresh(
     await writeRepoConfig(root, repoConfig);
 
     printRegistered(ctx, updated, root);
+    await runInitialSync(ctx, { root, config: repoConfig }, client);
   } catch (err) {
     if (action.kind !== "new") throw err;
     const hint = `项目已新建：${project.name}（${project.id}）。重新执行时请改用 kh register --bind ${project.id} --yes，避免重复新建`;

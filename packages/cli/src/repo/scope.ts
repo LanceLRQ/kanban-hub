@@ -1,6 +1,5 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { CliError, EXIT } from "../errors";
 import { isNoEntError } from "../fs-utils";
 
 /** 按顺序检查，存在的目录建议为 <目录>/** */
@@ -37,23 +36,4 @@ export async function suggestSyncInclude(root: string): Promise<string[]> {
   }
   if (await hasRootMarkdown(root)) result.push("*.md");
   return result;
-}
-
-/**
- * 校验同步范围的 glob 写法：不能为空、必须是 POSIX 形式、不能以 / 开头、不能含 .. 段。
- * glob 本身的匹配语义在 M5 实现，这里只管写法。
- */
-export function validateSyncGlob(glob: string): void {
-  if (glob === "") {
-    throw new CliError(EXIT.USAGE, "同步范围不能是空字符串");
-  }
-  if (glob.includes("\\")) {
-    throw new CliError(EXIT.USAGE, `同步范围必须是 POSIX 形式（不能包含 \\）：${glob}`);
-  }
-  if (glob.startsWith("/")) {
-    throw new CliError(EXIT.USAGE, `同步范围不能以 / 开头：${glob}`, "写成仓库内的相对路径，例如 docs/**");
-  }
-  if (glob.split("/").includes("..")) {
-    throw new CliError(EXIT.USAGE, `同步范围不能包含 ..：${glob}`);
-  }
 }

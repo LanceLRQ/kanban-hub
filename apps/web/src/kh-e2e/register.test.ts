@@ -7,6 +7,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { readMachineConfig } from "../../../../packages/cli/src/config/home";
 import { readRepoConfig, writeRepoConfig } from "../../../../packages/cli/src/repo/config";
 import { startTestServer, type TestServer } from "../server/api/test-server";
 import { cleanupAll, makeTempKhHome, makeTempRepo, runKh, type MakeTempRepoOptions, type TempDir, type TempRepo } from "./harness";
@@ -607,6 +608,48 @@ describe("kh register", () => {
       const home2 = await loginHome();
       const result = await runKh(["register"], { cwd: repo.dir, khHome: home2.dir });
       expect(result.code).toBe(2);
+    });
+  });
+
+  describe("首次同步（规格 8.2 第 6 步）", () => {
+    it("注册成功后自动执行一次同步，服务端已有快照", async () => {
+      const repo = await tempRepo();
+      await fs.mkdir(path.join(repo.dir, "docs"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, "docs", "a.md"), "hello");
+      const home = await loginHome();
+
+      const result = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+
+      const project = server.api.store.listProjects()[0]!;
+      const cfg = await readMachineConfig(home.dir);
+      const bytes = await server.api.store.readSnapshotFile(project.id, cfg!.machineId!, "docs/a.md");
+      expect(Buffer.from(bytes ?? []).toString("utf8")).toBe("hello");
+    });
+
+    it("--dry-run 不执行同步", async () => {
+      const repo = await tempRepo();
+      await fs.mkdir(path.join(repo.dir, "docs"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, "docs", "a.md"), "hello");
+      const home = await loginHome();
+
+      const spy = vi.spyOn(server.api.store, "beginSync");
+      const result = await runKh(["register", "--new", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(spy).not.toHaveBeenCalled();
+    });
+
+    it("同步失败不影响注册结果：退出码仍为 0，输出提示稍后执行 kh sync", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+
+      // 同步内置了一次自动重试，这里让它连续两次都失败，才能真的看到“同步失败”的结果
+      vi.spyOn(server.api.store, "beginSync").mockRejectedValue(new Error("模拟同步失败"));
+      const result = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("首次同步失败");
+      expect(result.stdout).toContain("kh sync");
+      expect(server.api.store.listProjects()).toHaveLength(1);
     });
   });
 });

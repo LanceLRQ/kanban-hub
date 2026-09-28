@@ -1,15 +1,12 @@
 import { HEADER_KH_AGENT, HEADER_KH_VERSION, agentNameSchema } from "@kanban-hub/core/api";
 import type { Actor } from "@kanban-hub/core/schema";
 import { KH_VERSION } from "@kanban-hub/core/version";
-import { authenticate, toActor, type Principal } from "../auth/authenticate";
+import { authenticate, BEARER_SCHEME_PATTERN, toActor, type Principal } from "../auth/authenticate";
 import { readCookie, SESSION_COOKIE } from "../auth/session";
 import type { Services } from "../services";
 import { getServices } from "../services";
 import { ApiError, toErrorResponse } from "./errors";
 import { checkClientVersion, isSameOrigin } from "./http";
-
-/** 请求里是否带了 Authorization: Bearer（大小写不敏感），不关心令牌本身是否合法 */
-const BEARER_SCHEME_PATTERN = /^Bearer(\s|$)/i;
 
 export type ApiAuthMode = "none" | "session" | "machine" | "any";
 
@@ -105,7 +102,7 @@ export function apiRoute<Auth extends ApiAuthMode, Params extends Record<string,
         actor: actor as ActorFor<Auth>,
         services,
       });
-      res.headers.set("X-KH-Version", KH_VERSION);
+      res.headers.set(HEADER_KH_VERSION, KH_VERSION);
       return res;
     } catch (e) {
       return toErrorResponse(e, log);

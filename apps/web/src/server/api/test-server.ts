@@ -25,6 +25,13 @@ import { POST as containersPost } from "@/app/api/v1/projects/[id]/containers/ro
 import { PUT as locationPut } from "@/app/api/v1/projects/[id]/locations/[machineId]/route";
 import { POST as logPost } from "@/app/api/v1/projects/[id]/log/route";
 import { GET as projectGet, PATCH as projectPatch } from "@/app/api/v1/projects/[id]/route";
+import { GET as machineManifestGet } from "@/app/api/v1/projects/[id]/snapshots/[machineId]/manifest/route";
+import { GET as snapshotFileGet } from "@/app/api/v1/projects/[id]/snapshots/[machineId]/files/[...path]/route";
+import { GET as latestManifestGet } from "@/app/api/v1/projects/[id]/snapshots/latest-manifest/route";
+import { PUT as syncBlobPut } from "@/app/api/v1/projects/[id]/sync/blobs/[sha256]/route";
+import { POST as syncCommitPost } from "@/app/api/v1/projects/[id]/sync/commit/route";
+import { POST as syncManifestPost } from "@/app/api/v1/projects/[id]/sync/manifest/route";
+import { POST as syncPulledPost } from "@/app/api/v1/projects/[id]/sync/pulled/route";
 import { PATCH as taskPatch } from "@/app/api/v1/projects/[id]/tasks/[tid]/route";
 import { POST as tasksPost } from "@/app/api/v1/projects/[id]/tasks/route";
 import { GET as projectsGet, POST as projectsPost } from "@/app/api/v1/projects/route";
@@ -77,6 +84,13 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/projects/:id/containers/:cid", handlers: { PATCH: asRouteHandler(containerPatch) } },
   { pattern: "/api/v1/projects/:id/locations/:machineId", handlers: { PUT: asRouteHandler(locationPut) } },
   { pattern: "/api/v1/projects/:id/log", handlers: { POST: asRouteHandler(logPost) } },
+  { pattern: "/api/v1/projects/:id/snapshots/:machineId/files/:path*", handlers: { GET: asRouteHandler(snapshotFileGet) } },
+  { pattern: "/api/v1/projects/:id/snapshots/:machineId/manifest", handlers: { GET: asRouteHandler(machineManifestGet) } },
+  { pattern: "/api/v1/projects/:id/snapshots/latest-manifest", handlers: { GET: asRouteHandler(latestManifestGet) } },
+  { pattern: "/api/v1/projects/:id/sync/blobs/:sha256", handlers: { PUT: asRouteHandler(syncBlobPut) } },
+  { pattern: "/api/v1/projects/:id/sync/commit", handlers: { POST: asRouteHandler(syncCommitPost) } },
+  { pattern: "/api/v1/projects/:id/sync/manifest", handlers: { POST: asRouteHandler(syncManifestPost) } },
+  { pattern: "/api/v1/projects/:id/sync/pulled", handlers: { POST: asRouteHandler(syncPulledPost) } },
   { pattern: "/api/v1/projects/:id/tasks", handlers: { POST: asRouteHandler(tasksPost) } },
   { pattern: "/api/v1/projects/:id/tasks/:tid", handlers: { PATCH: asRouteHandler(taskPatch) } },
   { pattern: "/api/v1/stream", handlers: { GET: asRouteHandler(streamGet) } },

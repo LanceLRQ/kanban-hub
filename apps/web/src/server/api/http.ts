@@ -40,8 +40,19 @@ async function readBodyWithLimit(req: Request, maxBytes: number): Promise<Uint8A
 }
 
 /**
- * 读取请求体并按 schema 校验。先看 Content-Length 快速拒绝，
+ * 读取请求体的原始字节，不做任何解析。先看 Content-Length 快速拒绝，
  * 但请求方可以谎报或不带这个头，所以最终以实际读到的字节数为准。
+ */
+export async function readBytes(req: Request, opts: { maxBytes: number }): Promise<Uint8Array> {
+  const contentLength = req.headers.get("content-length");
+  if (contentLength !== null && Number(contentLength) > opts.maxBytes) {
+    throw new ApiError("payload_too_large", `请求体不能超过 ${opts.maxBytes} 字节`);
+  }
+  return readBodyWithLimit(req, opts.maxBytes);
+}
+
+/**
+ * 读取请求体并按 schema 校验。
  */
 export async function readJson<S extends z.ZodType>(
   req: Request,
@@ -50,12 +61,7 @@ export async function readJson<S extends z.ZodType>(
 ): Promise<z.output<S>> {
   const maxBytes = opts.maxBytes ?? DEFAULT_MAX_BYTES;
 
-  const contentLength = req.headers.get("content-length");
-  if (contentLength !== null && Number(contentLength) > maxBytes) {
-    throw new ApiError("payload_too_large", `请求体不能超过 ${maxBytes} 字节`);
-  }
-
-  const bytes = await readBodyWithLimit(req, maxBytes);
+  const bytes = await readBytes(req, { maxBytes });
   let data: unknown;
   try {
     data = bytes.byteLength === 0 ? undefined : JSON.parse(new TextDecoder().decode(bytes));

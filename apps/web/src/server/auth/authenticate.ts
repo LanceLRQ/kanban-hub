@@ -3,8 +3,8 @@ import type { AuthRepo } from "../store/auth";
 import { SESSION_COOKIE, readCookie, verifySession } from "./session";
 import { hashToken, isMachineTokenFormat } from "./token";
 
-/** 判断 Authorization 头的 scheme 是不是 Bearer，不关心后面的值是否合法 */
-const BEARER_SCHEME_PATTERN = /^Bearer(\s|$)/i;
+/** 判断 Authorization 头的 scheme 是不是 Bearer，不关心后面的值是否合法；route.ts 共用同一份 */
+export const BEARER_SCHEME_PATTERN = /^Bearer(\s|$)/i;
 const BEARER_PATTERN = /^Bearer\s+(\S+)$/i;
 
 export interface LastSeenTrackerOptions {

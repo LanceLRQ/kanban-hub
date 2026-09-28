@@ -19,6 +19,8 @@ const nextConfig: NextConfig = {
   // payload 等），从 127.0.0.1 访问时会被当成跨源请求拦下，页面能显示但无法完成水合，
   // 按钮点了没反应。只影响 `next dev`，生产构建（standalone 输出）没有这层校验。
   allowedDevOrigins: ["127.0.0.1"],
+  // /raw 的地址里带着访问令牌，next dev 默认打印每个请求的路径，这类请求不进日志（生产构建本来就不打印）
+  logging: { incomingRequests: { ignore: [/^\/raw\//] } },
 };
 
 // 固定语言 zh-CN，不做语言路由：配置见 src/i18n/request.ts

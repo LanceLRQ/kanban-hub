@@ -1,7 +1,12 @@
 /**
  * Markdown 正文：服务端组件直接渲染成 React 元素树，不经过任何字符串拼接或 innerHTML。
- * 渲染管线固定顺序：remark-gfm → 允许原始 HTML → rehype-raw → rehype-sanitize → 链接改写
- * （见 `lib/markdown-rehype-links.ts`）→ rehype-highlight。
+ * 渲染管线固定顺序：remark-gfm → 允许原始 HTML → rehype-raw → rehype-slug（给标题生成 id）
+ * → rehype-sanitize → 链接改写（见 `lib/markdown-rehype-links.ts`）→ rehype-highlight。
+ *
+ * rehype-slug 用 github-slugger 给标题生成 id（中文按 GitHub 的规则保留原字），必须放在
+ * sanitize 之前：sanitize 的默认 schema 会给所有 id 加 `user-content-` 前缀防止 DOM
+ * clobbering，链接改写（`lib/doc-links.ts` 的 `resolveDocLink`）按同一个前缀规则改写锚点，
+ * 两边才能对上同一个 id。
  *
  * mermaid 代码块不在这里渲染：拦截到 `language-mermaid` 的代码块时，交给 `MermaidBlock`
  * 这个客户端组件——它按需动态加载 mermaid，页面里唯一的 innerHTML 例外就在那一个组件里
@@ -10,6 +15,7 @@
 import Markdown, { type ExtraProps } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import rehypeRaw from "rehype-raw";
+import rehypeSlug from "rehype-slug";
 import rehypeSanitize, { defaultSchema } from "rehype-sanitize";
 import rehypeHighlight from "rehype-highlight";
 import { toString as hastToString } from "hast-util-to-string";
@@ -65,7 +71,7 @@ export function DocMarkdown({ markdown, currentPath, ctx }: DocMarkdownProps) {
       <Markdown
         remarkPlugins={[remarkGfm]}
         remarkRehypeOptions={{ allowDangerousHtml: true }}
-        rehypePlugins={[rehypeRaw, [rehypeSanitize, SANITIZE_SCHEMA], () => rehypeDocLinks(currentPath, ctx), rehypeHighlight]}
+        rehypePlugins={[rehypeRaw, rehypeSlug, [rehypeSanitize, SANITIZE_SCHEMA], () => rehypeDocLinks(currentPath, ctx), rehypeHighlight]}
         // react-markdown 默认的 urlTransform 只是简单转义/清一遍协议；这里改用管线里更严格的
         // rehype-sanitize（GitHub 协议白名单，在 rehypeDocLinks 之前就已经清掉危险协议）兜底，
         // 关掉默认实现是为了不让它在链接改写之后再次改写我们自己生成的站内相对路径。

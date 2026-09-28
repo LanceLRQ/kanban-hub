@@ -26,6 +26,8 @@ function applyResult(node: Element, attr: "href" | "src", result: ReturnType<typ
       }
       return;
     case "external":
+      // 值不一定和原始 href 完全一样：同页锚点会按 sanitize 的 user-content- 前缀改写过
+      props[attr] = result.href;
       if (attr === "href" && isHttpLike(result.href)) {
         props.target = "_blank";
         props.rel = ["noopener", "noreferrer"];

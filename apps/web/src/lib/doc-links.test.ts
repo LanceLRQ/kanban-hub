@@ -26,12 +26,17 @@ describe("resolveDocLink", () => {
     expect(resolveDocLink("/docs/spec.md", "other/current.md", c)).toEqual({ kind: "doc", href: "/docs/docs/spec.md" });
   });
 
-  it("带 #锚点：保留锚点，传给 docHref", () => {
+  it("带 #锚点：按 sanitize 的 user-content- 前缀改写后传给 docHref，落到标题生成的 id 上", () => {
     const c = ctx(["docs/a.md"]);
     expect(resolveDocLink("a.md#section-1", "docs/current.md", c)).toEqual({
       kind: "doc",
-      href: "/docs/docs/a.md#section-1",
+      href: "/docs/docs/a.md#user-content-section-1",
     });
+  });
+
+  it("纯锚点（同页跳转）：同样加上 user-content- 前缀", () => {
+    const c = ctx([]);
+    expect(resolveDocLink("#安装", "docs/current.md", c)).toEqual({ kind: "external", href: "#user-content-安装" });
   });
 
   it("目标不在清单里返回 missing", () => {

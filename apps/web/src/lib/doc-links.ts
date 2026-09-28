@@ -27,6 +27,16 @@ export type DocLinkResult =
 const EXTERNAL_PROTOCOLS = new Set(["http:", "https:", "mailto:"]);
 const PROTOCOL_RE = /^([a-zA-Z][a-zA-Z\d+\-.]*):/;
 
+/**
+ * rehype-sanitize 的默认 schema 会给所有 `id`（包括 rehype-slug 给标题生成的那些）加上这个
+ * 前缀，防止 DOM clobbering；锚点跳转要落到同一个 id 上，所以这里按同样的规则改写 hash。
+ */
+const ANCHOR_ID_PREFIX = "user-content-";
+
+function prefixAnchor(hash: string): string {
+  return hash.startsWith(ANCHOR_ID_PREFIX) ? hash : `${ANCHOR_ID_PREFIX}${hash}`;
+}
+
 function isMarkdownPath(p: string): boolean {
   const ext = p.slice(p.lastIndexOf(".") + 1).toLowerCase();
   return ext === "md" || ext === "markdown";
@@ -73,15 +83,20 @@ export function resolveDocLink(href: string, currentPath: string, ctx: DocLinkCt
 
   const hashIndex = trimmed.indexOf("#");
   const rawPathPart = hashIndex >= 0 ? trimmed.slice(0, hashIndex) : trimmed;
-  const hash = hashIndex >= 0 ? trimmed.slice(hashIndex + 1) : null;
+  // remark 在解析阶段就会把链接目标里的非 ASCII 字符按 CommonMark 规则百分号编码
+  // （micromark-util-sanitize-uri），所以这里拿到的 hash 也要解码一次，才能和标题
+  // 生成的 id（原字，未编码）对上
+  const hash = hashIndex >= 0 ? decodeSafely(trimmed.slice(hashIndex + 1)) : null;
 
-  // 纯锚点（页内跳转）：原样保留，不当作文件链接处理
-  if (rawPathPart === "") return { kind: "external", href: trimmed };
+  // 纯锚点（页内跳转）：原样保留，不当作文件链接处理；按 sanitize 的前缀规则改写才能命中目标 id
+  if (rawPathPart === "") return { kind: "external", href: hash ? `#${prefixAnchor(hash)}` : trimmed };
 
   const decoded = decodeSafely(rawPathPart);
   const base = decoded.startsWith("/") ? decoded.slice(1) : `${dirname(currentPath)}/${decoded}`;
   const resolved = normalize(base);
   if (resolved === null || resolved === "" || !ctx.exists(resolved)) return { kind: "missing" };
 
-  return isMarkdownPath(resolved) ? { kind: "doc", href: ctx.docHref(resolved, hash) } : { kind: "raw", href: ctx.rawHref(resolved) };
+  return isMarkdownPath(resolved)
+    ? { kind: "doc", href: ctx.docHref(resolved, hash !== null ? prefixAnchor(hash) : null) }
+    : { kind: "raw", href: ctx.rawHref(resolved) };
 }

@@ -59,11 +59,12 @@ export async function DocsView({ projectId, view }: DocsViewProps) {
         </div>
 
         <div className="kh-doc-tree-box rounded-md border border-border bg-card p-2">
+          <div className="kh-doc-panel-head">{t("sidebar.treeTitle")}</div>
           <DocTreeView nodes={view.tree} currentPath={currentPath} hrefFor={(p) => docPageHref(projectId, p, { machineId: selectedMachine?.id })} />
         </div>
 
         <div className="kh-doc-recent-box rounded-md border border-border bg-card p-2">
-          <div className="kh-doc-recent-title px-2 py-1 text-xs font-bold tracking-wide text-muted-foreground">{t("sidebar.recentTitle")}</div>
+          <div className="kh-doc-panel-head">{t("sidebar.recentTitle")}</div>
           {view.recent.length === 0 ? (
             <p className="px-2 py-1 text-xs text-muted-foreground">{t("sidebar.recentEmpty")}</p>
           ) : (

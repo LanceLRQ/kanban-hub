@@ -21,12 +21,29 @@
     box-shadow: inset 3px 0 0 var(--focus-ring);
   }
 
+  /* ---------- 左栏面板标题栏：浅纸色底条 + 小号标签字，两个面板（文件树、最近更新）共用 ---------- */
+  .kh-doc-panel-head {
+    background: var(--bg-hover);
+    border-bottom: 1px solid var(--border-soft);
+    padding: 0.35rem 0.5rem;
+    margin: -0.5rem -0.5rem 0.5rem;
+    font-size: 0.6875rem;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    color: var(--fg-muted);
+  }
+
   /* ---------- Markdown 正文排版 ---------- */
   .kh-doc-markdown {
-    padding: 1.5rem;
+    /* 顶部留白比其余三边小：路径栏到正文第一行之间不需要一整份 padding 的空隙 */
+    padding: 0.75rem 1.5rem 1.5rem;
     font-size: 0.875rem;
     line-height: 1.75;
     color: var(--foreground);
+  }
+  /* 第一个子元素（一般是 h1）不再额外加顶部外边距，紧跟在上面 0.75rem 的 padding 之后 */
+  .kh-doc-markdown > :first-child {
+    margin-top: 0;
   }
   .kh-doc-markdown h1,
   .kh-doc-markdown h2,
@@ -202,6 +219,21 @@
   [data-theme="collage"] .kh-doc-recent-box,
   [data-theme="collage"] .kh-doc-article {
     border-radius: var(--radius-b);
+  }
+  [data-theme="collage"] .kh-doc-tree-box {
+    background: var(--paper-cream);
+  }
+  [data-theme="collage"] .kh-doc-recent-box {
+    background: var(--paper-gray);
+  }
+  [data-theme="collage"] .kh-doc-panel-head {
+    background: color-mix(in srgb, var(--card) 88%, var(--fg) 6%);
+    border-bottom-style: dashed;
+    border-bottom-color: var(--border-soft);
+  }
+  [data-theme="collage"] .kh-doc-path {
+    border-bottom-style: dashed;
+    border-bottom-color: var(--border-soft);
   }
   [data-theme="collage"] .kh-doc-markdown h2 {
     border-bottom-style: dashed;

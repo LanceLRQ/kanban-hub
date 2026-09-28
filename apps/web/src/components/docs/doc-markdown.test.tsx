@@ -56,6 +56,27 @@ describe("DocMarkdown", () => {
     expect(html).toContain('href="/docs/docs/b.md"');
   });
 
+  it("标题会生成 id（按 GitHub 的规则加 user-content- 前缀，中文原字保留）", () => {
+    const html = render("## 安装\n", "guide.md", NOOP_CTX);
+    expect(html).toContain('id="user-content-安装"');
+  });
+
+  it("同页锚点 #安装 改写后的 hash 能对上标题生成的 id", () => {
+    const html = render("## 安装\n\n[跳到安装](#安装)\n", "guide.md", NOOP_CTX);
+    expect(html).toContain('id="user-content-安装"');
+    expect(html).toContain('href="#user-content-安装"');
+  });
+
+  it("跨文档锚点 guide.md#安装 改写后的 hash 能对上目标文档标题生成的 id", () => {
+    const ctx: DocLinkCtx = {
+      exists: (p) => p === "guide.md",
+      docHref: (p, hash) => `/docs/${p}${hash ? `#${hash}` : ""}`,
+      rawHref: (p) => `/raw/${p}`,
+    };
+    const html = render("[跳到安装](guide.md#安装)", "README.md", ctx);
+    expect(html).toContain('href="/docs/guide.md#user-content-安装"');
+  });
+
   it("mermaid 代码块渲染成占位容器，不在服务端执行 mermaid", () => {
     const html = render("```mermaid\ngraph TD;A-->B;\n```", "a.md", NOOP_CTX);
     expect(html).toContain("kh-mermaid");

@@ -31,7 +31,7 @@ describe("planExclude / ensureExcluded", () => {
   it("不是 git 仓库时跳过，不需要写", async () => {
     const dir = await makeTempDir();
     dirs.push(dir);
-    const inspection = await inspectRepo(dir);
+    const inspection = await inspectRepo(dir, process.env);
 
     expect((await planExclude(inspection)).needed).toBe(false);
     const result = await ensureExcluded(inspection);
@@ -43,7 +43,7 @@ describe("planExclude / ensureExcluded", () => {
     const before = await fs.readFile(excludeFile(root), "utf8");
     expect(before.endsWith("\n")).toBe(true); // git init 自带的默认内容以换行结尾
 
-    const inspection = await inspectRepo(root);
+    const inspection = await inspectRepo(root, process.env);
     const plan = await planExclude(inspection);
     expect(plan.needed).toBe(true);
     expect(plan.path).toBe(excludeFile(root));
@@ -61,7 +61,7 @@ describe("planExclude / ensureExcluded", () => {
     await fs.mkdir(path.join(root, ".git", "info"), { recursive: true });
     await fs.writeFile(excludeFile(root), "custom-rule", "utf8");
 
-    const inspection = await inspectRepo(root);
+    const inspection = await inspectRepo(root, process.env);
     await ensureExcluded(inspection);
 
     const after = await fs.readFile(excludeFile(root), "utf8");
@@ -76,7 +76,7 @@ describe("planExclude / ensureExcluded", () => {
       const original = `${line}\n`;
       await fs.writeFile(excludeFile(root), original, "utf8");
 
-      const inspection = await inspectRepo(root);
+      const inspection = await inspectRepo(root, process.env);
       expect((await planExclude(inspection)).needed).toBe(false);
 
       const result = await ensureExcluded(inspection);
@@ -91,7 +91,7 @@ describe("planExclude / ensureExcluded", () => {
     const root = await tempRepo();
     await fs.rm(path.join(root, ".git", "info"), { recursive: true, force: true });
 
-    const inspection = await inspectRepo(root);
+    const inspection = await inspectRepo(root, process.env);
     const result = await ensureExcluded(inspection);
     expect(result.changed).toBe(true);
 
@@ -106,7 +106,7 @@ describe("planExclude / ensureExcluded", () => {
     const linkedDir = path.join(worktreeParent, "linked");
     gitFixture(["worktree", "add", linkedDir, "-b", "linked-branch", "-q"], mainRoot);
 
-    const inspection = await inspectRepo(linkedDir);
+    const inspection = await inspectRepo(linkedDir, process.env);
     expect(inspection.isLinkedWorktree).toBe(true);
 
     const result = await ensureExcluded(inspection);
@@ -122,7 +122,7 @@ describe("planExclude / ensureExcluded", () => {
 
   it("写入之后，仓库的 git status --porcelain 为空，看不到 .kanban-hub/", async () => {
     const root = await tempRepo();
-    const inspection = await inspectRepo(root);
+    const inspection = await inspectRepo(root, process.env);
     await ensureExcluded(inspection);
     await writeRepoConfig(root, {
       projectId: "p000000009",

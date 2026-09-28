@@ -7,7 +7,7 @@ import { SYNC_DEFAULT_MAX_FILE_SIZE, SYNC_MAX_FILE_SIZE_LIMIT } from "@kanban-hu
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import { z } from "zod";
 import { CliError, EXIT } from "../errors";
-import { isNoEntError, writeFileAtomic } from "./fs-utils";
+import { isNoEntError, writeFileAtomic } from "../fs-utils";
 
 const REPO_CONFIG_DIR = ".kanban-hub";
 const REPO_CONFIG_FILE = "config.yaml";

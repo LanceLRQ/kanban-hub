@@ -1,7 +1,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { CliError, EXIT } from "../errors";
-import { isNoEntError } from "./fs-utils";
+import { isNoEntError } from "../fs-utils";
 
 /** 按顺序检查，存在的目录建议为 <目录>/** */
 const SUGGESTED_DOC_DIRS = ["docs", "doc", "design"] as const;

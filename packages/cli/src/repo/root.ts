@@ -17,8 +17,8 @@ export interface RepoInspection {
  * 探查 cwd 所在的 git 仓库：register 用来决定仓库根、判断是否链接工作树。
  * 不是 git 仓库时 root 就是 cwd 本身（register 用的仓库根：git 仓库取 show-toplevel，否则取当前目录）。
  */
-export async function inspectRepo(cwd: string): Promise<RepoInspection> {
-  const result = await runGit(["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"], cwd);
+export async function inspectRepo(cwd: string, env: Record<string, string | undefined>): Promise<RepoInspection> {
+  const result = await runGit(["rev-parse", "--show-toplevel", "--git-dir", "--git-common-dir"], { cwd, env });
   if (!result.ok) {
     return { root: cwd, isGit: false, gitDir: null, commonDir: null, isLinkedWorktree: false };
   }
@@ -93,7 +93,7 @@ export async function findRegisteredRepoInGit(inspection: RepoInspection, ctx: C
  *   同样跳过“候选目录的 .kanban-hub 恰好是 KH_HOME”的情况，见 collidesWithKhHome。
  */
 export async function findRegisteredRepo(cwd: string, ctx: CliContext): Promise<RegisteredRepo | null> {
-  const inspection = await inspectRepo(cwd);
+  const inspection = await inspectRepo(cwd, ctx.env);
 
   if (inspection.isGit) {
     return findRegisteredRepoInGit(inspection, ctx);

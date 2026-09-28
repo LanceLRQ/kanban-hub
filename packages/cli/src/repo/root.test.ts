@@ -32,7 +32,7 @@ describe("inspectRepo", () => {
 
   it("不是 git 仓库：root 就是当前目录，其余字段为空", async () => {
     const dir = await tempDir();
-    const result = await inspectRepo(dir);
+    const result = await inspectRepo(dir, process.env);
     expect(result).toEqual({ root: dir, isGit: false, gitDir: null, commonDir: null, isLinkedWorktree: false });
   });
 
@@ -43,7 +43,7 @@ describe("inspectRepo", () => {
     const sub = path.join(dir, "a", "b");
     await fs.mkdir(sub, { recursive: true });
 
-    const result = await inspectRepo(sub);
+    const result = await inspectRepo(sub, process.env);
     expect(result.root).toBe(dir);
     expect(result.isGit).toBe(true);
     expect(result.gitDir).toBe(path.join(dir, ".git"));
@@ -60,7 +60,7 @@ describe("inspectRepo", () => {
     const linkedDir = path.join(worktreeParent, "linked");
     gitFixture(["worktree", "add", linkedDir, "-b", "linked-branch", "-q"], mainDir);
 
-    const result = await inspectRepo(linkedDir);
+    const result = await inspectRepo(linkedDir, process.env);
     expect(result.root).toBe(linkedDir);
     expect(result.isGit).toBe(true);
     expect(result.commonDir).toBe(path.join(mainDir, ".git"));

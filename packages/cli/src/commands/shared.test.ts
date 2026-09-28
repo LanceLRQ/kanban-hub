@@ -54,7 +54,9 @@ async function tmpDir(prefix: string): Promise<string> {
 function fakeContext(overrides: Partial<CliContext> = {}): CliContext {
   return {
     cwd: "/tmp",
-    env: {},
+    // 带上真实的 process.env（主要是 PATH）：requireRegisteredRepo 内部会经 ctx.env 调用 git，
+    // 缺了 PATH 会导致找不到 git 可执行文件
+    env: { ...process.env },
     stdout: { write: () => {} },
     stderr: { write: () => {} },
     stdin: process.stdin,

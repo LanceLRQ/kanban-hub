@@ -1,6 +1,6 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { isNoEntError, writeFileAtomic } from "./fs-utils";
+import { isNoEntError, writeFileAtomic } from "../fs-utils";
 import type { RepoInspection } from "./root";
 
 const EXCLUDE_LINE = "/.kanban-hub/";

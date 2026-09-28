@@ -45,7 +45,9 @@ export function initRepoWithCommit(dir: string): string {
 export function fakeContext(overrides: Partial<CliContext> = {}): CliContext {
   return {
     cwd: "/tmp",
-    env: {},
+    // 默认带上真实的 process.env（主要是 PATH），这样经 ctx.env 传给 git 子进程时依然能找到
+    // git 可执行文件；需要测试“环境变量隔离”这类场景时，测试自己会整体覆盖 env
+    env: { ...process.env },
     stdout: { write: () => {} },
     stderr: { write: () => {} },
     stdin: process.stdin,

@@ -19,18 +19,20 @@ describe("runGit", () => {
     return dir;
   }
 
-  it("在真实仓库里执行只读命令成功", async () => {
+  it("在真实仓库里执行只读命令成功，退出码为 0", async () => {
     const dir = await tempDir();
     const hash = initRepoWithCommit(dir);
-    const result = await runGit(["rev-parse", "HEAD"], dir);
+    const result = await runGit(["rev-parse", "HEAD"], { cwd: dir, env: process.env });
     expect(result.ok).toBe(true);
+    expect(result.code).toBe(0);
     expect(result.stdout.trim()).toBe(hash);
   });
 
-  it("不是 git 仓库时 ok 为 false，且不抛错", async () => {
+  it("不是 git 仓库时 ok 为 false，code 非 0，且不抛错", async () => {
     const dir = await tempDir();
-    const result = await runGit(["rev-parse", "--show-toplevel"], dir);
+    const result = await runGit(["rev-parse", "--show-toplevel"], { cwd: dir, env: process.env });
     expect(result.ok).toBe(false);
+    expect(result.code).not.toBe(0);
     expect(result.stderr).not.toBe("");
   });
 
@@ -39,7 +41,7 @@ describe("runGit", () => {
     initRepoWithCommit(dir);
     // 如果 runGit 经过了 shell，"; echo pwned" 会被当成另一条命令单独执行；不经过 shell 时
     // git 会把整个字符串当成一个（不存在的）引用，原样回显在 stdout 里，并以非零退出码失败
-    const result = await runGit(["rev-parse", "HEAD; echo pwned"], dir);
+    const result = await runGit(["rev-parse", "HEAD; echo pwned"], { cwd: dir, env: process.env });
     expect(result.ok).toBe(false);
     expect(result.stdout.trim()).toBe("HEAD; echo pwned");
   });
@@ -48,23 +50,63 @@ describe("runGit", () => {
     const dir = await tempDir();
     initRepoWithCommit(dir);
     // 间接验证：正常只读命令依然正确执行（GIT_OPTIONAL_LOCKS=0 不应该影响读操作的结果）
-    const result = await runGit(["rev-parse", "--is-inside-work-tree"], dir);
+    const result = await runGit(["rev-parse", "--is-inside-work-tree"], { cwd: dir, env: process.env });
     expect(result.ok).toBe(true);
     expect(result.stdout.trim()).toBe("true");
   });
 
+  it("用传入的 env，而不是 process.env：git var GIT_AUTHOR_IDENT 能观察到传入的作者身份", async () => {
+    const dir = await tempDir();
+    initRepoWithCommit(dir);
+    const env = {
+      ...process.env,
+      GIT_AUTHOR_NAME: "kh-env-test",
+      GIT_AUTHOR_EMAIL: "kh-env-test@example.com",
+      GIT_AUTHOR_DATE: "2026-01-01T00:00:00+00:00",
+    };
+    const result = await runGit(["var", "GIT_AUTHOR_IDENT"], { cwd: dir, env });
+    expect(result.ok).toBe(true);
+    expect(result.stdout).toContain("kh-env-test");
+    expect(result.stdout).toContain("kh-env-test@example.com");
+  });
+
+  it("传入的 env 里没有可观察变量时，git 也不会退化去读 process.env（用一个明显不同的作者身份验证）", async () => {
+    const dir = await tempDir();
+    initRepoWithCommit(dir);
+    const env = {
+      PATH: process.env.PATH,
+      HOME: process.env.HOME,
+      GIT_AUTHOR_NAME: "only-from-opts-env",
+      GIT_AUTHOR_EMAIL: "only-from-opts-env@example.com",
+    };
+    const result = await runGit(["var", "GIT_AUTHOR_IDENT"], { cwd: dir, env });
+    expect(result.ok).toBe(true);
+    expect(result.stdout).toContain("only-from-opts-env");
+  });
+
+  it("buffer: true 时 stdout 以 Buffer 返回", async () => {
+    const dir = await tempDir();
+    initRepoWithCommit(dir);
+    const result = await runGit(["rev-parse", "HEAD"], { cwd: dir, env: process.env, buffer: true });
+    expect(Buffer.isBuffer(result.stdout)).toBe(true);
+    expect(result.stdout.toString("utf8").trim()).toMatch(/^[0-9a-f]{40}$/);
+  });
+
+  it("非 0 退出码时返回 code", async () => {
+    const dir = await tempDir();
+    initRepoWithCommit(dir);
+    const result = await runGit(["show", "no-such-ref"], { cwd: dir, env: process.env });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBeGreaterThan(0);
+  });
+
   it("找不到 git 可执行文件时抛 CliError(1)，并给出安装提示", async () => {
     const dir = await tempDir();
-    const originalPath = process.env.PATH;
-    process.env.PATH = path.join(dir, "empty-bin");
-    try {
-      await expect(runGit(["rev-parse", "HEAD"], dir)).rejects.toMatchObject({
-        name: "CliError",
-        exitCode: 1,
-        hint: expect.stringContaining("git"),
-      });
-    } finally {
-      process.env.PATH = originalPath;
-    }
+    const emptyBin = path.join(dir, "empty-bin");
+    await expect(runGit(["rev-parse", "HEAD"], { cwd: dir, env: { PATH: emptyBin } })).rejects.toMatchObject({
+      name: "CliError",
+      exitCode: 1,
+      hint: expect.stringContaining("git"),
+    });
   });
 });

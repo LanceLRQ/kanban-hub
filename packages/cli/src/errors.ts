@@ -17,6 +17,8 @@ export class CliError extends Error {
     readonly exitCode: ExitCode,
     message: string,
     readonly hint?: string,
+    /** 服务端错误响应里的 error.details（例如 missingBlobs），没有则为 undefined */
+    readonly details?: unknown,
   ) {
     super(message);
     this.name = "CliError";

@@ -1,27 +1,9 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import { isNoEntError, writeFileAtomic } from "./fs-utils";
 
 interface ReportRecord {
   lastReportAt: string;
-}
-
-let tmpSeq = 0;
-
-/** 先写临时文件再重命名，保证不会留下写到一半的文件（与存储层的原子写约定一致） */
-async function writeFileAtomic(file: string, data: string): Promise<void> {
-  await fs.mkdir(path.dirname(file), { recursive: true });
-  const tmp = `${file}.tmp-${process.pid}-${++tmpSeq}`;
-  try {
-    await fs.writeFile(tmp, data, "utf8");
-    await fs.rename(tmp, file);
-  } catch (e) {
-    await fs.rm(tmp, { force: true });
-    throw e;
-  }
-}
-
-function isNoEntError(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as NodeJS.ErrnoException).code === "ENOENT";
 }
 
 function reportFilePath(home: string, projectId: string): string {
@@ -35,7 +17,7 @@ function reportFilePath(home: string, projectId: string): string {
  */
 export async function recordReport(home: string, projectId: string, now: Date): Promise<void> {
   const record: ReportRecord = { lastReportAt: now.toISOString() };
-  await writeFileAtomic(reportFilePath(home, projectId), JSON.stringify(record));
+  await writeFileAtomic(reportFilePath(home, projectId), JSON.stringify(record), { mkdir: true });
 }
 
 /** 读取某个项目最近一次上报的时间；没有记录过，或记录损坏，都返回 null */

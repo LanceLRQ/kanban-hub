@@ -20,13 +20,13 @@ describe("fingerprint", () => {
 
   it("不是 git 仓库时为 null", async () => {
     const dir = await tempDir();
-    expect(await fingerprint(dir)).toBeNull();
+    expect(await fingerprint(dir, process.env)).toBeNull();
   });
 
   it("没有提交时为 null", async () => {
     const dir = await tempDir();
     gitFixture(["init", "-q"], dir);
-    expect(await fingerprint(dir)).toBeNull();
+    expect(await fingerprint(dir, process.env)).toBeNull();
   });
 
   it("单个根提交时返回它自己的 hash", async () => {
@@ -34,7 +34,7 @@ describe("fingerprint", () => {
     gitFixture(["init", "-q"], dir);
     gitFixture(["commit", "--allow-empty", "-q", "-m", "init"], dir);
     const hash = gitFixture(["rev-parse", "HEAD"], dir).trim();
-    expect(await fingerprint(dir)).toBe(hash);
+    expect(await fingerprint(dir, process.env)).toBe(hash);
   });
 
   it("合并两段无关历史时，取两个根提交里排序后的第一个", async () => {
@@ -53,6 +53,6 @@ describe("fingerprint", () => {
     gitFixture(["merge", "-q", "--allow-unrelated-histories", "-m", "merge", "branch-b"], dir);
 
     const expected = [hashA, hashB].sort()[0];
-    expect(await fingerprint(dir)).toBe(expected);
+    expect(await fingerprint(dir, process.env)).toBe(expected);
   });
 });

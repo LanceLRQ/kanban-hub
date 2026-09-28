@@ -249,7 +249,7 @@ async function registerFresh(
   inspection: RepoInspection,
 ): Promise<void> {
   const root = inspection.root;
-  const fp = inspection.isGit ? await fingerprint(root) : null;
+  const fp = inspection.isGit ? await fingerprint(root, ctx.env) : null;
 
   const matches =
     fp !== null ? (await client.get(`/api/v1/projects?fingerprint=${encodeURIComponent(fp)}`, projectListResponse)).projects : [];
@@ -360,7 +360,7 @@ async function runRegister(ctx: CliContext, opts: RegisterOptions, agentFlag: st
 
   const { client, machine } = await requireLogin(ctx, agentFlag);
 
-  const inspection = await inspectRepo(ctx.cwd);
+  const inspection = await inspectRepo(ctx.cwd, ctx.env);
   assertRootNotKhHome(inspection.root, ctx);
 
   const existing = await findExistingConfigForRegister(inspection, ctx);

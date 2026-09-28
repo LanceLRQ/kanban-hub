@@ -304,3 +304,89 @@ describe("ApiClient 请求头", () => {
     expect(err.message).not.toContain("café");
   });
 });
+
+describe("CliError.details", () => {
+  it("400 响应的 details 能从 CliError 上原样拿到", async () => {
+    const missingBlobs = ["aa".repeat(32), "bb".repeat(32)];
+    const { url } = await serve(
+      jsonHandler(400, {
+        error: { code: "invalid", message: "缺少内容", details: { missingBlobs } },
+      }),
+    );
+    const err = await captureError(makeClient(url).get("/x", okSchema));
+    expect(err.details).toEqual({ missingBlobs });
+  });
+
+  it("成功响应或没有 details 时，CliError.details 为 undefined", async () => {
+    const { url } = await serve(jsonHandler(401, { error: { code: "unauthorized", message: "令牌已失效" } }));
+    const err = await captureError(makeClient(url).get("/x", okSchema));
+    expect(err.details).toBeUndefined();
+  });
+});
+
+function collectBody(req: http.IncomingMessage): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const chunks: Buffer[] = [];
+    req.on("data", (chunk: Buffer) => chunks.push(chunk));
+    req.on("end", () => resolve(Buffer.concat(chunks)));
+    req.on("error", reject);
+  });
+}
+
+describe("ApiClient 二进制请求", () => {
+  it("putBytes：上传的字节原样到达服务端，Content-Type 是 application/octet-stream", async () => {
+    const bytes = new Uint8Array([0, 1, 2, 3, 255, 254]);
+    let received: Buffer | undefined;
+    const stub = await serve((req, res) => {
+      collectBody(req).then((body) => {
+        received = body;
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end(JSON.stringify({ ok: true }));
+      });
+    });
+    await makeClient(stub.url).putBytes("/x", bytes, okSchema);
+    expect(stub.requests[0]?.headers["content-type"]).toBe("application/octet-stream");
+    expect(received).toEqual(Buffer.from(bytes));
+  });
+
+  it("putBytes：额外的 headers 参数会一起发出去", async () => {
+    const stub = await serve(jsonHandler(200, { ok: true }));
+    await makeClient(stub.url).putBytes("/x", new Uint8Array([1]), okSchema, { "x-kh-sha256": "abc" });
+    expect(stub.requests[0]?.headers["x-kh-sha256"]).toBe("abc");
+  });
+
+  it("putBytes：错误响应按现有规则映射，details 也能拿到", async () => {
+    const stub = await serve(jsonHandler(400, { error: { code: "invalid", message: "校验失败", details: { missingBlobs: ["x"] } } }));
+    const err = await captureError(makeClient(stub.url).putBytes("/x", new Uint8Array([1]), okSchema));
+    expect(err.exitCode).toBe(EXIT.DATA);
+    expect(err.details).toEqual({ missingBlobs: ["x"] });
+  });
+
+  it("getBytes：能读到响应体（原样字节）和响应头", async () => {
+    const bytes = new Uint8Array([9, 8, 7, 6]);
+    const stub = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "application/octet-stream", "x-kh-sha256": "deadbeef" });
+      res.end(Buffer.from(bytes));
+    });
+    const result = await makeClient(stub.url).getBytes("/x");
+    expect(result.bytes).toEqual(bytes);
+    expect(result.headers.get("x-kh-sha256")).toBe("deadbeef");
+  });
+
+  it("getBytes：错误响应按现有规则映射", async () => {
+    const stub = await serve(jsonHandler(404, { error: { code: "not_found", message: "文件不存在" } }));
+    const err = await captureError(makeClient(stub.url).getBytes("/x"));
+    expect(err.exitCode).toBe(EXIT.DATA);
+    expect(err.message).toBe("文件不存在");
+  });
+
+  it("getBytes：请求头带 X-KH-Version 与鉴权", async () => {
+    const stub = await serve((req, res) => {
+      res.writeHead(200, { "content-type": "application/octet-stream" });
+      res.end(Buffer.from([1]));
+    });
+    await makeClient(stub.url, { token: "the-token" }).getBytes("/x");
+    expect(stub.requests[0]?.headers[HEADER_KH_VERSION]).toBe(KH_VERSION);
+    expect(stub.requests[0]?.headers.authorization).toBe("Bearer the-token");
+  });
+});

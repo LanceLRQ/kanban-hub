@@ -20,8 +20,10 @@
   },
   "devDependencies": {
     "@kanban-hub/core": "workspace:*",
+    "@types/picomatch": "^4.0.3",
     "commander": "^15.0.0",
     "esbuild": "^0.28.2",
+    "picomatch": "^4.0.7",
     "yaml": "^2.9.1"
   }
 }

@@ -103,7 +103,9 @@ export async function runKh(args: string[], opts: RunKhOptions): Promise<RunKhRe
   let stderr = "";
   const ctx: CliContext = {
     cwd: opts.cwd,
-    env: { ...opts.env, KH_HOME: opts.khHome },
+    // 带上真实的 process.env（主要是 PATH）：runGit 现在只用 ctx.env，不会退回 process.env，
+    // 缺了 PATH 会导致 register 等经由 git 探查仓库的命令找不到 git 可执行文件
+    env: { ...process.env, ...opts.env, KH_HOME: opts.khHome },
     stdout: {
       write: (s) => {
         stdout += s;

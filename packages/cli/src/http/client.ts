@@ -38,42 +38,49 @@ function missingEndpointError(server: string): CliError {
   return new CliError(EXIT.INCOMPATIBLE, "服务端没有这个接口，kh 与服务端版本可能不一致", upgradeHint(server));
 }
 
-/** 按“退出码的归属”把 HTTP 状态码映射成 CliError；服务端给的 message 照原样显示，不改写 */
+/** 按“退出码的归属”把 HTTP 状态码映射成 CliError；服务端给的 message 照原样显示，不改写。
+ * details 原样带上（例如 missingBlobs），调用方据此识别具体的失败原因，不需要重新解析 message。 */
 function mapHttpError(status: number, body: ApiErrorBody | null, server: string): CliError {
   const message = body?.error.message;
+  const details = body?.error.details;
   switch (status) {
     case 400: {
-      const lines = [message ?? "请求参数不正确", ...issueLines(body?.error.details)];
-      return new CliError(EXIT.DATA, lines.join("\n"));
+      const lines = [message ?? "请求参数不正确", ...issueLines(details)];
+      return new CliError(EXIT.DATA, lines.join("\n"), undefined, details);
     }
     case 401:
-      return new CliError(EXIT.AUTH, message ?? "未登录或令牌已失效", `到 ${server}/setup 取配对码，再执行 kh login --code <配对码>`);
+      return new CliError(
+        EXIT.AUTH,
+        message ?? "未登录或令牌已失效",
+        `到 ${server}/setup 取配对码，再执行 kh login --code <配对码>`,
+        details,
+      );
     case 403:
-      return new CliError(EXIT.AUTH, message ?? "没有权限执行此操作");
+      return new CliError(EXIT.AUTH, message ?? "没有权限执行此操作", undefined, details);
     case 404:
-      return body ? new CliError(EXIT.DATA, message ?? "未找到") : missingEndpointError(server);
+      return body ? new CliError(EXIT.DATA, message ?? "未找到", undefined, details) : missingEndpointError(server);
     case 405:
-      return body ? new CliError(EXIT.DATA, message ?? "不支持的方法") : missingEndpointError(server);
+      return body ? new CliError(EXIT.DATA, message ?? "不支持的方法", undefined, details) : missingEndpointError(server);
     case 409:
-      return new CliError(EXIT.DATA, message ?? "存在冲突");
+      return new CliError(EXIT.DATA, message ?? "存在冲突", undefined, details);
     case 413:
-      return new CliError(EXIT.DATA, message ?? "请求体过大");
+      return new CliError(EXIT.DATA, message ?? "请求体过大", undefined, details);
     case 426:
-      return new CliError(EXIT.INCOMPATIBLE, message ?? "kh 版本过旧，服务端拒绝了请求", upgradeHint(server));
+      return new CliError(EXIT.INCOMPATIBLE, message ?? "kh 版本过旧，服务端拒绝了请求", upgradeHint(server), details);
     case 429: {
       // details.retryAfterSeconds 放进 hint（而不是拼进 message），message 原样保留服务端给的原因
-      const parsed = rateLimitDetailsSchema.safeParse(body?.error.details);
+      const parsed = rateLimitDetailsSchema.safeParse(details);
       const hint = parsed.success ? `请等待 ${parsed.data.retryAfterSeconds} 秒后重试` : undefined;
-      return new CliError(EXIT.AUTH, message ?? "请求过于频繁，请稍后再试", hint);
+      return new CliError(EXIT.AUTH, message ?? "请求过于频繁，请稍后再试", hint, details);
     }
     case 500:
-      return new CliError(EXIT.UNEXPECTED, message ?? "服务端内部错误");
+      return new CliError(EXIT.UNEXPECTED, message ?? "服务端内部错误", undefined, details);
     case 503:
-      return new CliError(EXIT.UNREACHABLE, message ?? "服务端暂时不可用");
+      return new CliError(EXIT.UNREACHABLE, message ?? "服务端暂时不可用", undefined, details);
     default:
       // 502/504 等网关错误通常不是 JSON 响应；其他未预期的状态码按服务端异常处理
-      if (status >= 500) return new CliError(EXIT.UNREACHABLE, message ?? `服务端返回网关错误（状态码 ${status}）`);
-      return new CliError(EXIT.UNEXPECTED, message ?? `服务端返回未预期的状态码 ${status}`);
+      if (status >= 500) return new CliError(EXIT.UNREACHABLE, message ?? `服务端返回网关错误（状态码 ${status}）`, undefined, details);
+      return new CliError(EXIT.UNEXPECTED, message ?? `服务端返回未预期的状态码 ${status}`, undefined, details);
   }
 }
 
@@ -112,6 +119,11 @@ function causeCode(err: unknown): string | undefined {
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT";
 
+// fetch() 请求体的类型（BodyInit）在 Node 与 DOM 两套环境的全局类型声明里不完全一致，这份
+// 源码同时被 packages/cli 和 apps/web 的类型检查覆盖；不直接写 BodyInit 这个类型名，而是从
+// 当前环境实际生效的 fetch 签名里取，两边各自解析出自己环境下正确的类型
+type FetchBody = NonNullable<Parameters<typeof fetch>[1]>["body"];
+
 /** 调用 kh 服务端 API：统一请求头、超时、把失败响应映射成 CliError，成功时按 schema 解析并返回 */
 export class ApiClient {
   constructor(private readonly opts: ApiClientOptions) {}
@@ -132,6 +144,60 @@ export class ApiClient {
     return this.request("PUT", path, body, schema);
   }
 
+  /** 上传二进制内容（例如同步缺少的 blob）；响应仍是 JSON，按 schema 解析后返回 */
+  putBytes<S extends z.ZodType>(
+    path: string,
+    bytes: Uint8Array,
+    schema: S,
+    headers: Record<string, string> = {},
+  ): Promise<z.output<S>> {
+    return this.requestBytes(path, bytes, schema, headers);
+  }
+
+  /** 下载二进制内容（例如某个快照文件），连同响应头一起返回；调用方从响应头读取 X-KH-Sha256 等信息 */
+  async getBytes(path: string): Promise<{ bytes: Uint8Array; headers: Headers }> {
+    const url = new URL(path, this.opts.server).toString();
+    const headers = this.baseHeaders();
+
+    return this.withNetworkErrors(async (signal) => {
+      const response = await this.opts.fetch(url, { method: "GET", headers, signal, redirect: "manual" });
+      if (isRedirectStatus(response.status)) throw this.buildRedirectError(response);
+      if (!response.ok) throw await this.buildError(response);
+      const buffer = await response.arrayBuffer();
+      return { bytes: new Uint8Array(buffer), headers: response.headers };
+    });
+  }
+
+  /** 除 Authorization / X-KH-Agent 之外的通用请求头；每个发请求的方法都从这份基础上再加内容 */
+  private baseHeaders(extra?: Record<string, string>): Record<string, string> {
+    const headers: Record<string, string> = { [HEADER_KH_VERSION]: KH_VERSION, ...extra };
+    if (this.opts.token) headers.authorization = `Bearer ${this.opts.token}`;
+    if (this.opts.agent) headers[HEADER_KH_AGENT] = this.opts.agent;
+    assertHeadersSendable(headers);
+    return headers;
+  }
+
+  /** 统一“超时 / 中止 / 连接失败”到 CliError 的映射，request、putBytes、getBytes 共用同一份规则 */
+  private async withNetworkErrors<T>(fn: (signal: AbortSignal) => Promise<T>): Promise<T> {
+    const timeoutMs = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+    const controller = new AbortController();
+    // 超时要覆盖到读完响应体为止，不能在拿到响应头之后就 clearTimeout：服务端发完头就
+    // 不再发数据的话，读 body 会一直挂着。
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
+    try {
+      return await fn(controller.signal);
+    } catch (err) {
+      if (err instanceof CliError) throw err;
+      if (isAbortError(err)) {
+        throw new CliError(EXIT.UNREACHABLE, `请求超时（超过 ${timeoutMs}ms）：${this.opts.server}`);
+      }
+      const code = causeCode(err);
+      throw new CliError(EXIT.UNREACHABLE, `无法连接到服务端：${this.opts.server}${code ? `（${code}）` : ""}`);
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
   private async request<S extends z.ZodType>(
     method: HttpMethod,
     path: string,
@@ -139,31 +205,16 @@ export class ApiClient {
     schema: S,
   ): Promise<z.output<S>> {
     const url = new URL(path, this.opts.server).toString();
-    const headers: Record<string, string> = { [HEADER_KH_VERSION]: KH_VERSION };
-    if (this.opts.token) headers.authorization = `Bearer ${this.opts.token}`;
-    if (this.opts.agent) headers[HEADER_KH_AGENT] = this.opts.agent;
+    const headers = this.baseHeaders();
 
     let requestBody: string | undefined;
     if (body !== undefined) {
       headers["content-type"] = "application/json";
       requestBody = JSON.stringify(body);
     }
-    assertHeadersSendable(headers);
 
-    const timeoutMs = this.opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
-    const controller = new AbortController();
-    // 超时要覆盖到读完响应体为止，不能在拿到响应头之后就 clearTimeout：服务端发完头就
-    // 不再发数据的话，读 body 会一直挂着。这里把 fetch 和后续的 body 读取都放进同一个
-    // AbortController 的作用域，finally 里统一 clearTimeout。
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await this.opts.fetch(url, {
-        method,
-        headers,
-        body: requestBody,
-        signal: controller.signal,
-        redirect: "manual",
-      });
+    return this.withNetworkErrors(async (signal) => {
+      const response = await this.opts.fetch(url, { method, headers, body: requestBody, signal, redirect: "manual" });
 
       if (isRedirectStatus(response.status)) {
         throw this.buildRedirectError(response);
@@ -179,16 +230,34 @@ export class ApiClient {
       }
 
       throw await this.buildError(response);
-    } catch (err) {
-      if (err instanceof CliError) throw err;
-      if (isAbortError(err)) {
-        throw new CliError(EXIT.UNREACHABLE, `请求超时（超过 ${timeoutMs}ms）：${this.opts.server}`);
+    });
+  }
+
+  private async requestBytes<S extends z.ZodType>(
+    path: string,
+    bytes: Uint8Array,
+    schema: S,
+    extraHeaders: Record<string, string>,
+  ): Promise<z.output<S>> {
+    const url = new URL(path, this.opts.server).toString();
+    const headers = this.baseHeaders({ "content-type": "application/octet-stream", ...extraHeaders });
+
+    return this.withNetworkErrors(async (signal) => {
+      const response = await this.opts.fetch(url, { method: "PUT", headers, body: bytes as FetchBody, signal, redirect: "manual" });
+
+      if (isRedirectStatus(response.status)) throw this.buildRedirectError(response);
+
+      if (response.ok) {
+        const data = await this.safeParseJson(response);
+        const parsed = schema.safeParse(data);
+        if (!parsed.success) {
+          throw new CliError(EXIT.UNEXPECTED, "服务端返回的数据格式不符合预期");
+        }
+        return parsed.data;
       }
-      const code = causeCode(err);
-      throw new CliError(EXIT.UNREACHABLE, `无法连接到服务端：${this.opts.server}${code ? `（${code}）` : ""}`);
-    } finally {
-      clearTimeout(timer);
-    }
+
+      throw await this.buildError(response);
+    });
   }
 
   /** 收到 3xx 时不跟随重定向：多半是服务端地址配错了，提示改用 Location 解析出的 origin 重新登录 */

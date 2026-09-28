@@ -7,6 +7,7 @@ import { idSchema } from "@kanban-hub/core/ids";
 import { parse as parseYaml, stringify as stringifyYaml } from "yaml";
 import type { CliContext } from "../context";
 import { CliError, EXIT } from "../errors";
+import { isNoEntError, writeFileAtomic } from "../fs-utils";
 
 const CONFIG_FILE = "config.yaml";
 const CREDENTIALS_FILE = "credentials";
@@ -71,24 +72,6 @@ const machineConfigSchema = z
   });
 
 export type MachineConfig = z.infer<typeof machineConfigSchema>;
-
-let tmpSeq = 0;
-
-/** 先写临时文件再重命名，保证不会留下写到一半的文件；mode 未指定时用系统默认权限 */
-async function writeFileAtomic(file: string, data: string, mode?: number): Promise<void> {
-  const tmp = `${file}.tmp-${process.pid}-${++tmpSeq}`;
-  try {
-    await fs.writeFile(tmp, data, mode !== undefined ? { encoding: "utf8", mode } : "utf8");
-    await fs.rename(tmp, file);
-  } catch (e) {
-    await fs.rm(tmp, { force: true });
-    throw e;
-  }
-}
-
-function isNoEntError(err: unknown): boolean {
-  return typeof err === "object" && err !== null && (err as NodeJS.ErrnoException).code === "ENOENT";
-}
 
 async function ensureHomeDir(home: string): Promise<void> {
   await fs.mkdir(home, { recursive: true, mode: HOME_DIR_MODE });
@@ -202,7 +185,7 @@ export async function writeToken(home: string, token: string): Promise<void> {
     throw new CliError(EXIT.UNEXPECTED, "服务端返回的令牌格式不正确");
   }
   await ensureHomeDir(home);
-  await writeFileAtomic(path.join(home, CREDENTIALS_FILE), `${token}\n`, CREDENTIALS_MODE);
+  await writeFileAtomic(path.join(home, CREDENTIALS_FILE), `${token}\n`, { mode: CREDENTIALS_MODE });
 }
 
 async function removeCredentialsFile(home: string): Promise<void> {

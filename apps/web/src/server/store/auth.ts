@@ -34,6 +34,8 @@ const machinesFileSchema = z.object({ machines: z.array(machineSchema) });
 export interface AuthDeps {
   now: () => Date;
   newId: () => string;
+  /** 原子写入的临时文件目录，见 WriteFileOptions.tmpDir */
+  tmpDir?: string;
 }
 
 /** 用户、机器与会话密钥的存储。写操作经过写入队列；认证逻辑在 M2 */
@@ -147,12 +149,12 @@ export class AuthRepo {
 
   // 先写文件，写成功后再替换内存
   private async saveUsers(users: User[]): Promise<void> {
-    await writeYamlFile(this.abs(AUTH_FILES.users), { users }, { mode: AUTH_FILE_MODE });
+    await writeYamlFile(this.abs(AUTH_FILES.users), { users }, { mode: AUTH_FILE_MODE, tmpDir: this.deps.tmpDir });
     this.users = users;
   }
 
   private async saveMachines(machines: Machine[]): Promise<void> {
-    await writeYamlFile(this.abs(AUTH_FILES.machines), { machines }, { mode: AUTH_FILE_MODE });
+    await writeYamlFile(this.abs(AUTH_FILES.machines), { machines }, { mode: AUTH_FILE_MODE, tmpDir: this.deps.tmpDir });
     this.machines = machines;
   }
 
@@ -165,7 +167,7 @@ export class AuthRepo {
       if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     const secret = randomBytes(32).toString("base64url");
-    await writeFileAtomic(file, `${secret}\n`, { mode: AUTH_FILE_MODE });
+    await writeFileAtomic(file, `${secret}\n`, { mode: AUTH_FILE_MODE, tmpDir: this.deps.tmpDir });
     return secret;
   }
 

@@ -137,6 +137,18 @@ describe("findManifestPathProblem", () => {
   it("查出目录与文件冲突", () => {
     expect(findManifestPathProblem(["a", "a/b"])).not.toBeNull();
   });
+
+  it("上级目录检查也不区分大小写", () => {
+    expect(findManifestPathProblem(["A", "a/b"])).not.toBeNull();
+    expect(findManifestPathProblem(["docs/b.md", "DOCS"])).not.toBeNull();
+  });
+
+  it("NFC 与 NFD 写法的同名路径算重复，上级目录检查同样适用", () => {
+    const nfc = "caf\u00e9.md";
+    const nfd = "cafe\u0301.md";
+    expect(findManifestPathProblem([nfc, nfd])).not.toBeNull();
+    expect(findManifestPathProblem(["caf\u00e9", "cafe\u0301/x.md"])).not.toBeNull();
+  });
 });
 
 describe("snapshotManifestSchema", () => {

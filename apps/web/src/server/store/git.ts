@@ -11,7 +11,8 @@ export interface GitAuthor {
 /** 作者与提交者的默认身份；提交者始终是它（规格 6.4） */
 export const SYSTEM_IDENTITY: GitAuthor = { name: "kanban-hub", email: "kanban-hub@kanban-hub.local" };
 
-const GIT_TIMEOUT_MS = 60_000;
+/** 单次 git 调用的时间上限，超时后强杀 */
+export const GIT_TIMEOUT_MS = 60_000;
 
 // 每次调用都带上的配置：不签名；不在后台 gc（容器里脱离的后台进程会变成僵尸进程）；
 // 数据目录的属主可能和运行身份不同（容器按 PUID 运行），而这个仓库只有 kanban-hub 自己写；
@@ -61,12 +62,22 @@ function formatIdent(author: GitAuthor): string {
   return `${clean(author.name) || "unknown"} <${clean(author.email) || "unknown@kanban-hub.local"}>`;
 }
 
+export interface GitRepoOptions {
+  /** 单次调用的时间上限，默认 GIT_TIMEOUT_MS */
+  timeoutMs?: number;
+}
+
 /** 数据目录里的 git 仓库。身份与配置都由这里设置，不依赖入口脚本和用户的 git 配置 */
 export class GitRepo {
+  private readonly timeoutMs: number;
+
   constructor(
     readonly dir: string,
     private readonly gitBin: string = "git",
-  ) {}
+    opts: GitRepoOptions = {},
+  ) {
+    this.timeoutMs = opts.timeoutMs ?? GIT_TIMEOUT_MS;
+  }
 
   run(
     args: readonly string[],
@@ -77,21 +88,67 @@ export class GitRepo {
       const child = spawn(this.gitBin, [...BASE_CONFIG, ...args], { cwd: this.dir, env: gitEnv() });
       let stdout = "";
       let stderr = "";
-      const timer = setTimeout(() => child.kill("SIGKILL"), GIT_TIMEOUT_MS);
+      let settled = false;
+      let timedOut = false;
+      const settle = (fn: () => void) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        fn();
+      };
+      const timer = setTimeout(() => {
+        // 超时：强杀之后不等输出管道关闭（git 派生的子进程可能还拿着管道），进程退出就收尾。
+        // 数据目录的 git 调用只来自本进程且串行执行，被杀的这个进程留下的锁文件（index.lock、
+        // HEAD.lock、refs 下的锁）不会是别人的，删掉它们，后续的提交才不会一直失败
+        timedOut = true;
+        child.stdout.destroy();
+        child.stderr.destroy();
+        const finish = () => {
+          this.removeStaleLocks()
+            .catch(() => {})
+            .finally(() => settle(() => reject(new GitError(args, null, `超时（超过 ${this.timeoutMs} 毫秒未结束），已强制终止`))));
+        };
+        if (child.exitCode !== null || child.signalCode !== null) {
+          finish();
+        } else {
+          child.once("exit", finish);
+          child.kill("SIGKILL");
+        }
+      }, this.timeoutMs);
       child.stdout.setEncoding("utf8").on("data", (chunk: string) => (stdout += chunk));
       child.stderr.setEncoding("utf8").on("data", (chunk: string) => (stderr += chunk));
       child.stdin.on("error", () => {}); // git 提前退出时写 stdin 会 EPIPE，结果以退出码为准
-      child.on("error", (e) => {
-        clearTimeout(timer);
-        reject(new GitError(args, null, e.message));
-      });
+      child.on("error", (e) => settle(() => reject(new GitError(args, null, e.message))));
       child.on("close", (code) => {
-        clearTimeout(timer);
-        if (code !== null && okCodes.includes(code)) resolve({ stdout, code });
-        else reject(new GitError(args, code, stderr));
+        // 超时的收尾由上面的定时器负责：要等删掉 index.lock 之后才能结束
+        if (timedOut) return;
+        settle(() => {
+          if (code !== null && okCodes.includes(code)) resolve({ stdout, code });
+          else reject(new GitError(args, code, stderr));
+        });
       });
       child.stdin.end(opts.input ?? "");
     });
+  }
+
+  /**
+   * 删除进程被强杀时留下的锁文件：index.lock、HEAD.lock，以及 refs 下的 *.lock。
+   * 只在没有别的 git 进程运行时调用：启动时，或者本进程唯一的 git 调用超时被强杀之后。
+   */
+  async removeStaleLocks(): Promise<void> {
+    const gitDir = path.join(this.dir, ".git");
+    await fs.rm(path.join(gitDir, "index.lock"), { force: true });
+    await fs.rm(path.join(gitDir, "HEAD.lock"), { force: true });
+    let entries;
+    try {
+      entries = await fs.readdir(path.join(gitDir, "refs"), { recursive: true, withFileTypes: true });
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+      throw e;
+    }
+    for (const entry of entries) {
+      if (entry.isFile() && entry.name.endsWith(".lock")) await fs.rm(path.join(entry.parentPath, entry.name), { force: true });
+    }
   }
 
   async isRepo(): Promise<boolean> {
@@ -140,12 +197,28 @@ export class GitRepo {
    * 当排除的路径同时也被 .gitignore 忽略时（常态——auth/ 本来就在 .gitignore 里），
    * git 会把它当成“显式添加了被忽略的文件”，报 advice.addIgnoredFile 警告并以退出码 1 失败，
    * 即使实际效果是排除而不是添加（已用真实 git 验证）。
+   * forceInclude 里的路径（存在时）再用 add -f 纳入一遍，不受任何 .gitignore 影响——
+   * 数据目录里保存的文件可能自带 .gitignore，它的规则不能让这些文件漏提交。
    */
-  async commitAll(message: string, exclude: readonly string[] = []): Promise<boolean> {
+  async commitAll(message: string, exclude: readonly string[] = [], forceInclude: readonly string[] = []): Promise<boolean> {
     await this.run(["add", "-A", "--", "."]);
+    const forced: string[] = [];
+    for (const p of forceInclude) {
+      if (await pathExists(path.join(this.dir, ...p.split("/")))) forced.push(p);
+    }
+    if (forced.length > 0) await this.run(["add", "-A", "-f", "--", ...forced]);
     if (exclude.length > 0) await this.run(["reset", "-q", "--", ...exclude]);
     if (!(await this.hasStagedChanges())) return false;
     await this.commit(message);
     return true;
+  }
+}
+
+async function pathExists(p: string): Promise<boolean> {
+  try {
+    await fs.access(p);
+    return true;
+  } catch {
+    return false;
   }
 }

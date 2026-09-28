@@ -1,18 +1,24 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
-import { startTestServer, type TestServer } from "./test-server";
+import { matchPattern, startTestServer, type TestServer } from "./test-server";
 
 const APP_DIR = path.resolve(import.meta.dirname, "../../app");
 
-/** 把磁盘上一个 route.ts 的路径换成 URL 写法：[id] 换成 :id，去掉 /route.ts 后缀 */
+/** 磁盘上的一段目录名换成 URL 写法：[[...x]] → :x*?，[...x] → :x*，[x] → :x */
+function segmentPattern(seg: string): string {
+  const optionalCatchAll = /^\[\[\.\.\.(.+)\]\]$/.exec(seg);
+  if (optionalCatchAll) return `:${optionalCatchAll[1]}*?`;
+  const catchAll = /^\[\.\.\.(.+)\]$/.exec(seg);
+  if (catchAll) return `:${catchAll[1]}*`;
+  return seg.startsWith("[") && seg.endsWith("]") ? `:${seg.slice(1, -1)}` : seg;
+}
+
+/** 把磁盘上一个 route.ts 的路径换成 URL 写法，去掉 /route.ts 后缀 */
 function patternFromRouteFile(filePath: string): string {
   const rel = path.relative(APP_DIR, filePath);
   const withoutFile = rel.slice(0, -"/route.ts".length);
-  const segments = withoutFile
-    .split(path.sep)
-    .map((seg) => (seg.startsWith("[") && seg.endsWith("]") ? `:${seg.slice(1, -1)}` : seg));
-  return `/${segments.join("/")}`;
+  return `/${withoutFile.split(path.sep).map(segmentPattern).join("/")}`;
 }
 
 async function collectDiskRoutePatterns(): Promise<string[]> {
@@ -27,6 +33,35 @@ let server: TestServer | undefined;
 afterEach(async () => {
   if (server) await server.close();
   server = undefined;
+});
+
+describe("matchPattern", () => {
+  it("单段参数按段匹配并解码", () => {
+    expect(matchPattern("/api/v1/projects/p1/tasks/t%201", "/api/v1/projects/:id/tasks/:tid")).toEqual({ id: "p1", tid: "t 1" });
+    expect(matchPattern("/api/v1/projects/p1", "/api/v1/projects/:id/tasks")).toBeNull();
+  });
+
+  it("多段通配 :name* 捕获剩余的一段或多段，逐段解码成数组", () => {
+    const pattern = "/api/v1/projects/:id/snapshots/:machineId/files/:path*";
+    expect(matchPattern("/api/v1/projects/p1/snapshots/m1/files/a/b/c.md", pattern)).toEqual({
+      id: "p1",
+      machineId: "m1",
+      path: ["a", "b", "c.md"],
+    });
+    expect(matchPattern("/api/v1/projects/p1/snapshots/m1/files/%E4%B8%AD%20%E6%96%87.md", pattern)).toEqual({
+      id: "p1",
+      machineId: "m1",
+      path: ["中 文.md"],
+    });
+    expect(matchPattern("/api/v1/projects/p1/snapshots/m1/files", pattern)).toBeNull();
+    expect(matchPattern("/api/v1/projects/p1/snapshots/m1/other/a", pattern)).toBeNull();
+  });
+
+  it("可选多段通配 :name*? 也匹配零段，此时不带这个参数", () => {
+    const pattern = "/raw/:token/:path*?";
+    expect(matchPattern("/raw/t1", pattern)).toEqual({ token: "t1" });
+    expect(matchPattern("/raw/t1/a/b.png", pattern)).toEqual({ token: "t1", path: ["a", "b.png"] });
+  });
 });
 
 describe("startTestServer 路由表", () => {

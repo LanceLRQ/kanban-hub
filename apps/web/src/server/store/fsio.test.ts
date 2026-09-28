@@ -58,6 +58,30 @@ describe("writeFileAtomic", () => {
     expect(await fs.readdir(tmp)).toEqual(["dir"]);
   });
 
+  it("写入二进制内容，按字节原样落盘", async () => {
+    const file = path.join(tmp, "bin");
+    const bytes = new Uint8Array([0, 255, 10, 13, 0x80]);
+    await writeFileAtomic(file, bytes);
+    expect(new Uint8Array(await fs.readFile(file))).toEqual(bytes);
+  });
+
+  it("指定临时目录时临时文件放在那里，写完不留残余", async () => {
+    const tmpDir = path.join(tmp, ".tmp");
+    const file = path.join(tmp, "data", "x.txt");
+    await writeFileAtomic(file, "x", { tmpDir });
+    expect(await fs.readFile(file, "utf8")).toBe("x");
+    expect(await fs.readdir(tmpDir)).toEqual([]);
+    expect(await fs.readdir(path.join(tmp, "data"))).toEqual(["x.txt"]);
+  });
+
+  it("指定临时目录时写入失败也不留残余", async () => {
+    const tmpDir = path.join(tmp, ".tmp");
+    const target = path.join(tmp, "dir");
+    await fs.mkdir(target);
+    await expect(writeFileAtomic(target, "x", { tmpDir })).rejects.toThrow();
+    expect(await fs.readdir(tmpDir)).toEqual([]);
+  });
+
   it.skipIf(process.platform === "win32")("可以指定文件权限", async () => {
     const file = path.join(tmp, "secret");
     await writeFileAtomic(file, "s", { mode: 0o600 });

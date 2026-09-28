@@ -35,21 +35,24 @@ import { setupTestApi, type TestApi } from "./testing";
 
 type HttpMethod = "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
 
-/** 路由表登记用的处理函数形状：动态段的 params 统一按 Record<string, string> 传递 */
-type RouteHandler = (
-  req: Request,
-  ctx: { params: Promise<Record<string, string>> },
-) => Response | Promise<Response>;
+/** 动态段的参数：单段是字符串，多段通配是逐段解码后的数组（与 Next 的 catch-all 一致） */
+type RouteParams = Record<string, string | string[]>;
+
+/** 路由表登记用的处理函数形状：动态段的 params 统一按 RouteParams 传递 */
+type RouteHandler = (req: Request, ctx: { params: Promise<RouteParams> }) => Response | Promise<Response>;
 
 interface RouteEntry {
-  /** URL 写法，动态段用 :name（对应磁盘上的 [name]），比如 /api/v1/projects/:id/tasks/:tid */
+  /**
+   * URL 写法：单段动态段用 :name（对应磁盘上的 [name]），比如 /api/v1/projects/:id/tasks/:tid；
+   * 多段通配用 :name*（对应 [...name]，至少一段）或 :name*?（对应 [[...name]]，可以为零段），只能放在最后
+   */
   pattern: string;
   handlers: Partial<Record<HttpMethod, RouteHandler>>;
 }
 
 /**
  * 各 route.ts 导出的处理函数，params 的具体形状各不相同（有的没有动态段，有的有一到两个），
- * 这里统一收窄成 RouteHandler（params: Record<string, string>）：路由表只在意“这个 URL 交给
+ * 这里统一收窄成 RouteHandler（params: RouteParams）：路由表只在意“这个 URL 交给
  * 哪个函数”，具体是哪些 key 由 pattern 自己保证，实际调用时传入的 params 一定和处理函数期望的
  * 键一致，只是 TS 推不出这层对应关系。
  */
@@ -84,23 +87,39 @@ function segmentsOf(pattern: string): string[] {
   return pattern.split("/").filter((s) => s !== "");
 }
 
-/** pathname 按 pattern 逐段匹配；:name 段捕获成参数，其余段必须完全相等 */
-function matchPattern(pathname: string, pattern: string): Record<string, string> | null {
+const CATCH_ALL_RE = /^:(.+?)\*(\?)?$/;
+
+/**
+ * pathname 按 pattern 逐段匹配；:name 段捕获成参数，其余段必须完全相等。
+ * 最后一段是 :name* 时捕获剩下的一段或多段，:name*? 时也可以是零段（零段时不带这个参数）。
+ */
+export function matchPattern(pathname: string, pattern: string): RouteParams | null {
   const actual = segmentsOf(pathname);
   const wanted = segmentsOf(pattern);
-  if (actual.length !== wanted.length) return null;
+  const catchAll = CATCH_ALL_RE.exec(wanted.at(-1) ?? "");
+  const fixed = catchAll ? wanted.slice(0, -1) : wanted;
+  if (catchAll) {
+    const minRest = catchAll[2] ? 0 : 1;
+    if (actual.length < fixed.length + minRest) return null;
+  } else if (actual.length !== wanted.length) {
+    return null;
+  }
 
-  const params: Record<string, string> = {};
-  for (let i = 0; i < wanted.length; i++) {
-    const want = wanted[i]!;
+  const params: RouteParams = {};
+  for (let i = 0; i < fixed.length; i++) {
+    const want = fixed[i]!;
     const got = actual[i]!;
     if (want.startsWith(":")) params[want.slice(1)] = decodeURIComponent(got);
     else if (want !== got) return null;
   }
+  if (catchAll) {
+    const rest = actual.slice(fixed.length).map(decodeURIComponent);
+    if (rest.length > 0) params[catchAll[1]!] = rest;
+  }
   return params;
 }
 
-function findRoute(pathname: string): { entry: RouteEntry; params: Record<string, string> } | null {
+function findRoute(pathname: string): { entry: RouteEntry; params: RouteParams } | null {
   for (const entry of ROUTES) {
     const params = matchPattern(pathname, entry.pattern);
     if (params) return { entry, params };

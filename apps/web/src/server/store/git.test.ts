@@ -50,6 +50,56 @@ describe("GitRepo", () => {
     expect(await log("%an")).toBe("Abc");
   });
 
+  it("作者名和邮箱清理后为空时，用默认值兜底", async () => {
+    const repo = new GitRepo(dir);
+    await repo.init();
+    await write("a.txt", "a");
+    await repo.stageFiles(["a.txt"]);
+    await repo.commit("x", { name: " <> ", email: "\n" });
+    expect(await log("%an <%ae>")).toBe("unknown <unknown@kanban-hub.local>");
+  });
+
+  it("命令超时被强杀后删除 index.lock、HEAD.lock 和 refs 下的锁，并抛出 GitError", async () => {
+    const repo = new GitRepo(dir, "git", { timeoutMs: 200 });
+    await repo.init();
+    const locks = ["index.lock", "HEAD.lock", "refs/heads/main.lock"].map((l) => path.join(dir, ".git", l));
+    for (const lock of locks) await fs.writeFile(lock, "");
+    const start = Date.now();
+    // 别名 !sleep 让 git 一直等到子进程结束，模拟卡住的 git 调用
+    const err = await repo.run(["-c", "alias.hang=!sleep 3", "hang"]).catch((e: unknown) => e);
+    expect(Date.now() - start).toBeLessThan(2_500);
+    expect(err).toBeInstanceOf(GitError);
+    expect((err as GitError).message).toContain("超时");
+    for (const lock of locks) await expect(fs.access(lock)).rejects.toMatchObject({ code: "ENOENT" });
+  });
+
+  it("removeStaleLocks 删除 index.lock、HEAD.lock 和 refs 下的 .lock，不碰其他文件", async () => {
+    const repo = new GitRepo(dir);
+    await repo.init();
+    await write("a.txt", "a");
+    await repo.commitAll("初始");
+    const gitDir = path.join(dir, ".git");
+    await fs.mkdir(path.join(gitDir, "refs", "heads", "feature"), { recursive: true });
+    const locks = ["index.lock", "HEAD.lock", "refs/heads/main.lock", "refs/heads/feature/x.lock"];
+    for (const l of locks) await fs.writeFile(path.join(gitDir, l), "");
+    await repo.removeStaleLocks();
+    for (const l of locks) await expect(fs.access(path.join(gitDir, l))).rejects.toMatchObject({ code: "ENOENT" });
+    await fs.access(path.join(gitDir, "refs", "heads", "main"));
+    await write("a.txt", "b");
+    expect(await repo.commitAll("锁清理之后")).toBe(true);
+  });
+
+  it("commitAll 的 forceInclude 纳入被嵌套 .gitignore 忽略的文件；路径不存在时跳过", async () => {
+    const repo = new GitRepo(dir);
+    await repo.init();
+    await fs.mkdir(path.join(dir, "projects", "p"), { recursive: true });
+    await write("projects/p/.gitignore", "*\n");
+    await write("projects/p/doc.md", "d");
+    expect(await repo.commitAll("强制纳入", [], ["projects", "missing"])).toBe(true);
+    const { stdout } = await repo.run(["ls-files"]);
+    expect(stdout.split("\n").filter(Boolean).sort()).toEqual(["projects/p/.gitignore", "projects/p/doc.md"]);
+  });
+
   it("stageFiles 暂存新增、修改和删除，跳过从未存在的路径，不碰其他文件", async () => {
     const repo = new GitRepo(dir);
     await repo.init();

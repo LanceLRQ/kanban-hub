@@ -25,15 +25,31 @@ function firstIssue(error: z.ZodError): { keys: (string | number)[]; reason: str
 
 let tmpSeq = 0;
 
-/** 先写同目录下的临时文件并落盘，再重命名替换，保证不会出现写了一半的文件 */
-export async function writeFileAtomic(file: string, data: string, opts: { mode?: number } = {}): Promise<void> {
+export interface WriteFileOptions {
+  mode?: number;
+  /**
+   * 放临时文件的目录，必须和目标在同一个文件系统上（重命名才是原子的）。
+   * 数据目录里的写入一律传数据目录的 .tmp/：临时文件不会混进快照目录或被 git 看到，
+   * 启动时整个清空即可。不传时放在目标旁边，名为 <文件名>.tmp-<pid>-<序号>。
+   */
+  tmpDir?: string;
+}
+
+/** 先写临时文件并落盘，再重命名替换，保证不会出现写了一半的文件 */
+export async function writeFileAtomic(file: string, data: string | Uint8Array, opts: WriteFileOptions = {}): Promise<void> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  // 临时文件以 .tmp-<pid>-<序号> 结尾，数据目录的 .gitignore 排除了这类文件
-  const tmp = `${file}.tmp-${process.pid}-${++tmpSeq}`;
+  let tmp: string;
+  if (opts.tmpDir !== undefined) {
+    await fs.mkdir(opts.tmpDir, { recursive: true });
+    tmp = path.join(opts.tmpDir, `${process.pid}-${++tmpSeq}`);
+  } else {
+    tmp = `${file}.tmp-${process.pid}-${++tmpSeq}`;
+  }
   try {
     const handle = await fs.open(tmp, "w", opts.mode ?? 0o644);
     try {
-      await handle.writeFile(data, "utf8");
+      if (typeof data === "string") await handle.writeFile(data, "utf8");
+      else await handle.writeFile(data);
       await handle.sync();
     } finally {
       await handle.close();
@@ -81,7 +97,7 @@ function lineOfPath(doc: Document, lineCounter: LineCounter, keys: (string | num
 }
 
 /** 写 YAML 数据文件：不折行、不用锚点别名（同一个对象出现两次也展开写），方便看 git diff */
-export async function writeYamlFile(file: string, value: unknown, opts: { mode?: number } = {}): Promise<void> {
+export async function writeYamlFile(file: string, value: unknown, opts: WriteFileOptions = {}): Promise<void> {
   await writeFileAtomic(file, stringify(value, { lineWidth: 0, aliasDuplicateObjects: false }), opts);
 }
 

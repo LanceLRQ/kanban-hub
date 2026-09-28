@@ -42,26 +42,33 @@ export const syncGlobSchema = z.string().superRefine((glob, ctx) => {
 // ---------- 清单路径 ----------
 
 /**
- * 检查一批路径是否互相冲突：完全重复、只差大小写（服务端的数据目录可能在不区分大小写的
- * 文件系统上），或者一个路径是另一个路径的上级目录。返回第一条问题的中文描述，没问题时返回 null。
+ * 比较路径是否“同名”用的键：Unicode 规范化成 NFC 再转小写。服务端的数据目录可能在
+ * 不区分大小写、或者对 NFC/NFD 不加区分的文件系统上（例如 macOS），这些写法会落到同一个文件。
+ */
+function pathKey(p: string): string {
+  return p.normalize("NFC").toLowerCase();
+}
+
+/**
+ * 检查一批路径是否互相冲突：完全重复、只差大小写或 Unicode 规范化形式，或者一个路径是
+ * 另一个路径的上级目录（同样不区分大小写和规范化形式）。返回第一条问题的中文描述，没问题时返回 null。
  */
 export function findManifestPathProblem(paths: readonly string[]): string | null {
-  const seenLower = new Map<string, string>();
+  const byKey = new Map<string, string>();
   for (const p of paths) {
-    const lower = p.toLowerCase();
-    const other = seenLower.get(lower);
+    const key = pathKey(p);
+    const other = byKey.get(key);
     if (other !== undefined) {
-      return other === p ? `路径重复：${p}` : `路径只有大小写不同：${other} 与 ${p}`;
+      return other === p ? `路径重复：${p}` : `路径只有大小写或写法不同：${other} 与 ${p}`;
     }
-    seenLower.set(lower, p);
+    byKey.set(key, p);
   }
 
-  const pathSet = new Set(paths);
   for (const p of paths) {
-    const segments = p.split("/");
+    const segments = pathKey(p).split("/");
     for (let i = 1; i < segments.length; i++) {
-      const prefix = segments.slice(0, i).join("/");
-      if (pathSet.has(prefix)) return `路径冲突：${prefix} 既是文件又是目录（因为清单里还有 ${p}）`;
+      const prefix = byKey.get(segments.slice(0, i).join("/"));
+      if (prefix !== undefined) return `路径冲突：${prefix} 既是文件又是目录（因为清单里还有 ${p}）`;
     }
   }
   return null;

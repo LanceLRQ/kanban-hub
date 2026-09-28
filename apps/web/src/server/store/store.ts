@@ -1,5 +1,13 @@
 import fs from "node:fs/promises";
 import path from "node:path";
+import {
+  type PullReportInput,
+  type SyncCommitResponse,
+  type SyncManifestInput,
+  type SyncManifestResponse,
+  pullReportInput,
+  syncManifestInput,
+} from "@kanban-hub/core/api";
 import { commitScope } from "@kanban-hub/core/commit";
 import { KhError, parseInput } from "@kanban-hub/core/errors";
 import { generateId, idSchema } from "@kanban-hub/core/ids";
@@ -26,15 +34,46 @@ import {
   eventSchema,
   projectSchema,
 } from "@kanban-hub/core/schema";
+import {
+  type ManifestFile,
+  type SnapshotManifest,
+  SYNC_STAGING_TTL_MS,
+  applyManifestDiff,
+  docsPulledChange,
+  docsSyncedChange,
+  sha256HexSchema,
+  snapshotManifestSchema,
+} from "@kanban-hub/core/sync";
 import { AUTH_DIR, AuthRepo } from "./auth";
 import { type CommitActor, Committer } from "./committer";
 import { EventLog, monthOf, recentMonths } from "./events";
 import { DataFileError, readYamlFile, writeFileAtomic, writeYamlFile } from "./fsio";
 import { GitRepo } from "./git";
 import { WriteQueue } from "./queue";
+import {
+  type StagingMeta,
+  BlobMismatchError,
+  STAGING_DIR,
+  SnapshotRepo,
+  TMP_DIR,
+  manifestRelPath,
+  newSyncId,
+  sha256Hex,
+  snapshotRelDir,
+  syncIdSchema,
+} from "./snapshots";
 
-/** 数据目录的 .gitignore：凭据、同步暂存、原子写的临时文件都不进 git 历史 */
-export const DATA_GITIGNORE = ["# kanban-hub 数据目录", "/auth/", "/.staging/", "*.tmp-*", ""].join("\n");
+/**
+ * 数据目录的 .gitignore，由程序管理，启动时内容不一致就重写：凭据、同步暂存、原子写的临时文件
+ * 都不进 git 历史。只忽略根目录下的这几个目录，不按文件名模式忽略——快照里的文档可以叫任何名字。
+ */
+export const DATA_GITIGNORE = ["# kanban-hub 数据目录", "/auth/", "/.staging/", "/.tmp/", ""].join("\n");
+/**
+ * 数据仓库的 .git/info/attributes（优先级高于任何 .gitattributes）：快照里可能带着仓库自己的
+ * .gitattributes，其中的换行转换、filter、ident、编码转换会改变提交进数据仓库的内容，这里一律关闭，
+ * 保证提交的就是磁盘上的原始字节。diff、merge 只影响显示和合并，不改内容，不在这里关闭。
+ */
+export const DATA_GIT_ATTRIBUTES = "* -text -eol -crlf -filter -ident -working-tree-encoding\n";
 /** 启动时读进内存的事件月份数（规格 6.2） */
 export const RECENT_EVENT_MONTHS = 3;
 /** 关闭时等待写入队列和提交的上限 */
@@ -46,6 +85,8 @@ export interface StoreOptions {
   newId?: () => string;
   commitDebounceMs?: number;
   gitBin?: string;
+  /** 单次 git 调用的时间上限，默认见 GIT_TIMEOUT_MS */
+  gitTimeoutMs?: number;
   log?: (message: string) => void;
 }
 
@@ -94,6 +135,8 @@ export class Store {
   private readonly git: GitRepo;
   private readonly committer: Committer;
   private readonly eventLog: EventLog;
+  private readonly snapshots: SnapshotRepo;
+  private readonly tmpDir: string;
   private readonly projects = new Map<string, ProjectState>();
   /** 内存里的事件：windowStart 及以后月份的全部事件（规格 6.2） */
   private readonly recentEvents: Event[] = [];
@@ -112,9 +155,11 @@ export class Store {
     this.now = opts.now ?? (() => new Date());
     this.newId = opts.newId ?? (() => generateId());
     this.log = opts.log ?? ((m) => console.warn(`[kanban-hub] ${m}`));
-    this.git = new GitRepo(dataDir, opts.gitBin);
+    this.tmpDir = path.join(dataDir, TMP_DIR);
+    this.git = new GitRepo(dataDir, opts.gitBin, { timeoutMs: opts.gitTimeoutMs });
     this.eventLog = new EventLog(dataDir);
-    this.auth = new AuthRepo(dataDir, this.queue, { now: this.now, newId: this.newId });
+    this.snapshots = new SnapshotRepo(dataDir, this.tmpDir, this.log);
+    this.auth = new AuthRepo(dataDir, this.queue, { now: this.now, newId: this.newId, tmpDir: this.tmpDir });
     this.committer = new Committer({
       git: this.git,
       runExclusive: (job) => this.queue.run(job),
@@ -172,6 +217,24 @@ export class Store {
       if (!current || isLaterEvent(event, current)) result.set(event.projectId, event);
     }
     return result;
+  }
+
+  /** 某台机器在这个项目上的快照清单；还没同步过时返回 null */
+  getSnapshotManifest(projectId: string, machineId: string): DeepReadonly<SnapshotManifest> | null {
+    return this.snapshots.getManifest(projectId, machineId);
+  }
+
+  /** 这个项目所有机器的快照清单，按机器 ID 排序 */
+  listSnapshotManifests(projectId: string): DeepReadonly<SnapshotManifest>[] {
+    return this.snapshots.listManifests(projectId);
+  }
+
+  /**
+   * 读一个快照文件的内容。路径必须在该机器的清单里，否则返回 null；文件在读取前一刻
+   * 被同步删掉时也返回 null。只读，不进写入队列。
+   */
+  readSnapshotFile(projectId: string, machineId: string, filePath: string): Promise<Uint8Array | null> {
+    return this.snapshots.readFile(projectId, machineId, filePath);
   }
 
   /** 待提交到 git 的文件数 */
@@ -308,6 +371,120 @@ export class Store {
     });
   }
 
+  /**
+   * 文档同步第一步：登记一份清单，返回服务端还缺少的内容。
+   * 缺少的内容是本项目任意机器当前清单里都没有出现过的 sha256；顺手清理过期的暂存。
+   */
+  beginSync(projectId: string, machineId: string, input: SyncManifestInput): Promise<SyncManifestResponse> {
+    if (this.closing) return Promise.reject(new KhError("unavailable", "服务正在关闭，请稍后重试"));
+    return this.queue.run(async () => {
+      const state = this.requireProject(projectId);
+      if (!state.project.locations.some((l) => l.machineId === machineId)) {
+        throw new KhError("not_found", "本机没有登记这个项目的位置，请执行 kh register");
+      }
+      const data = parseInput(syncManifestInput, input);
+      const now = this.now();
+      await this.snapshots.removeExpired(now.getTime());
+      const known = this.snapshots.knownHashes(projectId);
+      const missing = [...new Set(data.files.map((f) => f.sha256))].filter((h) => !known.has(h)).sort();
+      const meta: StagingMeta = {
+        syncId: newSyncId(),
+        projectId,
+        machineId,
+        createdAt: now.toISOString(),
+        expiresAt: new Date(now.getTime() + SYNC_STAGING_TTL_MS).toISOString(),
+        state: "open",
+        missing,
+        input: data,
+        applying: null,
+      };
+      await this.snapshots.saveStaging(meta);
+      return { syncId: meta.syncId, missing, expiresAt: meta.expiresAt };
+    });
+  }
+
+  /**
+   * 文档同步第二步：上传一份缺少的内容，写进本项目本机所有还在等它的暂存。
+   * 不进写入队列：暂存不是数据，写入本身是原子的。
+   */
+  async putSyncBlob(projectId: string, machineId: string, sha256: string, bytes: Uint8Array): Promise<void> {
+    if (!sha256HexSchema.safeParse(sha256).success) throw new KhError("invalid", "内容的 hash 必须是 64 位小写十六进制的 sha256");
+    if (sha256Hex(bytes) !== sha256) throw new KhError("invalid", "上传内容的 sha256 与地址里的 hash 不一致");
+    const targets = this.snapshots.waitingFor(projectId, machineId, sha256, this.now().getTime());
+    if (targets.length === 0) throw new KhError("invalid", "没有等待这份内容的同步");
+    for (const meta of targets) await this.snapshots.putBlob(meta.syncId, sha256, bytes);
+  }
+
+  /**
+   * 文档同步第三步：在写入队列里应用暂存。先核对所需内容全部可用，不齐时什么都不改，
+   * 返回 invalid（details.missingBlobs），暂存保持 open；齐了之后标记 applying，
+   * 依次改快照、写清单、更新位置、有变化时记 docs.synced，最后标记 applied 并删除暂存。
+   */
+  commitSync(projectId: string, machineId: string, syncId: string, actor: Actor): Promise<SyncCommitResponse> {
+    if (this.closing) return Promise.reject(new KhError("unavailable", "服务正在关闭，请稍后重试"));
+    return this.queue.run(async () => {
+      const validActor = parseInput(actorSchema, actor);
+      const meta = syncIdSchema.safeParse(syncId).success ? this.snapshots.getStaging(syncId) : undefined;
+      const now = this.now();
+      if (
+        !meta ||
+        meta.projectId !== projectId ||
+        meta.machineId !== machineId ||
+        meta.state !== "open" ||
+        Date.parse(meta.expiresAt) <= now.getTime()
+      ) {
+        throw new KhError("not_found", "同步会话不存在或已过期");
+      }
+      // 这台机器之前有没应用完的同步（运行期间中途失败）时，先按与启动时相同的方式把它们应用完，
+      // 这次的差异才是相对真实的快照状态计算的；应用不完就拒绝，不能越过它们
+      if (!(await this.replayApplying(projectId, machineId, now.getTime()))) {
+        throw new KhError("unavailable", "上一次同步还没有应用完成，请稍后重试");
+      }
+      const committedAt = now.toISOString();
+      const eventId = this.newId();
+      const plan = await this.preparePlan(meta, committedAt, validActor, null, eventId);
+
+      // 核对内容齐全之前不改任何东西（收进暂存的内容不算改动）
+      const missing = await this.snapshots.collectContent(meta, plan.writes.map((f) => f.sha256));
+      if (missing.length > 0) {
+        // 清单里有、快照文件却读不对的内容算来源损坏：记下来，之后的 manifest 不再把它当作已有；
+        // kh 本来就还没上传的不算。缺失的内容都并入 missing，允许这份暂存补传
+        const known = this.snapshots.knownHashes(projectId);
+        this.snapshots.markCorrupt(projectId, missing.filter((h) => known.has(h)));
+        await this.snapshots.saveStaging({ ...meta, missing: [...new Set([...meta.missing, ...missing])].sort() });
+        throw missingContentError(missing);
+      }
+
+      const applying: StagingMeta = {
+        ...meta,
+        state: "applying",
+        applying: { committedAt, actor: validActor, eventId, counts: plan.counts },
+      };
+      await this.snapshots.saveStaging(applying);
+      let appended: Event[];
+      try {
+        appended = await this.runApply(applying, plan, false);
+      } catch (e) {
+        if (!(e instanceof BlobMismatchError)) throw e;
+        await this.reopenStaging(applying, [e.sha]);
+        throw missingContentError([e.sha]);
+      }
+      // 没有变化时也通知：网页据此刷新同步时间
+      await this.finishStaging(applying, () => this.emit({ projectId, events: appended }));
+      return { ...plan.counts, lastSyncAt: committedAt };
+    });
+  }
+
+  /** 记一次拉取的结果：追加一条 docs.pulled */
+  async recordPull(projectId: string, input: PullReportInput, actor: Actor): Promise<void> {
+    await this.mutate(actor, (ctx) => {
+      this.requireProject(projectId);
+      const data = parseInput(pullReportInput, input);
+      const event = docsEvent(ctx, projectId, "docs.pulled", docsPulledChange(data, data.fromMachineIds));
+      return { projectId, events: [event], value: undefined };
+    });
+  }
+
   /** 关机：停止接收写入，等写入队列跑完，再提交全部待提交的改动。超时返回 false */
   async close(timeoutMs = CLOSE_TIMEOUT_MS): Promise<boolean> {
     this.closing = true;
@@ -325,17 +502,27 @@ export class Store {
   private async load(): Promise<void> {
     const created = await this.git.init();
     // 进程在 git 提交途中被强杀会留下锁文件；数据目录只有本服务在写，启动时不会有别的 git 进程在运行
-    await fs.rm(this.abs(".git/index.lock"), { force: true });
-    if (!(await pathExists(this.abs(".gitignore")))) await writeFileAtomic(this.abs(".gitignore"), DATA_GITIGNORE);
+    await this.git.removeStaleLocks();
+    // 临时文件只在一次原子写入的过程中存在，启动时留下的都是上次崩溃的残余
+    await fs.rm(this.tmpDir, { recursive: true, force: true });
+    await fs.mkdir(this.tmpDir, { recursive: true });
+    await removeLegacyTmpFiles(this.dataDir);
+    await this.writeIfChanged(".gitignore", DATA_GITIGNORE);
+    await this.writeIfChanged(".git/info/attributes", DATA_GIT_ATTRIBUTES);
     await this.auth.load();
-    this.windowStart = recentMonths(this.now(), RECENT_EVENT_MONTHS)[0]!;
+    // 启动过程只取一次当前时间
+    const startedAt = this.now();
+    this.windowStart = recentMonths(startedAt, RECENT_EVENT_MONTHS)[0]!;
     for (const id of await this.listProjectDirs()) await this.loadProject(id);
+    // 在补提交之前处理上次留下的同步暂存，重放产生的改动进同一次补提交
+    await this.recoverStagings(startedAt.getTime());
     // 规格 6.5：上次退出前没来得及提交的改动（包括加载时修复的事件文件残行）补一次提交。
     // 提交失败不影响数据，也不阻止启动（规格第 15 节）；改动留在工作区，下次启动时再补
     try {
       // auth/ 显式排除，不依赖 .gitignore：它一旦被改动或丢失（例如从备份还原），
-      // 凭据文件就会靠这一层兜底而不是进 git 历史
-      await this.git.commitAll(created ? "初始化数据目录" : "补提交上次未提交的改动", [AUTH_DIR]);
+      // 凭据文件就会靠这一层兜底而不是进 git 历史。projects/ 强制纳入：快照里可能带着
+      // 仓库自己的 .gitignore，它的规则不能让快照文件漏提交
+      await this.git.commitAll(created ? "初始化数据目录" : "补提交上次未提交的改动", [AUTH_DIR], ["projects"]);
     } catch (e) {
       this.log(`启动时补提交失败，改动留在工作区：${(e as Error).message}`);
     }
@@ -367,6 +554,7 @@ export class Store {
     const board = await readYamlFile(boardFile, boardSchema);
     if (!board) throw new DataFileError(boardFile, null, "文件不存在");
     this.projects.set(id, { project, board });
+    await this.snapshots.loadManifests(id);
 
     const months = await this.eventLog.listMonths(id);
     for (const month of months.filter((m) => m >= this.windowStart)) {
@@ -408,8 +596,8 @@ export class Store {
       // 否则那一组提交会把这次写入的内容一起暂存进去
       await this.committer.beforeWrite(commitActor, files);
       // 先写 board.yaml 再写 project.yaml：新建项目时两次写入之间崩溃，只会留下没有 project.yaml 的目录，加载时跳过
-      if (out.board) await writeYamlFile(this.abs(boardPath(out.projectId)), out.board);
-      if (out.project) await writeYamlFile(this.abs(projectPath(out.projectId)), out.project);
+      if (out.board) await writeYamlFile(this.abs(boardPath(out.projectId)), out.board, { tmpDir: this.tmpDir });
+      if (out.project) await writeYamlFile(this.abs(projectPath(out.projectId)), out.project, { tmpDir: this.tmpDir });
       // 文件都写成功后再替换内存，写失败时内存与磁盘保持一致
       const prev = this.projects.get(out.projectId);
       const project = out.project ?? prev?.project;
@@ -437,6 +625,264 @@ export class Store {
       this.emit({ projectId: out.projectId, events: appended });
       return out.value;
     });
+  }
+
+  /**
+   * 算出应用一份暂存要做的事，只计算、不改任何东西：清单差异、要写入和删除的快照文件、
+   * 更新后的项目、要追加的事件、要登记提交的文件。所有路径和写入的对象在这里校验，
+   * 不合法时在改动之前就抛出。counts 为 null 时按差异计算（第一次应用），重放时沿用暂存里记下的计数。
+   */
+  private planSync(meta: StagingMeta, committedAt: string, actor: Actor, counts: SyncCounts | null, eventId: string): SyncPlan {
+    const { projectId, machineId } = meta;
+    const state = this.requireProject(projectId);
+    const diff = applyManifestDiff(this.snapshots.getManifest(projectId, machineId), meta.input.files, machineId, committedAt);
+    parseInput(snapshotManifestSchema, diff.next);
+    const byPath = new Map(diff.next.files.map((f) => [f.path, f] as const));
+    const writes = [...diff.added, ...diff.modified].map((p) => byPath.get(p)!);
+    this.snapshots.assertInside(projectId, machineId, [...writes.map((f) => f.path), ...diff.removed]);
+
+    const ctx: ops.MutationContext = { now: committedAt, actor, newId: this.newId };
+    const location = { lastSyncAt: committedAt, git: meta.input.git, sync: meta.input.scope, skippedFiles: meta.input.skipped };
+    const current = state.project.locations.find((l) => l.machineId === machineId);
+    const unchangedLocation =
+      current !== undefined &&
+      current.lastSyncAt === location.lastSyncAt &&
+      sameJson(current.git, location.git) &&
+      sameJson(current.sync, location.sync) &&
+      sameJson(current.skippedFiles, location.skippedFiles);
+    // 重放时位置可能已经更新过：不再改版本号，结果与一次应用相同
+    const project = unchangedLocation ? null : ops.recordLocationSync(state.project, machineId, location, ctx).project;
+
+    const finalCounts = counts ?? {
+      added: diff.added.length,
+      modified: diff.modified.length,
+      removed: diff.removed.length,
+      unchanged: diff.unchanged,
+    };
+    // 没有新增、修改、删除时不记事件，位置照常更新
+    const event =
+      finalCounts.added + finalCounts.modified + finalCounts.removed > 0
+        ? parseInput(eventSchema, docsEvent({ ...ctx, newId: () => eventId }, projectId, "docs.synced", docsSyncedChange(finalCounts)))
+        : null;
+
+    const snapshotDir = snapshotRelDir(projectId, machineId);
+    const files = [
+      ...writes.map((f) => `${snapshotDir}/${f.path}`),
+      ...diff.removed.map((p) => `${snapshotDir}/${p}`),
+      manifestRelPath(projectId, machineId),
+      ...(project ? [projectPath(projectId)] : []),
+      ...(event ? [this.eventLog.relPath(projectId, monthOf(event.ts))] : []),
+    ];
+    return { manifest: diff.next, writes, removed: diff.removed, project, event, counts: finalCounts, files, reconciled: false };
+  }
+
+  /**
+   * 按 planSync 的结果改快照、写清单、更新位置、追加事件，返回成功追加的事件。每一步都可以重做：
+   * 快照和清单的写入按目标内容覆盖；位置已经是目标值时 plan.project 为 null；
+   * 重放时先确认事件还没追加过。
+   */
+  private async applySync(meta: StagingMeta, plan: SyncPlan, replay: boolean): Promise<Event[]> {
+    const { projectId } = meta;
+    await this.snapshots.applyFiles(meta, plan.writes, plan.removed);
+    await this.snapshots.writeManifest(projectId, plan.manifest);
+    if (plan.project) {
+      await writeYamlFile(this.abs(projectPath(projectId)), plan.project, { tmpDir: this.tmpDir });
+      const prev = this.requireProject(projectId);
+      this.projects.set(projectId, { project: plan.project, board: prev.board });
+    }
+    const event = plan.event;
+    if (!event) return [];
+    if (replay && (await this.eventLog.readMonth(projectId, monthOf(event.ts))).some((e) => e.id === event.id)) return [];
+    // 与 mutate 一致：快照、清单、位置都已生效，事件追加失败只记日志
+    try {
+      await this.eventLog.append(event);
+    } catch (e) {
+      this.log(`项目 ${projectId} 的文档同步已保存，但时间线缺少这条事件：${(e as Error).message}`);
+      return [];
+    }
+    this.remember(event);
+    return [event];
+  }
+
+  /**
+   * 改快照的部分：登记提交之前先处理重叠，然后 applySync。无论成功还是中途失败，都把涉及的
+   * 文件登记到这个操作者的分组，已经写入的改动随这一组提交（没改到的路径暂存时没有差异）。
+   */
+  private async runApply(meta: StagingMeta, plan: SyncPlan, replay: boolean): Promise<Event[]> {
+    const commitActor = this.commitActor(meta.applying!.actor);
+    await this.committer.beforeWrite(commitActor, plan.files);
+    let appended: Event[];
+    try {
+      appended = await this.applySync(meta, plan, replay);
+    } catch (e) {
+      // 快照可能已经改了一部分：这台机器下一次应用时整体核对快照目录
+      await this.markReconcile(meta.projectId, meta.machineId);
+      throw e;
+    } finally {
+      await this.committer.track(commitActor, plan.files, plan.event ? [plan.event.type] : []);
+    }
+    this.snapshots.clearCorrupt(meta.projectId, plan.writes.map((f) => f.sha256));
+    if (plan.reconciled) {
+      await this.snapshots.clearReconcile(meta.projectId, meta.machineId).catch((e: unknown) => {
+        this.log(`清除快照核对标记失败，下次同步时会再核对一次：${(e as Error).message}`);
+      });
+    }
+    return appended;
+  }
+
+  /**
+   * 在 planSync 的基础上，这台机器有整体核对标记时，再把快照目录里清单差异没覆盖到的出入
+   * （多出来的文件、缺失或内容不符的文件）并进要删除和写入的列表。只读，不改任何东西。
+   */
+  private async preparePlan(
+    meta: StagingMeta,
+    committedAt: string,
+    actor: Actor,
+    counts: SyncCounts | null,
+    eventId: string,
+  ): Promise<SyncPlan> {
+    const plan = this.planSync(meta, committedAt, actor, counts, eventId);
+    if (!this.snapshots.needsReconcile(meta.projectId, meta.machineId)) return plan;
+    const extra = await this.snapshots.reconcileDiff(meta.projectId, meta.machineId, plan.manifest);
+    const writePaths = new Set(plan.writes.map((f) => f.path));
+    const writes = [...plan.writes, ...extra.writes.filter((f) => !writePaths.has(f.path))];
+    // 核对找出的杂散项排在前面：它们可能正挡在清单差异要删除或写入的路径上
+    const removed = [...new Set([...extra.removed, ...plan.removed])];
+    this.snapshots.assertInside(meta.projectId, meta.machineId, removed);
+    const snapshotDir = snapshotRelDir(meta.projectId, meta.machineId);
+    const files = [...new Set([...plan.files, ...writes.map((f) => `${snapshotDir}/${f.path}`), ...removed.map((p) => `${snapshotDir}/${p}`)])];
+    return { ...plan, writes, removed, files, reconciled: true };
+  }
+
+  /**
+   * 应用所需的内容坏了或不见了：删掉坏的那份，把 hash 放回 missing，暂存回到 open，kh 补传后可以再 commit。
+   * 快照可能已经改了一部分，所以同时打上整体核对标记，无论之后应用的是这份暂存还是新的同步，都会收敛到清单。
+   */
+  private async reopenStaging(meta: StagingMeta, shas: readonly string[]): Promise<void> {
+    for (const sha of shas) await this.snapshots.removeBlob(meta.syncId, sha);
+    await this.markReconcile(meta.projectId, meta.machineId);
+    await this.snapshots.saveStaging({
+      ...meta,
+      state: "open",
+      applying: null,
+      missing: [...new Set([...meta.missing, ...shas])].sort(),
+    });
+  }
+
+  private async markReconcile(projectId: string, machineId: string): Promise<void> {
+    try {
+      await this.snapshots.markReconcile(projectId, machineId);
+    } catch (e) {
+      this.log(`记录快照核对标记失败：${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * 收尾：标记 applied、发通知、删除暂存目录。这时同步已经生效，收尾出错只记日志，
+   * 不让调用方以为同步失败；留下的暂存下次按 applied 删除，或者按 applying 重放（结果不变）。
+   */
+  private async finishStaging(meta: StagingMeta, notify: () => void): Promise<void> {
+    try {
+      await this.snapshots.saveStaging({ ...meta, state: "applied" });
+    } catch (e) {
+      this.log(`同步暂存 ${meta.syncId} 标记完成失败：${(e as Error).message}`);
+    }
+    notify();
+    await this.dropStaging(meta.syncId);
+  }
+
+  private async dropStaging(syncId: string): Promise<void> {
+    try {
+      await this.snapshots.removeStaging(syncId);
+    } catch (e) {
+      // 从内存里移除，运行期间不再拿它重放；留在磁盘上的，下次启动时按状态处理
+      this.snapshots.forgetStaging(syncId);
+      this.log(`删除同步暂存 ${syncId} 失败，下次启动时再清理：${(e as Error).message}`);
+    }
+  }
+
+  /**
+   * 启动时处理上次留下的暂存：applied 的直接删除；applying 的按顺序重新应用；
+   * 过期的 open 删除，没过期的保留，kh 还可以继续上传和提交。
+   */
+  private async recoverStagings(nowMs: number): Promise<void> {
+    for (const meta of await this.snapshots.loadStagings()) {
+      if (meta.state === "applied") await this.dropStaging(meta.syncId);
+    }
+    await this.replayApplying(null, null, nowMs);
+    await this.snapshots.removeExpired(nowMs);
+  }
+
+  /**
+   * 按 committedAt 先后重新应用 applying 的暂存（projectId、machineId 为 null 时处理全部）。
+   * 同一项目同一机器的某份暂存中途失败时，它之后的暂存都不再应用，保持先后顺序。
+   * 从 committedAt 起超过 SYNC_STAGING_TTL_MS 仍没应用完的，丢弃并打上整体核对标记，不再挡住之后的同步。
+   * 全部处理完返回 true。
+   */
+  private async replayApplying(projectId: string | null, machineId: string | null, nowMs: number): Promise<boolean> {
+    const blocked = new Set<string>();
+    for (const meta of this.snapshots.listApplying()) {
+      if (projectId !== null && meta.projectId !== projectId) continue;
+      if (machineId !== null && meta.machineId !== machineId) continue;
+      const key = `${meta.projectId}/${meta.machineId}`;
+      if (blocked.has(key)) continue;
+      if (nowMs - Date.parse(meta.applying!.committedAt) > SYNC_STAGING_TTL_MS) {
+        this.log(`同步暂存 ${meta.syncId} 超过有效期仍没应用完，已丢弃`);
+        if (this.projects.has(meta.projectId)) await this.markReconcile(meta.projectId, meta.machineId);
+        await this.dropStaging(meta.syncId);
+        continue;
+      }
+      if (!(await this.replayStaging(meta))) blocked.add(key);
+    }
+    return blocked.size === 0;
+  }
+
+  /**
+   * 重新应用一份 applying 的暂存。每一步都按目标状态重做，所以重做任意多次结果与一次相同。
+   * 项目不在了、路径不合法、这台机器已有更新的清单时丢弃这份暂存；所需内容缺失或与 hash 不符时
+   * 回到 open 等 kh 补传；开始改快照之后因为别的原因失败则保留，下次启动或这台机器下次 commit 时再试。
+   * 返回是否处理完（应用、丢弃或回到 open）。
+   */
+  private async replayStaging(meta: StagingMeta): Promise<boolean> {
+    const applying = meta.applying!;
+    let plan: SyncPlan;
+    try {
+      if (!this.projects.has(meta.projectId)) throw new Error("项目不存在");
+      // 正常情况下运行期间会先重放再应用新的同步，不会出现清单比 applying 暂存还新；出现了说明收尾出过错，
+      // 这时再应用会把快照回滚到旧内容
+      const current = this.snapshots.getManifest(meta.projectId, meta.machineId);
+      if (current && Date.parse(current.updatedAt) > Date.parse(applying.committedAt)) throw new Error("这台机器已有更新的清单");
+      plan = await this.preparePlan(meta, applying.committedAt, applying.actor, applying.counts, applying.eventId);
+      const missing = await this.snapshots.collectContent(meta, plan.writes.map((f) => f.sha256));
+      if (missing.length > 0) {
+        this.log(`同步暂存 ${meta.syncId} 缺少 ${missing.length} 份文件内容，回到等待上传的状态`);
+        await this.reopenStaging(meta, missing);
+        return true;
+      }
+    } catch (e) {
+      this.log(`丢弃无法应用的同步暂存 ${meta.syncId}：${(e as Error).message}`);
+      if (this.projects.has(meta.projectId)) await this.markReconcile(meta.projectId, meta.machineId);
+      await this.dropStaging(meta.syncId);
+      return true;
+    }
+    try {
+      const appended = await this.runApply(meta, plan, true);
+      await this.finishStaging(meta, () => this.emit({ projectId: meta.projectId, events: appended }));
+      return true;
+    } catch (e) {
+      if (e instanceof BlobMismatchError) {
+        this.log(`同步暂存 ${meta.syncId} 的内容与 hash 不符，回到等待上传的状态`);
+        await this.reopenStaging(meta, [e.sha]);
+        return true;
+      }
+      this.log(`重新应用同步暂存 ${meta.syncId} 中途失败，保留暂存稍后再试：${(e as Error).message}`);
+      return false;
+    }
+  }
+
+  /** 由程序管理的文件：内容与期望不一致（包括不存在）时重写 */
+  private async writeIfChanged(rel: string, content: string): Promise<void> {
+    if ((await readTextOrNull(this.abs(rel))) !== content) await writeFileAtomic(this.abs(rel), content, { tmpDir: this.tmpDir });
   }
 
   private remember(event: Event): void {
@@ -478,6 +924,86 @@ export class Store {
 
   private abs(rel: string): string {
     return path.join(this.dataDir, ...rel.split("/"));
+  }
+}
+
+interface SyncCounts {
+  added: number;
+  modified: number;
+  removed: number;
+  unchanged: number;
+}
+
+interface SyncPlan {
+  manifest: SnapshotManifest;
+  /** 要写入的快照文件（新增和修改） */
+  writes: ManifestFile[];
+  /** 要删除的快照路径 */
+  removed: string[];
+  /** 更新了位置的项目；位置已经是目标值时为 null */
+  project: Project | null;
+  event: Event | null;
+  counts: SyncCounts;
+  /** 登记提交的文件（相对数据目录） */
+  files: string[];
+  /** 是否并入了整体核对的结果；应用成功后据此清除核对标记 */
+  reconciled: boolean;
+}
+
+function missingContentError(missing: readonly string[]): KhError {
+  return new KhError("invalid", `同步还缺少 ${missing.length} 份文件内容，请重新上传`, { missingBlobs: [...missing] });
+}
+
+function docsEvent(ctx: ops.MutationContext, projectId: string, type: "docs.synced" | "docs.pulled", change: NonNullable<Event["change"]>): Event {
+  return {
+    id: ctx.newId(),
+    ts: ctx.now,
+    projectId,
+    actor: ctx.actor,
+    type,
+    target: null,
+    change,
+    text: null,
+    imported: false,
+  };
+}
+
+/** 旧版本在目标文件旁边放的原子写临时文件：<文件名>.tmp-<pid>-<序号> */
+const LEGACY_TMP_RE = /\.tmp-\d+-\d+$/;
+
+/**
+ * 删除数据目录里旧版本留下的原子写临时文件，免得被启动补提交收进历史。
+ * 跳过 .git、.tmp、.staging 和各机器的快照目录（快照里的文档可以叫任何名字）。
+ */
+async function removeLegacyTmpFiles(dataDir: string, rel = ""): Promise<void> {
+  let entries;
+  try {
+    entries = await fs.readdir(path.join(dataDir, rel), { withFileTypes: true });
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    throw e;
+  }
+  for (const entry of entries) {
+    const childRel = rel === "" ? entry.name : `${rel}/${entry.name}`;
+    if (entry.isDirectory()) {
+      if ([".git", TMP_DIR, STAGING_DIR].includes(childRel) || /^projects\/[^/]+\/snapshots$/.test(childRel)) continue;
+      await removeLegacyTmpFiles(dataDir, childRel);
+    } else if (entry.isFile() && LEGACY_TMP_RE.test(entry.name)) {
+      await fs.rm(path.join(dataDir, childRel), { force: true });
+    }
+  }
+}
+
+function sameJson(a: unknown, b: unknown): boolean {
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+async function readTextOrNull(file: string): Promise<string | null> {
+  try {
+    return await fs.readFile(file, "utf8");
+  } catch (e) {
+    if ((e as NodeJS.ErrnoException).code === "ENOENT") return null;
+    throw e;
   }
 }
 
@@ -526,15 +1052,6 @@ function isLaterEvent(a: Event, b: Event): boolean {
 /** actor 筛选：filter 为 "web" 匹配网页操作，其余按机器 ID 匹配 */
 function matchesActor(actor: Actor, filter: string): boolean {
   return filter === "web" ? actor.via === "web" : actor.machineId === filter;
-}
-
-async function pathExists(p: string): Promise<boolean> {
-  try {
-    await fs.access(p);
-    return true;
-  } catch {
-    return false;
-  }
 }
 
 function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {

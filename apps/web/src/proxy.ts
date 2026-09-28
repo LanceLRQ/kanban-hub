@@ -15,6 +15,6 @@ export function proxy(request: NextRequest): NextResponse {
 }
 
 export const config = {
-  // 排除 API 路由、Next 静态资源、kh 安装包下发、字体许可证文件——这些请求不需要页面路径
-  matcher: ["/((?!api/|_next/|setup/kh\\.tgz|licenses/|favicon\\.ico).*)"],
+  // 排除 API 路由、Next 静态资源、kh 安装包下发、字体许可证文件、/raw（不鉴权、不需要页面路径）
+  matcher: ["/((?!api/|_next/|setup/kh\\.tgz|licenses/|favicon\\.ico|raw/).*)"],
 };

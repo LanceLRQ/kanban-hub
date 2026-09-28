@@ -1,19 +1,22 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useTranslations } from "next-intl";
 import { XIcon } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { docPageHref } from "@/lib/doc-url";
 import { isPlainEnter } from "./editable-text";
 
 interface DocRefsEditorProps {
+  projectId: string;
   paths: string[];
   /** 以整个路径列表保存；返回 false 表示失败 */
   onChange: (next: string[]) => Promise<boolean>;
 }
 
-/** 关联文档：仓库内相对路径的列表，可以增删（路径格式由服务端校验，出错时逐条提示） */
-export function DocRefsEditor({ paths, onChange }: DocRefsEditorProps) {
+/** 关联文档：仓库内相对路径的列表，可以增删（路径格式由服务端校验，出错时逐条提示）；每条路径链接到文档页（不带 ?m，取默认机器） */
+export function DocRefsEditor({ projectId, paths, onChange }: DocRefsEditorProps) {
   const t = useTranslations("board");
   const [adding, setAdding] = useState("");
 
@@ -34,7 +37,9 @@ export function DocRefsEditor({ paths, onChange }: DocRefsEditorProps) {
         <div className="flex flex-wrap gap-2">
           {paths.map((path) => (
             <span key={path} className="kh-doc-chip inline-flex items-center gap-1 rounded-[3px] border-[1.5px] border-border bg-background py-0.5 pr-1 pl-2 font-mono text-xs font-bold">
-              {path}
+              <Link href={docPageHref(projectId, path)} className="hover:underline">
+                {path}
+              </Link>
               <button
                 type="button"
                 aria-label={t("sheet.docRefsRemove", { path })}

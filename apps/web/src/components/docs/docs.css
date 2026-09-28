@@ -1,0 +1,216 @@
+/*
+ * 文档视图：树、最近更新、渲染后的 Markdown 正文，以及代码高亮配色。
+ * 主题 A 的外观全部写在组件的 Tailwind 类里；这里只放两类规则：
+ * - kh-base：Tailwind 覆盖不到的排版细节（Markdown 正文的标题/表格/代码块等）、
+ *   代码高亮 token 的默认值（主题 A）；
+ * - kh-theme：主题 B「纸本拼贴」的覆盖，含代码高亮 token 的取值（层顺序见 globals.css）。
+ */
+
+@layer kh-base {
+  :root {
+    /* 代码高亮 token（主题 A：莫兰迪平涂色系） */
+    --hl-comment: var(--fg-faint);
+    --hl-keyword: var(--mistblue);
+    --hl-string: var(--sage);
+    --hl-number: var(--ochre);
+    --hl-title: var(--brick);
+    --hl-attr: var(--mustard-deep);
+  }
+
+  .kh-doc-tree-item[data-active="true"] {
+    box-shadow: inset 3px 0 0 var(--focus-ring);
+  }
+
+  /* ---------- Markdown 正文排版 ---------- */
+  .kh-doc-markdown {
+    padding: 1.5rem;
+    font-size: 0.875rem;
+    line-height: 1.75;
+    color: var(--foreground);
+  }
+  .kh-doc-markdown h1,
+  .kh-doc-markdown h2,
+  .kh-doc-markdown h3 {
+    font-family: var(--cjk-heading);
+    font-weight: 800;
+    margin: 1.4em 0 0.6em;
+  }
+  .kh-doc-markdown h1 {
+    font-size: 1.4rem;
+  }
+  .kh-doc-markdown h2 {
+    font-size: 1.15rem;
+    padding-bottom: 0.4em;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .kh-doc-markdown h3 {
+    font-size: 1rem;
+  }
+  .kh-doc-markdown p,
+  .kh-doc-markdown li {
+    margin: 0 0 0.6em;
+  }
+  .kh-doc-markdown ul,
+  .kh-doc-markdown ol {
+    padding-left: 1.4em;
+    margin: 0 0 0.6em;
+  }
+  .kh-doc-markdown li.task-list-item {
+    list-style: none;
+    margin-left: -1.4em;
+  }
+  .kh-doc-markdown code {
+    font-family: var(--mono);
+    font-size: 0.85em;
+    background: var(--bg-hover);
+    border: 1px solid var(--border-soft);
+    border-radius: 3px;
+    padding: 0.05em 0.35em;
+  }
+  .kh-doc-markdown pre {
+    border: 1.5px solid var(--border);
+    background: var(--bg-page);
+    border-radius: 4px;
+    padding: 0.8em 1em;
+    overflow: auto;
+    margin: 0 0 0.8em;
+  }
+  .kh-doc-markdown pre code {
+    background: none;
+    border: 0;
+    padding: 0;
+    font-size: 0.8rem;
+    line-height: 1.65;
+  }
+  .kh-doc-markdown table {
+    border-collapse: collapse;
+    margin: 0 0 0.8em;
+  }
+  .kh-doc-markdown th,
+  .kh-doc-markdown td {
+    border: 1px solid var(--border);
+    padding: 0.35em 0.75em;
+    font-size: 0.85em;
+  }
+  .kh-doc-markdown th {
+    background: var(--bg-hover);
+    font-weight: 700;
+  }
+  .kh-doc-markdown blockquote {
+    border-left: 3px solid var(--mustard);
+    background: var(--bg-hover);
+    border-radius: 0 4px 4px 0;
+    padding: 0.4em 1em;
+    margin: 0 0 0.8em;
+  }
+  .kh-doc-markdown img {
+    max-width: 100%;
+    border-radius: 3px;
+  }
+  .kh-doc-markdown a {
+    color: var(--secondary);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+  }
+  /* 目标不在清单里的链接：保留原文字，去掉链接外观，加提示样式 */
+  .kh-doc-markdown .kh-doc-link-missing {
+    color: var(--fg-faint);
+    text-decoration: line-through dotted;
+    cursor: help;
+  }
+
+  /* mermaid 占位块：客户端渲染前后都保持能撑起版面 */
+  .kh-mermaid {
+    display: block;
+    overflow-x: auto;
+    margin: 0 0 0.8em;
+    padding: 0.5em;
+    border: 1px dashed var(--border-soft);
+    border-radius: 4px;
+    min-height: 2.5em;
+  }
+  .kh-mermaid-error {
+    font-family: var(--mono);
+    font-size: 0.8rem;
+    white-space: pre-wrap;
+    color: var(--fg-muted);
+  }
+
+  /* ---------- 代码高亮（hljs class 由 rehype-highlight / lowlight 生成） ---------- */
+  .hljs {
+    color: var(--foreground);
+    background: transparent;
+  }
+  .hljs-comment,
+  .hljs-quote {
+    color: var(--hl-comment);
+    font-style: italic;
+  }
+  .hljs-keyword,
+  .hljs-selector-tag,
+  .hljs-doctag,
+  .hljs-subst {
+    color: var(--hl-keyword);
+    font-weight: 700;
+  }
+  .hljs-string,
+  .hljs-attr,
+  .hljs-regexp,
+  .hljs-addition,
+  .hljs-template-tag {
+    color: var(--hl-string);
+  }
+  .hljs-number,
+  .hljs-literal,
+  .hljs-symbol {
+    color: var(--hl-number);
+  }
+  .hljs-title,
+  .hljs-section,
+  .hljs-name,
+  .hljs-selector-id,
+  .hljs-selector-class {
+    color: var(--hl-title);
+    font-weight: 700;
+  }
+  .hljs-variable,
+  .hljs-template-variable,
+  .hljs-type,
+  .hljs-built_in {
+    color: var(--hl-attr);
+  }
+  .hljs-deletion {
+    color: var(--brick);
+  }
+}
+
+@layer kh-theme {
+  [data-theme="collage"] {
+    /* 代码高亮 token（主题 B：墨水感色系） */
+    --hl-comment: var(--fg-faint);
+    --hl-keyword: var(--ink-blue);
+    --hl-string: var(--ink-green);
+    --hl-number: var(--ink-ochre);
+    --hl-title: var(--ink-brick);
+    --hl-attr: var(--ink-mustard);
+  }
+
+  [data-theme="collage"] .kh-doc-machine-chip {
+    border-radius: var(--radius-a);
+  }
+  [data-theme="collage"] .kh-doc-tree-box,
+  [data-theme="collage"] .kh-doc-recent-box,
+  [data-theme="collage"] .kh-doc-article {
+    border-radius: var(--radius-b);
+  }
+  [data-theme="collage"] .kh-doc-markdown h2 {
+    border-bottom-style: dashed;
+    border-bottom-color: var(--border-soft);
+  }
+  [data-theme="collage"] .kh-doc-markdown pre {
+    border-radius: var(--radius-c);
+  }
+  [data-theme="collage"] .kh-mermaid {
+    border-radius: var(--radius-c);
+  }
+}

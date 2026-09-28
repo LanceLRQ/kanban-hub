@@ -161,7 +161,7 @@ function TaskSheetBody({ projectId, task, containerOptions }: { projectId: strin
       </Block>
 
       <Block label={t("sheet.docRefs")} last>
-        <DocRefsEditor paths={task.docRefs} onChange={(docRefs) => save({ docRefs })} />
+        <DocRefsEditor projectId={projectId} paths={task.docRefs} onChange={(docRefs) => save({ docRefs })} />
       </Block>
     </SheetContent>
   );

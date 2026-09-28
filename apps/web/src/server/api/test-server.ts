@@ -22,8 +22,10 @@ import { POST as pairPost } from "@/app/api/v1/pair/route";
 import { POST as pairingCodesPost } from "@/app/api/v1/pairing-codes/route";
 import { PATCH as containerPatch } from "@/app/api/v1/projects/[id]/containers/[cid]/route";
 import { POST as containersPost } from "@/app/api/v1/projects/[id]/containers/route";
+import { GET as docsGet } from "@/app/api/v1/projects/[id]/docs/route";
 import { PUT as locationPut } from "@/app/api/v1/projects/[id]/locations/[machineId]/route";
 import { POST as logPost } from "@/app/api/v1/projects/[id]/log/route";
+import { POST as rawTokensPost } from "@/app/api/v1/projects/[id]/raw-tokens/route";
 import { GET as projectGet, PATCH as projectPatch } from "@/app/api/v1/projects/[id]/route";
 import { GET as machineManifestGet } from "@/app/api/v1/projects/[id]/snapshots/[machineId]/manifest/route";
 import { GET as snapshotFileGet } from "@/app/api/v1/projects/[id]/snapshots/[machineId]/files/[...path]/route";
@@ -36,6 +38,7 @@ import { PATCH as taskPatch } from "@/app/api/v1/projects/[id]/tasks/[tid]/route
 import { POST as tasksPost } from "@/app/api/v1/projects/[id]/tasks/route";
 import { GET as projectsGet, POST as projectsPost } from "@/app/api/v1/projects/route";
 import { GET as streamGet } from "@/app/api/v1/stream/route";
+import { GET as rawGet } from "@/app/raw/[token]/[...path]/route";
 import { GET as khTgzGet } from "@/app/setup/kh.tgz/route";
 
 import { setupTestApi, type TestApi } from "./testing";
@@ -82,8 +85,10 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/projects/:id", handlers: { GET: asRouteHandler(projectGet), PATCH: asRouteHandler(projectPatch) } },
   { pattern: "/api/v1/projects/:id/containers", handlers: { POST: asRouteHandler(containersPost) } },
   { pattern: "/api/v1/projects/:id/containers/:cid", handlers: { PATCH: asRouteHandler(containerPatch) } },
+  { pattern: "/api/v1/projects/:id/docs", handlers: { GET: asRouteHandler(docsGet) } },
   { pattern: "/api/v1/projects/:id/locations/:machineId", handlers: { PUT: asRouteHandler(locationPut) } },
   { pattern: "/api/v1/projects/:id/log", handlers: { POST: asRouteHandler(logPost) } },
+  { pattern: "/api/v1/projects/:id/raw-tokens", handlers: { POST: asRouteHandler(rawTokensPost) } },
   { pattern: "/api/v1/projects/:id/snapshots/:machineId/files/:path*", handlers: { GET: asRouteHandler(snapshotFileGet) } },
   { pattern: "/api/v1/projects/:id/snapshots/:machineId/manifest", handlers: { GET: asRouteHandler(machineManifestGet) } },
   { pattern: "/api/v1/projects/:id/snapshots/latest-manifest", handlers: { GET: asRouteHandler(latestManifestGet) } },
@@ -94,6 +99,7 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/projects/:id/tasks", handlers: { POST: asRouteHandler(tasksPost) } },
   { pattern: "/api/v1/projects/:id/tasks/:tid", handlers: { PATCH: asRouteHandler(taskPatch) } },
   { pattern: "/api/v1/stream", handlers: { GET: asRouteHandler(streamGet) } },
+  { pattern: "/raw/:token/:path*", handlers: { GET: asRouteHandler(rawGet) } },
   { pattern: "/setup/kh.tgz", handlers: { GET: asRouteHandler(khTgzGet) } },
 ];
 

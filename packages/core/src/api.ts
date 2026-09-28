@@ -324,3 +324,11 @@ export type PullReportInput = z.input<typeof pullReportInput>;
 /** commit 因为缺少内容而返回 400 时，details 的形状；kh 用它识别“缺少内容”这种失败原因 */
 export const syncMissingDetails = z.object({ missingBlobs: z.array(sha256HexSchema) });
 export type SyncMissingDetails = z.infer<typeof syncMissingDetails>;
+
+/** POST /projects/:id/raw-tokens 的请求体：网页为某台机器签一个 /raw 令牌 */
+export const rawTokenInput = z.object({ machineId: idSchema }).strict();
+export type RawTokenInput = z.input<typeof rawTokenInput>;
+
+/** POST /projects/:id/raw-tokens 的响应 */
+export const rawTokenResponse = z.object({ token: z.string(), expiresAt: timestampSchema });
+export type RawTokenResponse = z.infer<typeof rawTokenResponse>;

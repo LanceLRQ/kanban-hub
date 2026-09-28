@@ -9,6 +9,7 @@
  * 传进 ctx，这里只按分组名 + 取值转发过去。
  */
 import type { Board, ChecklistItem, Event, EventType, HumanFlag, ManualStatus, TaskStatus } from "@kanban-hub/core/schema";
+import { readDocsCounts } from "@kanban-hub/core/sync";
 import { containerRefLabel, taskShortRef } from "./refs";
 
 // ---------- 分组（用于类型筛选） ----------
@@ -161,6 +162,39 @@ function describeTaskHumanChanged(event: Event, ctx: EventDescribeCtx): EventDes
   return { key: "task.human.changed", values: { task, kind: ctx.enumLabel("humanKind", to.kind), note: to.note } };
 }
 
+/** 按固定顺序、只取不为 0 的计数项拼成“新增 3、修改 2”这样的列表 */
+function countList(items: readonly (readonly [label: string, count: number])[]): string {
+  return items
+    .filter(([, count]) => count > 0)
+    .map(([label, count]) => `${label} ${count}`)
+    .join("、");
+}
+
+/** change 读不出计数（格式不对，或历史事件没有这个字段）时退回旧文案，不抛错 */
+function describeDocsSynced(event: Event): EventDescription {
+  const counts = readDocsCounts(event);
+  if (!counts || counts.type !== "docs.synced") return { key: "docs.synced.plain", values: {} };
+  const list = countList([
+    ["新增", counts.added],
+    ["修改", counts.modified],
+    ["删除", counts.removed],
+  ]);
+  return { key: "docs.synced.withCounts", values: { list } };
+}
+
+function describeDocsPulled(event: Event): EventDescription {
+  const counts = readDocsCounts(event);
+  if (!counts || counts.type !== "docs.pulled") return { key: "docs.pulled.plain", values: {} };
+  const list = countList([
+    ["新建", counts.created],
+    ["覆盖", counts.overwritten],
+    ["自动合并", counts.merged],
+    ["冲突", counts.conflicts],
+    ["跳过旧版本", counts.stale],
+  ]);
+  return { key: "docs.pulled.withCounts", values: { list } };
+}
+
 /**
  * 事件的结构化描述：{ key, values }，key 是 events 命名空间里的消息键。
  * 任务或容器在看板里已经找不到时，用事件本身的 ID 前缀兜底，不抛错（见 taskLabel / containerLabel）。
@@ -186,9 +220,9 @@ export function describeEvent(event: Event, ctx: EventDescribeCtx): EventDescrip
     case "log":
       return { key: "log", values: { text: event.text ?? "" } };
     case "docs.synced":
-      return { key: "docs.synced", values: {} };
+      return describeDocsSynced(event);
     case "docs.pulled":
-      return { key: "docs.pulled", values: {} };
+      return describeDocsPulled(event);
     case "import.applied":
       return { key: "import.applied", values: {} };
   }

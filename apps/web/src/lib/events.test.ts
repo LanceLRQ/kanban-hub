@@ -1,6 +1,7 @@
 import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 import { fixtureId, makeBoard, makeContainer, makeEvent, makeTask } from "@kanban-hub/core/test-fixtures";
+import { docsPulledChange, docsSyncedChange } from "@kanban-hub/core/sync";
 import enumsMessages from "../../messages/zh-CN/enums.json";
 import eventsMessages from "../../messages/zh-CN/events.json";
 import { describeEvent, EVENT_GROUPS, eventGroupOf, sortEventsForDisplay, type EnumLabelGroup } from "./events";
@@ -109,14 +110,44 @@ describe("describeEvent：12 种事件类型各一个用例", () => {
     expect(describeAndRender(event, ctx)).toBe("记了一条日志：今天做了很多事");
   });
 
-  it("docs.synced", () => {
+  it("docs.synced：change 读不出计数时退回旧文案", () => {
     const event = makeEvent({ type: "docs.synced", target: null, change: null, text: null });
     expect(describeAndRender(event, ctx)).toBe("同步了文档");
   });
 
-  it("docs.pulled", () => {
+  it("docs.synced：带计数时，只列不为 0 的项", () => {
+    const event = makeEvent({
+      type: "docs.synced",
+      target: null,
+      change: docsSyncedChange({ added: 3, modified: 2, removed: 1 }),
+      text: null,
+    });
+    expect(describeAndRender(event, ctx)).toBe("同步了文档：新增 3、修改 2、删除 1");
+  });
+
+  it("docs.synced：只有新增时不列修改和删除", () => {
+    const event = makeEvent({
+      type: "docs.synced",
+      target: null,
+      change: docsSyncedChange({ added: 1, modified: 0, removed: 0 }),
+      text: null,
+    });
+    expect(describeAndRender(event, ctx)).toBe("同步了文档：新增 1");
+  });
+
+  it("docs.pulled：change 读不出计数时退回旧文案", () => {
     const event = makeEvent({ type: "docs.pulled", target: null, change: null, text: null });
     expect(describeAndRender(event, ctx)).toBe("拉取了文档");
+  });
+
+  it("docs.pulled：带计数时，只列不为 0 的项", () => {
+    const event = makeEvent({
+      type: "docs.pulled",
+      target: null,
+      change: docsPulledChange({ created: 1, overwritten: 0, merged: 1, conflicts: 1, stale: 0 }, ["m1"]),
+      text: null,
+    });
+    expect(describeAndRender(event, ctx)).toBe("拉取了文档：新建 1、自动合并 1、冲突 1");
   });
 
   it("import.applied", () => {

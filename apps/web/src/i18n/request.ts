@@ -2,6 +2,7 @@ import { getRequestConfig } from "next-intl/server";
 
 import board from "../../messages/zh-CN/board.json";
 import common from "../../messages/zh-CN/common.json";
+import docs from "../../messages/zh-CN/docs.json";
 import enums from "../../messages/zh-CN/enums.json";
 import events from "../../messages/zh-CN/events.json";
 import login from "../../messages/zh-CN/login.json";
@@ -20,6 +21,7 @@ const messages = {
   overview,
   board,
   timeline,
+  docs,
   setup,
   settings,
   projectSettings,

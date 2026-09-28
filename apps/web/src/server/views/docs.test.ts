@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
 import type { SyncManifestInput } from "@kanban-hub/core/api";
 import type { Actor } from "@kanban-hub/core/schema";
@@ -99,6 +99,25 @@ describe("buildDocsView", () => {
     const view2 = await buildDocsView(api.services, project.id, { machineId: mac.machineId! }, new Date());
     expect(view2!.machines.find((m) => m.selected)?.id).toBe(mac.machineId);
     expect(view2!.file?.path).toBe("README.md");
+  });
+
+  it("withFile 为 false 时不读取文件、不签发令牌，file 与 rawToken 为 null，其余照常", async () => {
+    api = await setupTestApi();
+    const owner = await machineActor(api, "owner");
+    const { project } = await api.store.createProject({ name: "看板" }, owner);
+    const mac = await addMachine(api, project.id, "mac");
+    await sync(api, project.id, mac, { "README.md": "# 首页", "docs/a.md": "内容 A" });
+
+    const read = vi.spyOn(api.store, "readSnapshotFile");
+    const secret = vi.spyOn(api.store.auth, "sessionSecret");
+    const view = await buildDocsView(api.services, project.id, { withFile: false }, new Date());
+    expect(read).not.toHaveBeenCalled();
+    expect(secret).not.toHaveBeenCalled();
+    expect(view!.file).toBeNull();
+    expect(view!.rawToken).toBeNull();
+    expect(view!.filePaths.sort()).toEqual(["README.md", "docs/a.md"]);
+    expect(view!.machines).toHaveLength(1);
+    expect(view!.recent).toHaveLength(2);
   });
 
   it("最近更新按 changedAt 倒序", async () => {

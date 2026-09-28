@@ -39,7 +39,7 @@ export interface PushResult {
 const putBlobResponse = z.object({ ok: z.literal(true) });
 
 /**
- * 标记“这次失败不该重来”：503（服务端还在处理上一次同步）和上传内容时发现文件被改动，
+ * 标记“这次失败不该重来”：503（服务端暂时不能处理）、连不上服务端和上传内容时发现文件被改动，
  * 都属于重新走一遍同样会失败（或者不安全）的情况，直接把内部的 CliError 抛给调用方。
  */
 class NoRetryError extends Error {
@@ -135,15 +135,16 @@ async function runAttempt(
       for (const sha of retryMissing) await uploadOne(sha);
       commitResp = await client.post(`/api/v1/projects/${projectId}/sync/commit`, commitInput, syncCommitResponse);
     } else if (err instanceof CliError && err.exitCode === EXIT.UNREACHABLE) {
-      // 503：服务端上一次同步还没应用完成，不重来，直接报错
-      throw new NoRetryError(new CliError(EXIT.UNEXPECTED, "服务端还在处理上一次同步，请稍后重试"));
+      // 503（服务端还在应用上一次同步，或者正在启动、关闭）、连不上服务端、超时或网关错误：
+      // 重来一次多半同样失败，原样报错，保留服务端的说明和退出码 4
+      throw new NoRetryError(err);
     } else {
       // 其余原因（例如暂存已过期的 404）交给外层从头重新来一次
       throw err;
     }
   }
 
-  // 推送成功：把本次涉及的内容记进 seen（不改基准，见与规格的出入第 1 条），再清理不再引用的
+  // 推送成功：把本次涉及的内容记进 seen（推送不更新基准，见规格 9.3“基准”），再清理不再引用的
   // 本机缓存内容，最后落盘
   for (const [filePath, sha] of shaByPath) {
     state.seen.set(filePath, rememberSeen(state.seen.get(filePath) ?? [], sha));

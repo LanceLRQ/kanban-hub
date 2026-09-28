@@ -39,8 +39,14 @@ function missingEndpointError(server: string): CliError {
 }
 
 /** 按“退出码的归属”把 HTTP 状态码映射成 CliError；服务端给的 message 照原样显示，不改写。
- * details 原样带上（例如 missingBlobs），调用方据此识别具体的失败原因，不需要重新解析 message。 */
+ * details 原样带上（例如 missingBlobs），状态码和服务端错误码也挂在 CliError 上，调用方据此
+ * 识别具体的失败原因，不需要重新解析 message。 */
 function mapHttpError(status: number, body: ApiErrorBody | null, server: string): CliError {
+  const mapped = mapHttpStatus(status, body, server);
+  return new CliError(mapped.exitCode, mapped.message, mapped.hint, mapped.details, { status, code: body?.error.code });
+}
+
+function mapHttpStatus(status: number, body: ApiErrorBody | null, server: string): CliError {
   const message = body?.error.message;
   const details = body?.error.details;
   switch (status) {

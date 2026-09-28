@@ -106,7 +106,7 @@ describe("GET /raw/:token/*path", () => {
     expect(res.status).toBe(404);
   });
 
-  it("令牌过期返回 403", async () => {
+  it("令牌过期返回 403，正文是纯文本提示刷新文档页，沙箱响应头照旧", async () => {
     api = await setupTestApi();
     const { project, machine } = await setupProject(api);
     await sync(api, project.id, machine.id, { "a.txt": Buffer.from("x") });
@@ -115,6 +115,11 @@ describe("GET /raw/:token/*path", () => {
 
     const res = await get(`/raw/${tok}/a.txt`);
     expect(res.status).toBe(403);
+    expect(res.headers.get("content-type")).toBe("text/plain; charset=utf-8");
+    expect(await res.text()).toBe("链接已过期，请刷新文档页");
+    expect(res.headers.get("x-content-type-options")).toBe("nosniff");
+    expect(res.headers.get("content-security-policy")).toBe("sandbox allow-scripts allow-forms allow-popups");
+    expect(res.headers.get("referrer-policy")).toBe("no-referrer");
   });
 
   it("路径穿越和不在清单里的路径返回 404", async () => {

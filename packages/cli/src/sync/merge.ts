@@ -43,7 +43,8 @@ async function withMergeInputs<T>(
 
 /**
  * git merge-file 的退出码：0 没有冲突；1–127 是冲突块的数量（超过 127 按 127 计）；
- * 其余（包括内部错误的 -1，经进程退出码表现为 255）都是执行失败。
+ * 其余都是执行失败：包括内部错误（经进程退出码表现为 255），以及 runGit 在进程被信号杀掉、
+ * 输出超过上限时给出的负数。
  */
 function isConflictCount(code: number): boolean {
   return code >= 1 && code <= 127;

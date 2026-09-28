@@ -317,6 +317,27 @@ describe("CliError.details", () => {
     expect(err.details).toEqual({ missingBlobs });
   });
 
+  it("错误响应的状态码和服务端错误码挂在 CliError 上", async () => {
+    const { url } = await serve(jsonHandler(503, { error: { code: "unavailable", message: "维护中" } }));
+    const err = await captureError(makeClient(url).get("/x", okSchema));
+    expect(err.status).toBe(503);
+    expect(err.code).toBe("unavailable");
+  });
+
+  it("响应不是错误格式时只有状态码，没有服务端错误码；连不上时两者都没有", async () => {
+    const gateway = await serve(htmlHandler(502, "<html>Bad Gateway</html>"));
+    const err = await captureError(makeClient(gateway.url).get("/x", okSchema));
+    expect(err.status).toBe(502);
+    expect(err.code).toBeUndefined();
+
+    const { url, close } = await serve(() => {});
+    await close();
+    activeServers = activeServers.filter((s) => s.url !== url);
+    const refused = await captureError(makeClient(url).get("/x", okSchema));
+    expect(refused.status).toBeUndefined();
+    expect(refused.code).toBeUndefined();
+  });
+
   it("成功响应或没有 details 时，CliError.details 为 undefined", async () => {
     const { url } = await serve(jsonHandler(401, { error: { code: "unauthorized", message: "令牌已失效" } }));
     const err = await captureError(makeClient(url).get("/x", okSchema));

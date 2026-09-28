@@ -160,7 +160,7 @@ describe("pushDocs：commit 失败之后的重试分支", () => {
     await expectNoLocalState(repo.home, repo.registered.config.projectId);
   });
 
-  it("commit 返回 503：不重来，报错退出码 1，提示文案正确", async () => {
+  it("commit 返回 503：不重来，原样报出服务端的说明，退出码 4", async () => {
     const repo = await setupRepo();
     let commitCalls = 0;
 
@@ -168,20 +168,80 @@ describe("pushDocs：commit 失败之后的重试分支", () => {
       if (isManifestUrl(url)) return { syncId: "s1", missing: [], expiresAt: "2026-01-01T00:00:00.000Z" };
       if (isCommitUrl(url)) {
         commitCalls += 1;
-        throw new CliError(EXIT.UNREACHABLE, "上一次同步还没有应用完成，请稍后重试");
+        throw new CliError(EXIT.UNREACHABLE, "上一次同步还没有应用完成，请稍后重试", undefined, undefined, {
+          status: 503,
+          code: "unavailable",
+        });
       }
       throw new Error(`未预期的请求：${url}`);
     });
 
     const ctx = fakeContext({ env: { ...process.env, KH_HOME: repo.home } });
     await expect(pushDocs(ctx, repo.registered, asApiClient(client), { quiet: true })).rejects.toMatchObject({
-      exitCode: EXIT.UNEXPECTED,
-      message: expect.stringContaining("服务端还在处理上一次同步"),
+      exitCode: EXIT.UNREACHABLE,
+      message: expect.stringContaining("上一次同步还没有应用完成"),
     });
 
     expect(commitCalls).toBe(1);
     expect(client.postCalls.filter((c) => isManifestUrl(c.url))).toHaveLength(1);
     await expectNoLocalState(repo.home, repo.registered.config.projectId);
+  });
+
+  it("commit 时连不上服务端：保留原来的退出码 4 和原因，不说成服务端还在处理，也不重来", async () => {
+    const repo = await setupRepo();
+    let commitCalls = 0;
+
+    const client = new FakeClient((url) => {
+      if (isManifestUrl(url)) return { syncId: "s1", missing: [], expiresAt: "2026-01-01T00:00:00.000Z" };
+      if (isCommitUrl(url)) {
+        commitCalls += 1;
+        throw new CliError(EXIT.UNREACHABLE, "无法连接到服务端：http://127.0.0.1:1（ECONNREFUSED）");
+      }
+      throw new Error(`未预期的请求：${url}`);
+    });
+
+    const ctx = fakeContext({ env: { ...process.env, KH_HOME: repo.home } });
+    const err = await pushDocs(ctx, repo.registered, asApiClient(client), { quiet: true }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect((err as CliError).exitCode).toBe(EXIT.UNREACHABLE);
+    expect((err as CliError).message).toContain("无法连接到服务端");
+    expect((err as CliError).message).not.toContain("还在处理");
+    expect(commitCalls).toBe(1);
+    await expectNoLocalState(repo.home, repo.registered.config.projectId);
+  });
+
+  it("commit 返回 500：退出码仍是 1，报服务端给的原因，不说成服务端还在处理", async () => {
+    const repo = await setupRepo();
+
+    const client = new FakeClient((url) => {
+      if (isManifestUrl(url)) return { syncId: "s1", missing: [], expiresAt: "2026-01-01T00:00:00.000Z" };
+      if (isCommitUrl(url)) {
+        throw new CliError(EXIT.UNEXPECTED, "服务端内部错误", undefined, undefined, { status: 500, code: "internal" });
+      }
+      throw new Error(`未预期的请求：${url}`);
+    });
+
+    const ctx = fakeContext({ env: { ...process.env, KH_HOME: repo.home } });
+    const err = await pushDocs(ctx, repo.registered, asApiClient(client), { quiet: true }).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect((err as CliError).exitCode).toBe(EXIT.UNEXPECTED);
+    expect((err as CliError).message).toBe("服务端内部错误");
+    await expectNoLocalState(repo.home, repo.registered.config.projectId);
+  });
+
+  it("commit 返回 503 但错误码不是 unavailable（例如网关直接回的 503）：保留原来的退出码 4", async () => {
+    const repo = await setupRepo();
+
+    const client = new FakeClient((url) => {
+      if (isManifestUrl(url)) return { syncId: "s1", missing: [], expiresAt: "2026-01-01T00:00:00.000Z" };
+      if (isCommitUrl(url)) throw new CliError(EXIT.UNREACHABLE, "服务端暂时不可用", undefined, undefined, { status: 503 });
+      throw new Error(`未预期的请求：${url}`);
+    });
+
+    const ctx = fakeContext({ env: { ...process.env, KH_HOME: repo.home } });
+    const err = await pushDocs(ctx, repo.registered, asApiClient(client), { quiet: true }).catch((e: unknown) => e);
+    expect((err as CliError).exitCode).toBe(EXIT.UNREACHABLE);
+    expect((err as CliError).message).not.toContain("还在处理");
   });
 
   it("上传前重新读取文件发现内容被改动：报错退出码 1，不重试，也不会走到 commit", async () => {

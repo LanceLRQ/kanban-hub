@@ -1,3 +1,4 @@
+import fs from "node:fs/promises";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { cleanupDir, initRepoWithCommit, makeTempDir } from "./test-helpers";
@@ -82,6 +83,15 @@ describe("runGit", () => {
     const result = await runGit(["var", "GIT_AUTHOR_IDENT"], { cwd: dir, env });
     expect(result.ok).toBe(true);
     expect(result.stdout).toContain("only-from-opts-env");
+  });
+
+  it("git 被信号杀掉（没有数字退出码）时 code 为 -1，不会被当成退出码 1", async () => {
+    const dir = await tempDir();
+    // PATH 只指向一个会把自己杀掉的假 git
+    await fs.writeFile(path.join(dir, "git"), "#!/bin/sh\nkill -9 $$\n", { mode: 0o755 });
+    const result = await runGit(["merge-file", "-p", "a", "b", "c"], { cwd: dir, env: { PATH: dir } });
+    expect(result.ok).toBe(false);
+    expect(result.code).toBe(-1);
   });
 
   it("buffer: true 时 stdout 以 Buffer 返回", async () => {

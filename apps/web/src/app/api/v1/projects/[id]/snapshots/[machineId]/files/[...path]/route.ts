@@ -23,6 +23,7 @@ export const GET = apiRoute(
       status: 200,
       headers: {
         "Content-Type": "application/octet-stream",
+        "X-Content-Type-Options": "nosniff",
         [HEADER_KH_SHA256]: sha256Hex(bytes),
       },
     });

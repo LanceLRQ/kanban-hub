@@ -3,7 +3,7 @@ import { CliError, EXIT } from "../errors";
 
 export interface GitResult {
   ok: boolean;
-  /** 进程的退出码；找不到 git 本身不会走到这里（直接 reject） */
+  /** 进程的退出码；没有数字退出码（被信号杀掉、输出超过上限）时为 -1；找不到 git 本身不会走到这里（直接 reject） */
   code: number;
   stdout: string | Buffer;
   stderr: string;
@@ -20,9 +20,13 @@ export interface RunGitOptions {
 /** 覆盖仓库里较大的快照或历史内容；64MB 足够容纳同步范围允许的最大单文件（20MB 硬上限） */
 const MAX_BUFFER = 64 * 1024 * 1024;
 
+/**
+ * 进程的退出码。被信号杀掉、输出超过 maxBuffer 等情况下 err.code 不是数字，返回 -1：
+ * 调用方会把某些非 0 退出码当作正常结果（例如 git merge-file 的冲突数），不能把执行失败混进去。
+ */
 function exitCodeOf(err: NodeJS.ErrnoException | null): number {
   if (err === null) return 0;
-  return typeof err.code === "number" ? err.code : 1;
+  return typeof err.code === "number" ? err.code : -1;
 }
 
 export function runGit(args: string[], opts: RunGitOptions & { buffer: true }): Promise<GitResult & { stdout: Buffer }>;

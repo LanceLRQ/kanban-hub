@@ -24,6 +24,16 @@ afterEach(async () => {
 const ctx = () => fakeContext();
 
 describe("mergeText", () => {
+  it("git 执行失败（例如被信号杀掉）时报错，而不是当成有冲突", async () => {
+    const fakeBin = await fs.mkdtemp(path.join(tmpRoot, "bin-"));
+    await fs.writeFile(path.join(fakeBin, "git"), "#!/bin/sh\nkill -9 $$\n", { mode: 0o755 });
+    const killed = fakeContext({ env: { PATH: fakeBin } });
+    await expect(mergeText(killed, enc("a\n"), enc("b\n"), enc("c\n"))).rejects.toMatchObject({
+      name: "CliError",
+      message: expect.stringContaining("git merge-file 执行失败"),
+    });
+  });
+
   it("两边改动不重叠：自动合并，结果包含两边的改动", async () => {
     const base = enc("a\nb\nc\nd\ne\n");
     const local = enc("A\nb\nc\nd\ne\n");

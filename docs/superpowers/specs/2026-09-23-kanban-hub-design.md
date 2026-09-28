@@ -313,6 +313,7 @@ pull:
 ```
 
 - 同步范围**不参考 `.gitignore`**，因为被忽略的私有文档目录恰恰需要同步。
+- 仓库根的 `.kanban-hub/` 目录本身不参与同步：即使 `include` 覆盖了它，推送时也会跳过，拉取时也不会写入。
 - 这个目录默认写进 `.git/info/exclude`（worktree 场景下写到 `git rev-parse --git-common-dir` 所指目录下的 `info/exclude`），不改仓库的 `.gitignore`，也不会被提交。想入库时执行 `git add -f .kanban-hub`。
 
 ### 8.2 `kh register` 流程

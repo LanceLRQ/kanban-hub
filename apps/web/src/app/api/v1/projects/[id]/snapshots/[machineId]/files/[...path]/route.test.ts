@@ -65,6 +65,7 @@ describe("GET /api/v1/projects/:id/snapshots/:machineId/files/*path", () => {
 
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/octet-stream");
+    expect(res.headers.get("X-Content-Type-Options")).toBe("nosniff");
     const bytes = new Uint8Array(await res.arrayBuffer());
     expect(new TextDecoder().decode(bytes)).toBe("文件内容");
     expect(res.headers.get("X-KH-Sha256")).toBe(createHash("sha256").update(bytes).digest("hex"));

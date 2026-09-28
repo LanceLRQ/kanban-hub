@@ -141,4 +141,74 @@ describe("withSyncLock", () => {
     const result = await withSyncLock(ctx, "p000000001", async () => "second");
     expect(result).toBe("second");
   });
+
+  it("持有超过 10 分钟但仍在定期刷新时不被接管", async () => {
+    const home = await tempDir();
+    const start = new Date("2026-01-01T00:00:00.000Z").getTime();
+    let nowMs = start;
+    const ctx = fakeContext({ env: { KH_HOME: home }, now: () => new Date(nowMs) });
+    const file = await lockFilePath(home, "p000000001");
+
+    const result = await withSyncLock(
+      ctx,
+      "p000000001",
+      async () => {
+        // 持有到第 9 分钟时至少刷新一次
+        nowMs = start + 9 * 60 * 1000;
+        await waitFor(async () => (JSON.parse(await fs.readFile(file, "utf8")) as { refreshedAt?: string }).refreshedAt === new Date(nowMs).toISOString());
+        // 到第 15 分钟：距开始已超过 10 分钟，但距上次刷新不到 10 分钟，另一个 kh 不能接管
+        nowMs = start + 15 * 60 * 1000;
+        await expect(withSyncLock(ctx, "p000000001", async () => "stolen")).rejects.toMatchObject({
+          exitCode: EXIT.UNEXPECTED,
+        });
+        return "held";
+      },
+      { refreshIntervalMs: 10 },
+    );
+    expect(result).toBe("held");
+    await expect(fs.access(file)).rejects.toThrow();
+  });
+
+  it("释放时锁已经被别人接管：不删除别人的锁", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const file = await lockFilePath(home, "p000000001");
+    const other = JSON.stringify({ pid: process.pid, startedAt: ctx.now().toISOString(), token: "someone-else" });
+
+    await withSyncLock(ctx, "p000000001", async () => {
+      // 模拟持有期间锁被判为陈旧、被另一个 kh 接管并写入了它自己的内容
+      await fs.writeFile(file, other);
+    });
+
+    expect(await fs.readFile(file, "utf8")).toBe(other);
+  });
+
+  it("锁内容带每次获取时生成的随机 token，两次获取不同", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const file = await lockFilePath(home, "p000000001");
+    const tokens: string[] = [];
+    for (let i = 0; i < 2; i++) {
+      await withSyncLock(ctx, "p000000001", async () => {
+        tokens.push((JSON.parse(await fs.readFile(file, "utf8")) as { token: string }).token);
+      });
+    }
+    expect(tokens[0]).toMatch(/^[0-9a-f]{32}$/);
+    expect(tokens[1]).toMatch(/^[0-9a-f]{32}$/);
+    expect(tokens[0]).not.toBe(tokens[1]);
+  });
 });
+
+/** 轮询直到 check 返回 true，最多等 2 秒 */
+async function waitFor(check: () => Promise<boolean>): Promise<void> {
+  const deadline = Date.now() + 2000;
+  for (;;) {
+    try {
+      if (await check()) return;
+    } catch {
+      // 刷新过程中读到的内容可能暂时不完整，继续等
+    }
+    if (Date.now() > deadline) throw new Error("等待超时");
+    await new Promise((resolve) => setTimeout(resolve, 5));
+  }
+}

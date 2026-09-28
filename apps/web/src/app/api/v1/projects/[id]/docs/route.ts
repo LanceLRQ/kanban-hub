@@ -7,7 +7,7 @@ import { buildDocsView } from "@/server/views/docs";
 export const GET = apiRoute({ auth: "any" }, async ({ req, params, services }: AnyRouteArgs<{ id: string }>) => {
   requireProject(services.store, params.id);
   const machineId = new URL(req.url).searchParams.get("machine") ?? undefined;
-  const view = await buildDocsView(services, params.id, { machineId }, services.now());
+  const view = await buildDocsView(services, params.id, { machineId, withFile: false }, services.now());
   const { machines, tree, recent, emptyReason } = view!;
   return json({ machines, tree, recent, emptyReason });
 });

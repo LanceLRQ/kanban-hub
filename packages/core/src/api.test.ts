@@ -439,6 +439,13 @@ describe("同步相关的响应头与 schema", () => {
     expect(pullReportInput.safeParse({ ...allZero, created: 1, fromMachineIds: [M1, M2] }).success).toBe(true);
   });
 
+  it("pullReportInput：来源机器最多 100 个", () => {
+    const base = { created: 1, overwritten: 0, merged: 0, conflicts: 0, stale: 0 };
+    const ids = (n: number) => Array.from({ length: n }, (_, i) => `m${String(i).padStart(9, "0")}`);
+    expect(pullReportInput.safeParse({ ...base, fromMachineIds: ids(100) }).success).toBe(true);
+    expect(pullReportInput.safeParse({ ...base, fromMachineIds: ids(101) }).success).toBe(false);
+  });
+
   it("syncMissingDetails 的形状", () => {
     expect(syncMissingDetails.safeParse({ missingBlobs: [SHA] }).success).toBe(true);
     expect(syncMissingDetails.safeParse({ missingBlobs: ["not-a-sha"] }).success).toBe(false);

@@ -29,7 +29,12 @@ export async function GET(_req: Request, ctx: { params: Promise<{ token: string;
   const secret = rawTokenSecret(services.store.auth.sessionSecret());
   const verified = verifyRawToken(secret, token, services.now().getTime());
   if (verified === null) return empty(404);
-  if (verified === "expired") return empty(403);
+  if (verified === "expired") {
+    return new Response("链接已过期，请刷新文档页", {
+      status: 403,
+      headers: { ...SANDBOX_HEADERS, "Content-Type": "text/plain; charset=utf-8" },
+    });
+  }
 
   const manifest = services.store.getSnapshotManifest(verified.projectId, verified.machineId);
   if (!manifest || !manifest.files.some((f) => f.path === filePath)) return empty(404);

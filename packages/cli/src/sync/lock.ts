@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import fs from "node:fs/promises";
 import path from "node:path";
 import { z } from "zod";
@@ -6,13 +7,22 @@ import type { CliContext } from "../context";
 import { CliError, EXIT } from "../errors";
 import { isNoEntError } from "../fs-utils";
 
-/** 超过这个时长的锁视为陈旧（持有者多半已经崩溃退出而没能清理锁文件），可以被接管 */
+/** 超过这个时长没有刷新的锁视为陈旧（持有者多半已经卡死或崩溃而没能清理锁文件），可以被接管 */
 const LOCK_STALE_MS = 10 * 60 * 1000;
+
+/** 持有锁期间每隔这么久刷新一次锁内容里的 refreshedAt，证明持有者还在工作 */
+const LOCK_REFRESH_MS = 60 * 1000;
 
 const lockContentSchema = z.object({
   pid: z.number().int().positive(),
   startedAt: z.string(),
+  /** 最近一次刷新的时间；刚获取、还没刷新过时没有这个字段，按 startedAt 算 */
+  refreshedAt: z.string().optional(),
+  /** 每次获取时随机生成，用来确认锁仍是自己的；旧版本 kh 写的锁没有这个字段 */
+  token: z.string().optional(),
 });
+
+type LockContent = z.infer<typeof lockContentSchema>;
 
 function lockPath(home: string, projectId: string): string {
   return path.join(home, "cache", projectId, "lock");
@@ -30,7 +40,7 @@ function isProcessAlive(pid: number): boolean {
 }
 
 /** 内容无法解析时返回 null；文件不存在时也返回 null（调用方按各自需要区分这两种情况） */
-async function readLock(file: string): Promise<z.infer<typeof lockContentSchema> | null> {
+async function readLock(file: string): Promise<LockContent | null> {
   let raw: string;
   try {
     raw = await fs.readFile(file, "utf8");
@@ -58,8 +68,8 @@ async function mtimeOf(file: string): Promise<number | null> {
 }
 
 /**
- * 判定锁文件是否陈旧。内容能解析出 pid/startedAt 时，按“持有者进程已退出”或“超过 10 分钟”
- * 判断。内容解析不出来——既可能是持有者写坏了，也可能正好撞上另一个进程刚创建文件、还没来得
+ * 判定锁文件是否陈旧。内容能解析出来时，按“持有者进程已退出”或“超过 10 分钟没有刷新”判断
+ * （持有者每分钟刷新一次 refreshedAt，所以活着且还在工作的持有者不会因为持有得久被接管）。内容解析不出来——既可能是持有者写坏了，也可能正好撞上另一个进程刚创建文件、还没来得
  * 及写完内容的窗口期（"wx" 独占创建之后，写入数据之前文件会短暂存在但为空）——这种情况不能
  * 直接当陈旧处理，否则会把刚创建锁的合法持有者判成陈旧并抢走它的锁；改用文件自身的 mtime
  * 判断：mtime 距今超过 10 分钟才算陈旧，否则当作“有人持有，只是内容还没读到”。
@@ -68,7 +78,7 @@ async function isStale(file: string, ctx: CliContext): Promise<boolean> {
   const lock = await readLock(file);
   if (lock !== null) {
     if (!isProcessAlive(lock.pid)) return true;
-    const age = ctx.now().getTime() - new Date(lock.startedAt).getTime();
+    const age = ctx.now().getTime() - new Date(lock.refreshedAt ?? lock.startedAt).getTime();
     return age >= LOCK_STALE_MS;
   }
   const mtimeMs = await mtimeOf(file);
@@ -77,10 +87,11 @@ async function isStale(file: string, ctx: CliContext): Promise<boolean> {
   return age >= LOCK_STALE_MS;
 }
 
-async function acquireLock(file: string, ctx: CliContext): Promise<void> {
+/** 获取成功时返回写进锁文件的内容，之后刷新、释放都用其中的 token 确认锁仍是自己的 */
+async function acquireLock(file: string, ctx: CliContext): Promise<LockContent> {
   await fs.mkdir(path.dirname(file), { recursive: true });
-  const startedAt = ctx.now().toISOString();
-  const content = JSON.stringify({ pid: process.pid, startedAt });
+  const mine: LockContent = { pid: process.pid, startedAt: ctx.now().toISOString(), token: randomBytes(16).toString("hex") };
+  const content = JSON.stringify(mine);
 
   for (;;) {
     try {
@@ -103,26 +114,60 @@ async function acquireLock(file: string, ctx: CliContext): Promise<void> {
     // 独占，不保证内容不被后来者用同样的手段整体替换）。重新读一次，确认内容确实是自己刚才
     // 写的那一份，不是就当作没抢到，按“另一个同步或拉取正在进行”报错，不能把不属于自己的
     // 锁当成拿到手了。
-    const confirmed = await readLock(file);
-    if (confirmed === null || confirmed.pid !== process.pid || confirmed.startedAt !== startedAt) {
+    if (!(await isMine(file, mine))) {
       throw new CliError(EXIT.UNEXPECTED, "另一个同步或拉取正在进行", "等待它结束后重试");
     }
-    return;
+    return mine;
   }
+}
+
+/** 回读锁文件，确认内容仍是自己写的那一份（pid 与 token 都对得上） */
+async function isMine(file: string, mine: LockContent): Promise<boolean> {
+  const current = await readLock(file);
+  return current !== null && current.pid === mine.pid && current.token === mine.token;
+}
+
+/**
+ * 刷新锁：先确认锁仍是自己的，再把带新 refreshedAt 的内容写到临时文件、rename 覆盖锁文件，
+ * 读的一方不会读到写了一半的内容。锁已经不是自己的（被接管）就不动它。
+ */
+async function refreshLock(file: string, mine: LockContent, ctx: CliContext): Promise<void> {
+  if (!(await isMine(file, mine))) return;
+  const tmp = `${file}.${mine.token}.tmp`;
+  await fs.writeFile(tmp, JSON.stringify({ ...mine, refreshedAt: ctx.now().toISOString() }));
+  await fs.rename(tmp, file);
 }
 
 /**
  * kh sync / kh pull / kh conflicts resolve 用的进程间互斥锁：同一时刻只允许一个持有者。
- * 持有者进程已经不在，或者持有超过 10 分钟，都视为陈旧锁，允许接管；否则报错退出。
- * fn 无论成功还是抛出异常，锁都会被释放。
+ * 持有期间每分钟刷新一次锁内容里的 refreshedAt；持有者进程已经不在，或者超过 10 分钟没有
+ * 刷新，都视为陈旧锁，允许接管；否则报错退出。fn 无论成功还是抛出异常，都会停止刷新并释放锁；
+ * 释放前回读，锁已经被别人接管时不删除。refreshIntervalMs 只给测试缩短刷新间隔用。
  */
-export async function withSyncLock<T>(ctx: CliContext, projectId: string, fn: () => Promise<T>): Promise<T> {
+export async function withSyncLock<T>(
+  ctx: CliContext,
+  projectId: string,
+  fn: () => Promise<T>,
+  opts: { refreshIntervalMs?: number } = {},
+): Promise<T> {
   const home = resolveKhHome(ctx);
   const file = lockPath(home, projectId);
-  await acquireLock(file, ctx);
+  const mine = await acquireLock(file, ctx);
+
+  // 刷新失败（例如磁盘暂时写不进去）不打断正在进行的同步，下一次定时再试
+  let inflight: Promise<void> = Promise.resolve();
+  const timer = setInterval(() => {
+    inflight = inflight.then(() => refreshLock(file, mine, ctx)).catch(() => {});
+  }, opts.refreshIntervalMs ?? LOCK_REFRESH_MS);
+  timer.unref();
+
   try {
     return await fn();
   } finally {
-    await fs.rm(file, { force: true });
+    clearInterval(timer);
+    // 等进行中的刷新结束，免得它在删除之后又把锁文件写回来
+    await inflight;
+    await fs.rm(`${file}.${mine.token}.tmp`, { force: true });
+    if (await isMine(file, mine)) await fs.rm(file, { force: true });
   }
 }

@@ -49,6 +49,8 @@ export interface DocsView {
 export interface DocsViewOptions {
   machineId?: string;
   path?: string;
+  /** 默认 true；为 false 时不读取当前文件、不签发 /raw 令牌，file 与 rawToken 为 null（只要文档树等信息的调用方用） */
+  withFile?: boolean;
 }
 
 const RECENT_LIMIT = 10;
@@ -86,7 +88,7 @@ function timeOf(lastSyncAt: string | null): number {
  * 项目不存在时返回 null。没有任何机器同步过文档时 `emptyReason` 为 `"no-sync"`，
  * 其余字段一律为空。选中的机器：显式传 `machineId` 且有快照时用它，否则取 `lastSyncAt`
  * 最新的一台；当前文件：显式传 `path` 时用它（不在清单里时 `file.exists` 为 false），
- * 否则按默认规则选文件（见 `pickDefaultPath`）。
+ * 否则按默认规则选文件（见 `pickDefaultPath`）。`withFile: false` 时跳过当前文件与令牌。
  */
 export async function buildDocsView(services: Services, projectId: string, opts: DocsViewOptions, now: Date): Promise<DocsView | null> {
   const project = services.store.getProject(projectId);
@@ -124,6 +126,10 @@ export async function buildDocsView(services: Services, projectId: string, opts:
     })
     .slice(0, RECENT_LIMIT)
     .map((f) => ({ path: f.path, changedAt: f.changedAt, changedAtLabel: formatRelative(f.changedAt, now) }));
+
+  if (opts.withFile === false) {
+    return { machines, tree, filePaths, recent, file: null, rawToken: null, emptyReason: null };
+  }
 
   const rawSecret = rawTokenSecret(services.store.auth.sessionSecret());
   const rawToken = signRawToken(rawSecret, { projectId, machineId: selected.machineId }, now);

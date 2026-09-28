@@ -5,6 +5,7 @@ import picomatch from "picomatch";
 import type { SyncScope } from "@kanban-hub/core/schema";
 import { SYNC_ALWAYS_EXCLUDE } from "@kanban-hub/core/sync";
 import { KH_TMP_PATTERN } from "../fs-utils";
+import { REPO_CONFIG_DIR } from "../repo/config";
 
 export interface ScanFile {
   path: string;
@@ -92,6 +93,11 @@ const ALWAYS_EXCLUDE_DIR_NAMES = new Set(
   ),
 );
 
+/** 仓库根的 .kanban-hub/ 是 kh 自己的配置目录，与 kh 的临时文件一样不参与同步（比较不区分大小写） */
+function isRepoConfigPath(relPath: string): boolean {
+  return relPath.split("/")[0]!.toLowerCase() === REPO_CONFIG_DIR.toLowerCase();
+}
+
 /**
  * 扫描仓库内符合同步范围的文件。只从 include 各模式的静态前缀开始遍历（例如 docs/** 只从
  * docs/ 开始），前缀之外即使有读不了的目录也不会被访问到，因此不会抛错。
@@ -103,7 +109,7 @@ export async function scanSyncFiles(root: string, scope: SyncScope): Promise<Sca
   const ignoredLinks = new Set<string>();
 
   function classify(relPath: string, absPath: string, size: number, mtimeMs: number): void {
-    if (KH_TMP_PATTERN.test(path.basename(relPath))) return;
+    if (KH_TMP_PATTERN.test(path.basename(relPath)) || isRepoConfigPath(relPath)) return;
     if (!isMatch(relPath, matchers)) return;
     if (size > scope.maxFileSize) {
       skipped.set(relPath, { path: relPath, size });
@@ -162,7 +168,7 @@ export async function scanSyncFiles(root: string, scope: SyncScope): Promise<Sca
         continue;
       }
       if (entry.isDirectory()) {
-        if (ALWAYS_EXCLUDE_DIR_NAMES.has(entry.name)) continue;
+        if (ALWAYS_EXCLUDE_DIR_NAMES.has(entry.name) || isRepoConfigPath(rel)) continue;
         await visitDir(abs, rel);
         continue;
       }

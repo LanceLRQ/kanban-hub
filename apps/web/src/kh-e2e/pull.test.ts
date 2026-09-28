@@ -13,7 +13,7 @@ import { pullDocs } from "../../../../packages/cli/src/sync/pull";
 import { openSyncState } from "../../../../packages/cli/src/sync/state";
 import { startTestServer, type TestServer } from "../server/api/test-server";
 import { makeFleet, sha, type Fleet, type Machine } from "./fleet";
-import { makeKhContext, runKh, type RunKhResult } from "./harness";
+import { gitFixture, makeKhContext, runKh, type RunKhResult } from "./harness";
 
 /** 整个目录的指纹：每个条目的相对路径、类型和内容 hash（软链接取链接目标） */
 async function hashTree(dir: string): Promise<string> {
@@ -183,6 +183,26 @@ describe("kh pull", () => {
       expect(await B.read("notes/plain.md")).toBe("plain\n");
       expect(pull.stdout).toContain("被 git 跟踪");
       expect(pull.stdout).toContain("1 个");
+    });
+
+    it("被 git 跟踪的路径按 Unicode 规范化形式比较：本机索引里是 NFD 写法，对方清单给 NFC 写法时同样跳过", async () => {
+      const nfc = "notes/caf\u00e9.md";
+      const nfd = "notes/cafe\u0301.md";
+      expect(nfc).not.toBe(nfd);
+      // 直接往 B 的索引里登记 NFD 写法的路径（关掉 precomposeunicode，避免 git 在 macOS 上自动转成 NFC）
+      await B.write(nfd, "tracked nfd\n");
+      const blob = gitFixture(["hash-object", "-w", path.join(B.repo, ...nfd.split("/"))], B.repo).trim();
+      gitFixture(["-c", "core.precomposeunicode=false", "update-index", "--add", "--cacheinfo", `100644,${blob},${nfd}`], B.repo);
+
+      await A.write(nfc, "from A\n");
+      expectOk(await A.kh(["sync"]));
+
+      const pull = expectOk(await B.kh(["pull"]));
+      // notes/tracked.md 与这个 NFD 写法的路径各算一个
+      expect(pull.stdout).toContain("被 git 跟踪、已跳过：2 个");
+      expect(pull.stdout).not.toContain("冲突");
+      expect(await B.read(nfd)).toBe("tracked nfd\n");
+      expect((await B.state()).conflicts).toEqual({});
     });
 
     it("从不删除本地文件：A 删掉文件并同步，B 拉取后文件仍在", async () => {
@@ -518,6 +538,43 @@ describe("kh pull", () => {
       expect(result.code).toBe(0);
       expect(result.stdout).toContain("路径不安全、已跳过：1 个");
       expect(await B.read("notes/a.md")).toBe("edited meanwhile on B\n");
+      expect((await B.state()).base["notes/a.md"]).toBe(sha("A1\n"));
+    });
+
+    it("第一个文件就下载失败、一项都没完成：不输出“已是最新”，而是说明出错之前没有完成任何文件", async () => {
+      await A.write("notes/1.md", "one\n");
+      expectOk(await A.kh(["sync"]));
+
+      const failing = interceptFile("notes/1.md", async () => {
+        throw new TypeError("fetch failed");
+      });
+      const result = await runKh(["pull"], { cwd: B.repo, khHome: B.home, fetch: failing });
+      expect(result.code).toBe(4);
+      expect(result.stdout).toContain("拉取中途出错");
+      expect(result.stdout).toContain("（出错之前没有完成任何文件）");
+      expect(result.stdout).not.toContain("已是最新");
+    });
+
+    it("覆盖前按实际内容核对本地文件：hash 缓存命中但内容已变时不覆盖，计为不安全跳过", async () => {
+      await A.write("notes/a.md", "A1\n");
+      expectOk(await A.kh(["sync"]));
+      expectOk(await B.kh(["pull"]));
+      await A.write("notes/a.md", "A2\n");
+      expectOk(await A.kh(["sync"]));
+
+      // B 在同一个 mtime 刻度内把内容改成同样大小的另一份：hash 缓存按 size + mtime 命中，仍记着旧内容
+      await B.write("notes/a.md", "B1\n");
+      const stat = await fs.stat(path.join(B.repo, "notes", "a.md"));
+      const statePath = path.join(B.home, "cache", fleet.projectId, "state.json");
+      const raw = JSON.parse(await fs.readFile(statePath, "utf8")) as { hashCache: Record<string, unknown> };
+      raw.hashCache["notes/a.md"] = { size: stat.size, mtimeMs: stat.mtimeMs, sha: sha("A1\n") };
+      await fs.writeFile(statePath, JSON.stringify(raw));
+
+      const result = await runKh(["pull"], { cwd: B.repo, khHome: B.home });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("路径不安全、已跳过：1 个");
+      expect(result.stdout).not.toContain("覆盖");
+      expect(await B.read("notes/a.md")).toBe("B1\n");
       expect((await B.state()).base["notes/a.md"]).toBe(sha("A1\n"));
     });
 

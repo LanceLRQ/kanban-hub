@@ -19,7 +19,7 @@ import { validateSyncGlob, type RemoteFile } from "@kanban-hub/core/sync";
 import { loginHint, readMachineConfig, resolveKhHome } from "../config/home";
 import type { CliContext } from "../context";
 import { CliError, EXIT } from "../errors";
-import { KH_TMP_PATTERN } from "../fs-utils";
+import { isNoEntError, KH_TMP_PATTERN } from "../fs-utils";
 import type { ApiClient } from "../http/client";
 import { REPO_CONFIG_DIR, toSyncScope } from "../repo/config";
 import { runGit } from "../repo/git";
@@ -114,8 +114,16 @@ async function selectRemote(
 }
 
 /**
- * 本机被 git 跟踪的路径（git ls-files -z），用于跳过它们：比较时不区分大小写（大小写不敏感的
- * 文件系统上，只差大小写的两个路径是同一个文件）；某一级父路径被跟踪（例如子模块）也算被跟踪。
+ * 路径的比较键：先规范化成 NFC 再转小写，与 core 判定路径冲突时的规则一致。大小写不敏感、
+ * 对 Unicode 规范化形式不敏感的文件系统（例如 macOS）上，只差这两点的路径是同一个文件。
+ */
+function pathKey(p: string): string {
+  return p.normalize("NFC").toLowerCase();
+}
+
+/**
+ * 本机被 git 跟踪的路径（git ls-files -z），用于跳过它们：比较时不区分大小写和 Unicode 规范化形式
+ * （见 pathKey）；某一级父路径被跟踪（例如子模块）也算被跟踪。
  * 不是 git 仓库时为空；是 git 仓库但读取失败时报错，不在不知道哪些文件被跟踪的情况下写入。
  */
 export async function listTrackedPaths(ctx: CliContext, root: string): Promise<(relPath: string) => boolean> {
@@ -130,10 +138,10 @@ export async function listTrackedPaths(ctx: CliContext, root: string): Promise<(
       .toString("utf8")
       .split("\0")
       .filter((p) => p !== "")
-      .map((p) => p.toLowerCase()),
+      .map(pathKey),
   );
   return (relPath) => {
-    const segs = relPath.toLowerCase().split("/");
+    const segs = pathKey(relPath).split("/");
     for (let i = 1; i <= segs.length; i++) {
       if (tracked.has(segs.slice(0, i).join("/"))) return true;
     }
@@ -167,7 +175,7 @@ class PullRun {
     fromMachineIds: [],
   };
   private readonly used = new Set<string>();
-  /** 本次已经处理过的路径（小写）：两台机器的快照里只差大小写的路径，第二个不再处理 */
+  /** 本次已经处理过的路径（按 pathKey）：两台机器的快照里只差大小写或规范化形式的路径，第二个不再处理 */
   private readonly handled = new Set<string>();
 
   constructor(
@@ -215,9 +223,15 @@ class PullRun {
     return bytes;
   }
 
-  /** 读本地内容，并核对它仍是判定时算出的 hash；对不上说明文件刚被改过，返回 null */
+  /** 读本地内容，并核对它仍是判定时算出的 hash；对不上或者文件刚被删掉，都说明本地刚被改过，返回 null */
   private async readLocal(entry: Extract<LocalEntry, { kind: "file" }>, expectedSha: string): Promise<Uint8Array | null> {
-    const bytes = await fs.readFile(entry.absPath);
+    let bytes: Uint8Array;
+    try {
+      bytes = await fs.readFile(entry.absPath);
+    } catch (err) {
+      if (isNoEntError(err)) return null;
+      throw err;
+    }
     return sha256Hex(bytes) === expectedSha ? bytes : null;
   }
 
@@ -258,7 +272,7 @@ class PullRun {
 
   async process(file: RemoteFile): Promise<void> {
     const relPath = file.path;
-    const key = relPath.toLowerCase();
+    const key = pathKey(relPath);
     if (this.handled.has(key) || isReservedPath(relPath)) {
       this.result.skippedUnsafe.push(relPath);
       return;
@@ -296,6 +310,12 @@ class PullRun {
           return;
         }
         if (local.kind === "unsafe") return; // decidePull 已经排除，这里只为收窄类型
+        // 判定用的本地 hash 可能来自按 size + mtime 命中的缓存：覆盖前按实际内容再核对一次，
+        // 对不上说明本地改过（mtime 精度较粗时可能看不出来），这次不动它，下次拉取重新判定
+        if (local.kind === "file" && localSha !== null && (await this.readLocal(local, localSha)) === null) {
+          this.result.skippedUnsafe.push(relPath);
+          return;
+        }
         const bytes = await this.fetchRemote(file);
         if (bytes === null || !(await this.write(relPath, bytes, local))) return;
         await this.adoptBase(relPath, file.sha256, bytes);
@@ -512,7 +532,10 @@ export function renderPullResult(result: PullResult, dryRun: boolean, interrupte
     lines.push(`${label}（${paths.length}）：`);
     for (const p of paths) lines.push(`  ${p}`);
   }
-  if (lines.length === (dryRun ? 1 : 0) + (interrupted ? 1 : 0)) lines.push(dryRun ? "没有需要拉取的变化" : "已是最新，没有需要拉取的变化");
+  if (lines.length === (dryRun ? 1 : 0) + (interrupted ? 1 : 0)) {
+    if (interrupted) lines.push("（出错之前没有完成任何文件）");
+    else lines.push(dryRun ? "没有需要拉取的变化" : "已是最新，没有需要拉取的变化");
+  }
   if (result.skippedTracked.length > 0) lines.push(`被 git 跟踪、已跳过：${result.skippedTracked.length} 个`);
   if (result.skippedUnsafe.length > 0) lines.push(`路径不安全、已跳过：${result.skippedUnsafe.length} 个`);
   if (result.skippedChanged.length > 0) {

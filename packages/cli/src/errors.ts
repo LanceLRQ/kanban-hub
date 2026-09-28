@@ -19,8 +19,17 @@ export class CliError extends Error {
     readonly hint?: string,
     /** 服务端错误响应里的 error.details（例如 missingBlobs），没有则为 undefined */
     readonly details?: unknown,
+    /** 来自 HTTP 错误响应时的状态码与服务端错误码（error.code）；连不上服务端等没有响应的情况两者都没有 */
+    http?: { status: number; code?: string },
   ) {
     super(message);
     this.name = "CliError";
+    this.status = http?.status;
+    this.code = http?.code;
   }
+
+  /** HTTP 状态码；不是由错误响应产生的 CliError 为 undefined */
+  readonly status: number | undefined;
+  /** 服务端错误响应里的 error.code（例如 unavailable）；响应不是错误格式时为 undefined */
+  readonly code: string | undefined;
 }

@@ -157,6 +157,23 @@ describe("scanSyncFiles", () => {
     expect(result.files.map((f) => f.path)).toEqual(["docs/a.md"]);
   });
 
+  it("仓库根的 .kanban-hub/ 目录不参与同步，即使 include 覆盖了它（子目录里同名的目录照常）", async () => {
+    const root = await tempDir();
+    await write(root, ".kanban-hub/config.yaml", "projectId: p1\n");
+    await write(root, ".KANBAN-HUB/other.md");
+    await write(root, "docs/a.md");
+    await write(root, "docs/.kanban-hub/b.md");
+    const result = await scanSyncFiles(root, scope({ include: ["**"] }));
+    const paths = result.files.map((f) => f.path);
+    expect(paths).not.toContain(".kanban-hub/config.yaml");
+    expect(paths.some((p) => p.toLowerCase().startsWith(".kanban-hub/"))).toBe(false);
+    expect(paths).toContain("docs/a.md");
+    expect(paths).toContain("docs/.kanban-hub/b.md");
+
+    const direct = await scanSyncFiles(root, scope({ include: [".kanban-hub/**"] }));
+    expect(direct.files).toEqual([]);
+  });
+
   it("include 为根目录的 *.md 时不会遍历子目录（前缀为空但只匹配根目录文件）", async () => {
     const root = await tempDir();
     await write(root, "README.md");

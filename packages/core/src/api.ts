@@ -312,7 +312,8 @@ export const pullReportInput = z
     merged: z.number().int().min(0),
     conflicts: z.number().int().min(0),
     stale: z.number().int().min(0),
-    fromMachineIds: z.array(idSchema),
+    /** 取用了内容的来源机器；一个项目的机器数远小于这个上限，只防止单条事件写入过多 ID */
+    fromMachineIds: z.array(idSchema).max(100),
   })
   .strict()
   .superRefine((counts, ctx) => {

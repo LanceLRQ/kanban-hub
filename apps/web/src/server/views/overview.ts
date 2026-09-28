@@ -10,8 +10,7 @@ import type { Board, Cycle, Event, Health, HumanKind, Project, Task } from "@kan
 import { actorLabel, type ActorLabel } from "@/lib/actor";
 import { type EnumLabelFn, type EventDescription, describeEvent } from "@/lib/events";
 import { locationSummary, primaryLocation, type LocationSummary } from "@/lib/location";
-import { taskShortRef } from "@/lib/refs";
-import { serverTimeZone } from "@/lib/time";
+import { taskShortRefTable } from "@/lib/refs";
 import type { Services } from "@/server/services";
 import type { Store } from "@/server/store/store";
 
@@ -55,7 +54,6 @@ export interface ProjectCardView {
 export interface OverviewView {
   inbox: OverviewInboxGroup[];
   projects: ProjectCardView[];
-  timeZone: string;
 }
 
 /**
@@ -72,9 +70,10 @@ function isInboxTask(task: Pick<Task, "human" | "status">): boolean {
   return task.human !== null && task.status !== "done" && task.status !== "cancelled";
 }
 
-/** 项目的收件箱条目，附带各自的 human.kind，供调用方按组归类 */
+/** 项目的收件箱条目，附带各自的 human.kind，供调用方按组归类；短引用表整个项目只算一次 */
 function collectInboxItems(project: Pick<Project, "id" | "name">, board: Pick<Board, "tasks">): { kind: HumanKind; item: OverviewInboxItem }[] {
   const result: { kind: HumanKind; item: OverviewInboxItem }[] = [];
+  const refs = taskShortRefTable(board);
   for (const task of board.tasks) {
     if (!isInboxTask(task)) continue;
     result.push({
@@ -83,7 +82,7 @@ function collectInboxItems(project: Pick<Project, "id" | "name">, board: Pick<Bo
         projectId: project.id,
         projectName: project.name,
         taskId: task.id,
-        ref: taskShortRef(board as unknown as Board, task.id),
+        ref: refs.get(task.id) ?? `#${task.id}`,
         text: inboxItemText(task),
         updatedAt: task.updatedAt,
       },
@@ -128,6 +127,7 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
 
   const inboxByKind = new Map<HumanKind, OverviewInboxItem[]>(INBOX_KINDS.map((kind) => [kind, []]));
   const rows: { card: ProjectCardView; lastEventAt: string | null }[] = [];
+  const latestEvents = store.latestEventPerProject();
 
   for (const project of projects) {
     const board = store.getBoard(project.id);
@@ -138,7 +138,7 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
     }
 
     const lastEventAt = store.getLastEventAt(project.id);
-    const [latest] = await store.listEvents({ projectId: project.id, limit: 1 });
+    const latest = latestEvents.get(project.id);
 
     const lastEvent = resolveLastEvent(latest as unknown as Event | undefined, {
       board: board as unknown as Board,
@@ -178,7 +178,6 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
   return {
     inbox: INBOX_KINDS.map((kind) => ({ kind, items: inboxByKind.get(kind)! })),
     projects: rows.map((r) => r.card),
-    timeZone: serverTimeZone(),
   };
 }
 

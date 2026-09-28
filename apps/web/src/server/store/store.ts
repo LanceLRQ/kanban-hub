@@ -158,6 +158,22 @@ export class Store {
     return this.lastEventAt.get(projectId) ?? null;
   }
 
+  /**
+   * 各项目在内存窗口里最新的一条事件；只读 recentEvents，不进写入队列，不读历史文件
+   * （比对每个项目分别调 listEvents 便宜得多，总览页的“最近活动”用它）。
+   * 内存窗口里没有事件的项目不出现在结果里。同一时刻的多条事件，按与 lib/events.ts 的
+   * sortEventsForDisplay 一致的次级顺序取最新一条：*.created → *.updated →
+   * task.status_changed → task.human_changed → 其他，最后按 id 兜底。
+   */
+  latestEventPerProject(): Map<string, DeepReadonly<Event>> {
+    const result = new Map<string, DeepReadonly<Event>>();
+    for (const event of this.recentEvents) {
+      const current = result.get(event.projectId);
+      if (!current || isLaterEvent(event, current)) result.set(event.projectId, event);
+    }
+    return result;
+  }
+
   /** 待提交到 git 的文件数 */
   pendingCommitCount(): number {
     return this.committer.pendingCount();
@@ -482,6 +498,29 @@ function compareEvents(a: EventCursor, b: EventCursor): number {
 
 function newestFirst(a: Event, b: Event): number {
   return compareEvents(b, a);
+}
+
+/**
+ * 同一时刻多条事件的次级顺序：*.created → *.updated → task.status_changed →
+ * task.human_changed → 其他。数值越大越新，与 lib/events.ts 的 secondaryOrder 是同一条
+ * 规则（那边用于时间线的显示排序），latestEventPerProject 单独维护一份，避免这个纯存储层
+ * 反过来依赖网页展示层的模块。
+ */
+function secondaryOrderForLatest(type: EventType): number {
+  if (type.endsWith(".created")) return 4;
+  if (type.endsWith(".updated")) return 3;
+  if (type === "task.status_changed") return 2;
+  if (type === "task.human_changed") return 1;
+  return 0;
+}
+
+/** a 是否比 b 更“新”：先比时间，同一时刻按 secondaryOrderForLatest，再按 id 兜底 */
+function isLaterEvent(a: Event, b: Event): boolean {
+  const byTs = Date.parse(a.ts) - Date.parse(b.ts);
+  if (byTs !== 0) return byTs > 0;
+  const byOrder = secondaryOrderForLatest(a.type) - secondaryOrderForLatest(b.type);
+  if (byOrder !== 0) return byOrder > 0;
+  return a.id > b.id;
 }
 
 /** actor 筛选：filter 为 "web" 匹配网页操作，其余按机器 ID 匹配 */

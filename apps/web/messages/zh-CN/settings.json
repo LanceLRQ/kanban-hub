@@ -4,21 +4,7 @@
     "title": "外观",
     "theme": "主题",
     "monoFont": "等宽字体",
-    "cjkFont": "中文字体",
-    "themes": {
-      "print": "褪色印刷",
-      "collage": "纸本拼贴"
-    },
-    "monoFonts": {
-      "jetbrains-mono": "JetBrains Mono",
-      "ibm-plex-mono": "IBM Plex Mono",
-      "fira-code": "Fira Code"
-    },
-    "cjkFonts": {
-      "lxgw-wenkai": "霞鹜文楷",
-      "noto-sans-sc": "思源黑体",
-      "noto-serif-sc": "思源宋体"
-    }
+    "cjkFont": "中文字体"
   },
   "service": {
     "title": "服务信息",

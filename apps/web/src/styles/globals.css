@@ -1,3 +1,21 @@
+/*
+ * 声明层的顺序（在任何 @import 之前，保证这条声明是整个层顺序的第一次出现）：
+ * theme、base、components、utilities 是 Tailwind 内部的四层（@import "tailwindcss" 展开成
+ * `@layer theme, base, components, utilities;` 加三个按层导入的文件，顺序与这里一致，不冲突）；
+ * kh-base、kh-theme 是本项目自己的两层，排在 utilities 之后：这两层里的规则不用拔高声明的
+ * 优先级，天然就能盖过 cva 生成的组件类和 Tailwind 的工具类（层的优先级不看选择器优先级，
+ * 只看层顺序）。
+ *
+ * - kh-base：区域样式文件（components/*\/*.css）里不带主题前缀的基础规则；
+ * - kh-theme：全部主题 B「纸本拼贴」的覆盖（[data-theme="collage"] 开头的规则），包括
+ *   globals.css 自己 @layer components 里带主题前缀的部分。新增的主题覆盖一律放这一层。
+ *
+ * tokens.css、themes/collage.css 例外：它们只是给 CSS 变量赋值（不覆盖具体的视觉属性），
+ * 不放进层里——放进层会让 themes/collage.css 输给同样不在层里的 tokens.css（层内容一律
+ * 输给不在任何层里的规则，不看选择器优先级），主题 B 的取值就会被主题 A 的 :root 盖掉。
+ */
+@layer theme, base, components, utilities, kh-base, kh-theme;
+
 @import "tailwindcss";
 @import "tw-animate-css";
 @import "./fonts.css";
@@ -129,54 +147,14 @@
     border-radius: var(--radius-d);
   }
 
-  /*
-   * wordmark：主题 A 用等宽字体（气质更像工具软件），主题 B 换成标题字体（--cjk-heading，
-   * 跟随用户选的中文字体和主题 B 的加重规则）。故意不用 Tailwind 的 `font-mono` 工具类，
-   * 避免工具类（utilities 层，层序在 components 之后）盖掉这里的主题覆盖。
-   */
+  /* wordmark：主题 A 用等宽字体（气质更像工具软件），主题 B 的覆盖见 @layer kh-theme */
   .kh-wordmark {
     font-family: var(--mono);
   }
-  [data-theme="collage"] .kh-wordmark {
-    font-family: var(--cjk-heading);
-    font-weight: var(--cjk-heading-weight);
-    letter-spacing: 0.02em;
-  }
-
-  /* 顶栏日期：主题 B 加下划线（手账页首的气质），主题 A 不带 */
-  [data-theme="collage"] .kh-topbar-date {
-    border-bottom: 3px double var(--border-soft);
-    padding-bottom: 3px;
-  }
 
   /*
-   * 顶栏导航按钮：挂在 shadcn Button 已有的 data-variant 上，不新建组件。
-   * 主题 B：非当前项虚线边框 + 浅灰字，当前项实线边框；圆角改用不对称的 --radius-a/-b。
-   * `border-radius` 需要 !important——Button 的 `rounded-md` 来自 cva 生成的工具类
-   * （utilities 层），层序在这里的 components 层之后，同优先级时工具类会赢。
-   */
-  /*
-   * border-width/style/color 也加 !important：Button 的 outline 变体自带 Tailwind 的
-   * `border` 工具类（utilities 层，层序在这里的 components 层之后），1px 实线的 border-width
-   * 同优先级时会跟这里打平手、按源码顺序判定，为避免这种脆弱的依赖关系，边框的三个属性
-   * 都显式 !important，跟 border-radius 一样的理由。
-   */
-  [data-theme="collage"] .kh-nav-item[data-variant="outline"] {
-    border-width: 1.5px !important;
-    border-style: dashed !important;
-    border-color: var(--border-soft) !important;
-    color: var(--fg-muted);
-    border-radius: var(--radius-a) !important;
-  }
-  [data-theme="collage"] .kh-nav-item[data-variant="secondary"] {
-    border: 1.5px solid var(--border);
-    border-radius: var(--radius-b) !important;
-  }
-
-  /*
-   * 项目标签栏：主题 A 是连成一条、共用外边框和偏移阴影的分段控件；主题 B 覆盖成
-   * 各自独立、留白间隔的一组按钮，非当前项虚线边框，当前项实线边框并带一条胶带装饰。
-   * `.kh-tab-tape` 默认隐藏，只在主题 B 的当前项里显示。
+   * 项目标签栏：主题 A 是连成一条、共用外边框和偏移阴影的分段控件；主题 B 的覆盖见
+   * @layer kh-theme。`.kh-tab-tape` 默认隐藏，只在主题 B 的当前项里显示。
    */
   .kh-tabs {
     display: inline-flex;
@@ -185,13 +163,6 @@
     border: 1px solid var(--border);
     background: var(--card);
     box-shadow: var(--shadow-raised);
-  }
-  [data-theme="collage"] .kh-tabs {
-    overflow: visible;
-    gap: 0.5rem;
-    border: none;
-    box-shadow: none;
-    background: transparent;
   }
 
   .kh-tab {
@@ -205,19 +176,6 @@
   }
   .kh-tab:last-child {
     border-right: 0;
-  }
-  [data-theme="collage"] .kh-tab {
-    border: 1px dashed var(--border-soft);
-    border-radius: var(--radius-a);
-    color: var(--fg-muted);
-  }
-  [data-theme="collage"] .kh-tab[data-active="true"] {
-    border: 1.5px solid var(--border);
-    color: var(--foreground);
-    font-weight: 800;
-  }
-  [data-theme="collage"] .kh-tab[data-disabled="true"] {
-    box-shadow: none;
   }
 
   .kh-tab-tape {
@@ -234,29 +192,15 @@
     border-radius: 1px;
     pointer-events: none;
   }
-  [data-theme="collage"] .kh-tab[data-active="true"] .kh-tab-tape {
-    display: block;
-  }
 
-  /*
-   * 项目头部卡片：主题 B 用不对称圆角，分隔线换成虚线；主题 A 保持规整圆角和实线。
-   * 圆角不用 Tailwind 的 `rounded-md`（同样是 utilities 层会赢的问题），改用这个类自己
-   * 控制 border-radius。
-   */
+  /* 项目头部卡片：主题 A 规整圆角，主题 B 的不对称覆盖见 @layer kh-theme */
   .kh-project-header {
     border-radius: var(--radius);
   }
-  [data-theme="collage"] .kh-project-header {
-    border-radius: var(--radius-d);
-  }
-  [data-theme="collage"] .kh-project-header-divider {
-    border-top-style: dashed !important;
-    border-top-color: var(--border-soft) !important;
-  }
 
   /*
-   * 健康度徽标：主题 A 保持实心填色，前面加一个带对勾的小方框；主题 B 改成描边 + 圆点，
-   * 圆点颜色仍然是健康度语义色（同一个 bg-health-* 工具类，只是形状和边框由主题决定）。
+   * 健康度徽标：主题 A 保持实心填色，前面加一个带对勾的小方框；主题 B 的覆盖（描边 + 圆点）
+   * 见 @layer kh-theme。
    */
   .kh-health-icon {
     display: inline-flex;
@@ -275,8 +219,87 @@
     line-height: 1;
     color: var(--card);
   }
+}
+
+@layer kh-theme {
+  /*
+   * 这一层排在 utilities 之后（见文件头的层顺序声明），层内规则不用拔高声明的优先级，
+   * 天然就能盖过 cva 生成的组件类和 Tailwind 的工具类——层的优先级只看层顺序，不看选择器
+   * 优先级。
+   */
+  [data-theme="collage"] .kh-wordmark {
+    font-family: var(--cjk-heading);
+    font-weight: var(--cjk-heading-weight);
+    letter-spacing: 0.02em;
+  }
+
+  /* 顶栏日期：主题 B 加下划线（手账页首的气质），主题 A 不带 */
+  [data-theme="collage"] .kh-topbar-date {
+    border-bottom: 3px double var(--border-soft);
+    padding-bottom: 3px;
+  }
+
+  /*
+   * 顶栏导航按钮：挂在 shadcn Button 已有的 data-variant 上，不新建组件。
+   * 主题 B：非当前项虚线边框 + 浅灰字，当前项实线边框；圆角改用不对称的 --radius-a/-b。
+   */
+  [data-theme="collage"] .kh-nav-item[data-variant="outline"] {
+    border-width: 1.5px;
+    border-style: dashed;
+    border-color: var(--border-soft);
+    color: var(--fg-muted);
+    border-radius: var(--radius-a);
+  }
+  [data-theme="collage"] .kh-nav-item[data-variant="secondary"] {
+    border: 1.5px solid var(--border);
+    border-radius: var(--radius-b);
+  }
+
+  /*
+   * 项目标签栏：主题 B 覆盖成各自独立、留白间隔的一组按钮，非当前项虚线边框，
+   * 当前项实线边框并带一条胶带装饰。
+   */
+  [data-theme="collage"] .kh-tabs {
+    overflow: visible;
+    gap: 0.5rem;
+    border: none;
+    box-shadow: none;
+    background: transparent;
+  }
+
+  [data-theme="collage"] .kh-tab {
+    border: 1px dashed var(--border-soft);
+    border-radius: var(--radius-a);
+    color: var(--fg-muted);
+  }
+  [data-theme="collage"] .kh-tab[data-active="true"] {
+    border: 1.5px solid var(--border);
+    color: var(--foreground);
+    font-weight: 800;
+  }
+  [data-theme="collage"] .kh-tab[data-disabled="true"] {
+    box-shadow: none;
+  }
+
+  [data-theme="collage"] .kh-tab[data-active="true"] .kh-tab-tape {
+    display: block;
+  }
+
+  /* 项目头部卡片：主题 B 用不对称圆角，分隔线换成虚线 */
+  [data-theme="collage"] .kh-project-header {
+    border-radius: var(--radius-d);
+  }
+  [data-theme="collage"] .kh-project-header-divider {
+    border-top-style: dashed;
+    border-top-color: var(--border-soft);
+  }
+
+  /*
+   * 健康度徽标：主题 B 改成描边 + 圆点，圆点颜色仍然是健康度语义色（同一个 bg-health-*
+   * 工具类，只是形状和边框由主题决定）。
+   */
   [data-theme="collage"] .kh-health-badge {
-    background: transparent !important;
+    background: transparent;
     border-color: var(--border);
     color: var(--foreground);
   }

@@ -9,6 +9,7 @@ import { RevokeButton } from "./revoke-button";
  */
 export async function MachineList({ machines, now }: { machines: MachineView[]; now: Date }) {
   const t = await getTranslations("setup");
+  const tEnums = await getTranslations("enums");
   const tz = serverTimeZone();
 
   if (machines.length === 0) {
@@ -20,7 +21,7 @@ export async function MachineList({ machines, now }: { machines: MachineView[]; 
       {machines.map((machine) => (
         <div key={machine.id} className="flex flex-wrap items-center gap-x-4 gap-y-1.5 px-5 py-3">
           <span className="min-w-[8rem] flex-1 text-sm font-bold">{machine.name}</span>
-          <span className="kh-num text-xs text-muted-foreground">{t(`machines.os.${machine.os}`)}</span>
+          <span className="kh-num text-xs text-muted-foreground">{tEnums(`machineOs.${machine.os}`)}</span>
           <span className="kh-num text-xs text-muted-foreground">
             {t("machines.lastSeen", { value: machine.lastSeenAt === null ? t("machines.never") : formatRelative(machine.lastSeenAt, now) })}
           </span>

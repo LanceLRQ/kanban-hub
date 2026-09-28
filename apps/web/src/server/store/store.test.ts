@@ -497,3 +497,39 @@ describe("查询事件", () => {
     expect(store.dataDirectory).toBe(dir);
   });
 });
+
+describe("latestEventPerProject", () => {
+  it("多个项目各取最新一条；内存窗口外（没有事件）的项目不出现", async () => {
+    const first = await open("2026-03-10T00:00:00.000Z");
+    const { project: stale } = await first.createProject({ name: "旧项目" }, await cliActor(first));
+    await first.close();
+
+    const store = await open("2026-09-23T10:00:00.000Z");
+    const actor = await cliActor(store);
+    const a = (await store.createProject({ name: "A" }, actor)).project;
+    const b = (await store.createProject({ name: "B" }, actor)).project;
+    await store.appendLog(a.id, { text: "A 的日志" }, actor);
+
+    const latest = store.latestEventPerProject();
+    expect(latest.get(a.id)?.text).toBe("A 的日志");
+    expect(latest.get(b.id)?.type).toBe("project.created");
+    expect(latest.has(stale.id)).toBe(false);
+  });
+
+  it("同一时刻的多条事件，按与时间线一致的次级顺序取最新一条", async () => {
+    const ts = "2026-09-23T10:00:00.000Z";
+    const store = await Store.open({ dataDir: dir, now: () => new Date(ts), commitDebounceMs: 60_000, log: () => {} });
+    opened.push(store);
+    const actor = await cliActor(store);
+    const { project } = await store.createProject({ name: "看板" }, actor);
+    // project.created、project.updated、log 三条事件时间戳完全相同：
+    // secondaryOrder 里 created(4) > updated(3) > 其他(0)，取最靠前的 project.created
+    await store.updateProject(project.id, { name: "改名" }, actor);
+    await store.appendLog(project.id, { text: "日志" }, actor);
+
+    const latest = store.latestEventPerProject();
+    const event = latest.get(project.id)!;
+    expect(event.type).toBe("project.created");
+    expect(event.ts).toBe(ts);
+  });
+});

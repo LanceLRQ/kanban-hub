@@ -208,6 +208,21 @@ describe("buildTimelinePage", () => {
     expect(order.indexOf(active.id)).toBeLessThan(order.indexOf(archived.id));
   });
 
+  it("includeFilterOptions 为 false（“加载更多”）时不带筛选选项；省略时（首屏）照常带", async () => {
+    const store = await openStore(() => new Date("2026-09-24T09:00:00.000Z"));
+    const services = makeServices(store);
+    const admin = await store.auth.createUser({ name: "Lance", role: "admin", passwordHash: "x" });
+    const web: Actor = { userId: admin.id, machineId: null, via: "web", agent: null };
+    await store.createProject({ name: "kanban-hub" }, web);
+
+    const firstPage = await buildTimelinePage(services, {}, undefined, new Date(), labels);
+    expect(firstPage.filterOptions.projects.length).toBeGreaterThan(0);
+    expect(firstPage.filterOptions.actors.length).toBeGreaterThan(0);
+
+    const loadMorePage = await buildTimelinePage(services, {}, undefined, new Date(), labels, false);
+    expect(loadMorePage.filterOptions).toEqual({ projects: [], groups: [], actors: [] });
+  });
+
   it("描述与操作者：网页操作显示用户名，命令行操作显示 agent 名加机器名", async () => {
     const store = await openStore(() => new Date("2026-09-24T09:00:00.000Z"));
     const services = makeServices(store);

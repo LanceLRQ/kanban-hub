@@ -245,19 +245,6 @@ export function parseEventsQuery(searchParams: URLSearchParams): EventsQuery {
   };
 }
 
-/**
- * 把 EventsQuery 编码成查询参数，与 parseEventsQuery 互为逆运算；只输出有值的字段。
- * 供网页和以后的 kh 拼接 GET /events 的查询串。
- */
-export function eventsQueryToSearchParams(query: EventsQuery): URLSearchParams {
-  const params = new URLSearchParams();
-  if (query.projectId !== undefined) params.set("project", query.projectId);
-  if (query.before !== undefined) params.set("before", encodeEventCursor(query.before));
-  params.set("limit", String(query.limit));
-  if (query.types !== undefined && query.types.length > 0) params.set("types", query.types.join(","));
-  if (query.actor !== undefined) params.set("actor", query.actor);
-  return params;
-}
 
 // ---------- 文档同步（规格第 9、11 节） ----------
 

@@ -1,5 +1,5 @@
 import { createTranslator } from "next-intl";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Actor } from "@kanban-hub/core/schema";
 import { makeBoard, makeContainer, makeEvent, makeTask } from "@kanban-hub/core/test-fixtures";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
@@ -173,6 +173,16 @@ describe("buildOverview：项目卡片", () => {
     const card = staleView.projects.find((p) => p.id === project.id)!;
     expect(card.stale).not.toBeNull();
     expect(card.stale?.days).toBeGreaterThanOrEqual(10);
+  });
+
+  it("构建总览时不调用 listEvents（最近活动改用内存里的 latestEventPerProject）", async () => {
+    api = await setupTestApi();
+    const { project, container, actor } = await projectWithContainer(api, "kanban-hub");
+    await api.store.createTask(project.id, { containerId: container.id, title: "任务" }, actor);
+
+    const spy = vi.spyOn(api.store, "listEvents");
+    await buildOverview(api.services, new Date(), enumLabel, "（无）");
+    expect(spy).not.toHaveBeenCalled();
   });
 
   it("排序：未归档按最近事件时间倒序；归档的放在最后", async () => {

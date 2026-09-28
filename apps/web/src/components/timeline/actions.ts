@@ -31,7 +31,8 @@ export async function loadMoreTimelineAction(rawFilters: unknown, rawCursor: unk
     const page = await loadMoreTimeline(
       {
         hasSession: async () => (await getPageSession()) !== null,
-        buildPage: (f, c) => buildTimelinePage(services, f, c, services.now(), labels),
+        // “加载更多”不重建筛选选项（页面不读取这次返回的 filterOptions），见 buildTimelinePage
+        buildPage: (f, c) => buildTimelinePage(services, f, c, services.now(), labels, false),
       },
       filters,
       cursor,

@@ -11,6 +11,8 @@ import {
 } from "@kanban-hub/core/schema";
 import { CJK_FONTS, MONO_FONTS, THEMES } from "@/lib/preferences";
 import enums from "../../messages/zh-CN/enums.json";
+import settings from "../../messages/zh-CN/settings.json";
+import setup from "../../messages/zh-CN/setup.json";
 
 // enums 命名空间要覆盖 core 里每个枚举的全部取值：断言从 core 的枚举常量生成，
 // 而不是手写一份清单，防止 core 加新取值后语言包漏更新却不报错。
@@ -90,5 +92,23 @@ describe("enums 命名空间覆盖 core 的所有枚举取值", () => {
 
   it.each(CJK_FONTS)("cjkFont.%s 有中文文案", (value) => {
     expect(enums.cjkFont).toHaveProperty(value);
+  });
+});
+
+describe("setup、settings 不再重复维护 enums 已有的取值文案", () => {
+  it("setup.machines 不再有 os 取值表（改用 enums.machineOs）", () => {
+    expect(setup.machines).not.toHaveProperty("os");
+  });
+
+  it("settings.appearance 不再有 themes/monoFonts/cjkFonts 取值表（改用 enums.theme/monoFont/cjkFont）", () => {
+    expect(settings.appearance).not.toHaveProperty("themes");
+    expect(settings.appearance).not.toHaveProperty("monoFonts");
+    expect(settings.appearance).not.toHaveProperty("cjkFonts");
+  });
+
+  it("settings.appearance 仍保留字段标签本身（不是取值表）", () => {
+    expect(settings.appearance).toHaveProperty("theme");
+    expect(settings.appearance).toHaveProperty("monoFont");
+    expect(settings.appearance).toHaveProperty("cjkFont");
   });
 });

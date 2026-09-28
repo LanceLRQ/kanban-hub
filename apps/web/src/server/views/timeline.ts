@@ -77,12 +77,19 @@ function typesOf(group: EventGroup | undefined): Event["type"][] | undefined {
   return group ? [...EVENT_GROUPS[group]] : undefined;
 }
 
+/** 筛选选项都是空列表：“加载更多”不需要重建筛选选项，见 buildTimelinePage 的 includeFilterOptions */
+const EMPTY_FILTER_OPTIONS: TimelineFilterOptions = { projects: [], groups: [], actors: [] };
+
 /**
  * 构建一页时间线。`cursor` 省略时取最新一页。
  *
  * 分页游标必须取自 store 自身的排序（(ts, id) 降序）截断处，不能用下面按事件类型重排后的
  * 顺序去算：重排（sortEventsForDisplay）只用来决定同一页内、同一时刻多条事件的显示顺序，
  * 用它算游标会在“同一时刻多条事件”恰好跨页时漏掉或重复事件。
+ *
+ * `includeFilterOptions` 默认 true（首屏）；筛选选项只取决于项目列表和机器列表，跟翻页无关，
+ * “加载更多”传 false 跳过这次重建（`buildFilterOptions` 遍历全部项目和机器），页面组件本来就
+ * 不读取“加载更多”结果里的 filterOptions，重建纯属浪费。
  */
 export async function buildTimelinePage(
   services: Services,
@@ -90,6 +97,7 @@ export async function buildTimelinePage(
   cursor: EventCursor | undefined,
   now: Date,
   labels: TimelineLabels,
+  includeFilterOptions = true,
 ): Promise<TimelinePage> {
   const fetched = await services.store.listEvents({
     projectId: filters.projectId,
@@ -117,7 +125,7 @@ export async function buildTimelinePage(
     day.items.push(buildItem(services, event, tz, labels));
   }
 
-  return { days, nextCursor, filterOptions: buildFilterOptions(services, labels) };
+  return { days, nextCursor, filterOptions: includeFilterOptions ? buildFilterOptions(services, labels) : EMPTY_FILTER_OPTIONS };
 }
 
 function buildItem(services: Services, event: Event, tz: string, labels: TimelineLabels): TimelineItem {

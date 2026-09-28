@@ -11,7 +11,6 @@ import {
   apiErrorSchema,
   decodeEventCursor,
   encodeEventCursor,
-  eventsQueryToSearchParams,
   latestManifestResponse,
   loginInput,
   machineTokenSchema,
@@ -370,32 +369,6 @@ describe("parseEventsQuery", () => {
   });
 });
 
-describe("eventsQueryToSearchParams", () => {
-  it("只输出有值的字段，limit 总是输出", () => {
-    const params = eventsQueryToSearchParams({ limit: 50 });
-    expect([...params.entries()]).toEqual([["limit", "50"]]);
-  });
-
-  it("与 parseEventsQuery 互为逆运算", () => {
-    const original = parseEventsQuery(
-      new URLSearchParams({
-        project: "p0000000aa",
-        before: "2026-09-24T10:00:00.000Z_k3v9x2m7qa",
-        limit: "20",
-        types: "task.created,log",
-        actor: "m000000001",
-      }),
-    );
-    const roundTripped = parseEventsQuery(eventsQueryToSearchParams(original));
-    expect(roundTripped).toEqual(original);
-  });
-
-  it("默认查询（没有可选字段）编码后再解析回同样的结果", () => {
-    const original = parseEventsQuery(new URLSearchParams());
-    const roundTripped = parseEventsQuery(eventsQueryToSearchParams(original));
-    expect(roundTripped).toEqual(original);
-  });
-});
 
 const SHA = "a".repeat(64);
 const M1 = "m000000001";

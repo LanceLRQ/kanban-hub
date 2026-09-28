@@ -3,38 +3,41 @@
  * （见 `section-card.tsx`）在主题 B「纸本拼贴」下的覆盖，处理方式和总览、看板一致：
  * 不对称圆角、纸色表头、虚线分隔、去掉编号方框的边框。规则都限定在
  * `[data-theme="collage"]` 下，颜色和圆角只引用 tokens.css / themes/collage.css 里
- * 已有的变量，这里不新定义视觉色值。这份文件不放在 @layer 里，好让它稳定盖过 Tailwind
- * 生成的工具类（globals.css 里同类的主题覆盖也是这个理由）。
+ * 已有的变量，这里不新定义视觉色值。这份文件整个都是主题覆盖，放进 `@layer kh-theme`
+ * （层顺序声明见 globals.css 文件头），层的优先级只看层顺序、不看选择器优先级，
+ * 不用拔高声明的优先级，天然就能稳定盖过 Tailwind 生成的工具类。
  */
 
-/* ---------- 卡片：主题 B 换成不对称圆角，相邻卡片圆角方向互异 ---------- */
-[data-theme="collage"] .kh-settings-card {
-  border-radius: var(--radius-a);
-}
-[data-theme="collage"] .kh-settings-card:nth-of-type(even) {
-  border-radius: var(--radius-b);
-}
-/* 双类选择器保证优先级高于上面的 :nth-of-type(even)，标题卡不受它所在位置的奇偶影响 */
-[data-theme="collage"] .kh-settings-card.kh-settings-title-card {
-  border-radius: var(--radius-d);
-}
+@layer kh-theme {
+  /* ---------- 卡片：主题 B 换成不对称圆角，相邻卡片圆角方向互异 ---------- */
+  [data-theme="collage"] .kh-settings-card {
+    border-radius: var(--radius-a);
+  }
+  [data-theme="collage"] .kh-settings-card:nth-of-type(even) {
+    border-radius: var(--radius-b);
+  }
+  /* 双类选择器保证优先级高于上面的 :nth-of-type(even)，标题卡不受它所在位置的奇偶影响 */
+  [data-theme="collage"] .kh-settings-card.kh-settings-title-card {
+    border-radius: var(--radius-d);
+  }
 
-/* ---------- 卡片头：主题 B 底色换成 --bg-hover（浅牛皮纸感），分隔线改虚线 ---------- */
-[data-theme="collage"] .kh-settings-card-head {
-  background: var(--bg-hover);
-  border-bottom-style: dashed;
-}
+  /* ---------- 卡片头：主题 B 底色换成 --bg-hover（浅牛皮纸感），分隔线改虚线 ---------- */
+  [data-theme="collage"] .kh-settings-card-head {
+    background: var(--bg-hover);
+    border-bottom-style: dashed;
+  }
 
-/* ---------- 编号方框：主题 A 描边小方块，主题 B 去掉边框只留字距 ---------- */
-[data-theme="collage"] .kh-settings-no {
-  border: none;
-  background: transparent;
-  padding: 0;
-  letter-spacing: 0.08em;
-}
+  /* ---------- 编号方框：主题 A 描边小方块，主题 B 去掉边框只留字距 ---------- */
+  [data-theme="collage"] .kh-settings-no {
+    border: none;
+    background: transparent;
+    padding: 0;
+    letter-spacing: 0.08em;
+  }
 
-/* ---------- 卡片内的行分隔线：主题 B 一律改成虚线 ---------- */
-[data-theme="collage"] .kh-settings-row {
-  border-top-style: dashed;
-  border-top-color: var(--border-soft);
+  /* ---------- 卡片内的行分隔线：主题 B 一律改成虚线 ---------- */
+  [data-theme="collage"] .kh-settings-row {
+    border-top-style: dashed;
+    border-top-color: var(--border-soft);
+  }
 }

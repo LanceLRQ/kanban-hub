@@ -5,10 +5,21 @@
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import type { Board, Container } from "@kanban-hub/core/schema";
 
-/** 任务的短引用：# 加整个看板范围内能互相区分的最短 ID 前缀（至少 4 位） */
-export function taskShortRef(board: Pick<Board, "tasks">, taskId: string): string {
+/**
+ * 整个看板范围内，任务 ID → 短引用（# 加最短能互相区分的前缀，至少 4 位）的对照表。
+ * 一次算出全表：`shortIdPrefixes` 本身是 O(n²)，对每个任务分别调 `taskShortRef` 会在
+ * 需要显示一整批任务（收件箱、事件描述里的多个任务）时重复算这张表，白白多花一个数量级。
+ */
+export function taskShortRefTable(board: Pick<Board, "tasks">): Map<string, string> {
   const prefixes = shortIdPrefixes(board.tasks.map((t) => t.id));
-  return `#${prefixes.get(taskId) ?? taskId}`;
+  const table = new Map<string, string>();
+  for (const task of board.tasks) table.set(task.id, `#${prefixes.get(task.id) ?? task.id}`);
+  return table;
+}
+
+/** 任务的短引用：# 加整个看板范围内能互相区分的最短 ID 前缀（至少 4 位）；只需要单个任务时用 */
+export function taskShortRef(board: Pick<Board, "tasks">, taskId: string): string {
+  return taskShortRefTable(board).get(taskId) ?? `#${taskId}`;
 }
 
 /**

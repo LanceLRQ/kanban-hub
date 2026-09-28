@@ -54,6 +54,7 @@ const THEME_SWATCH_CLASS: Record<Theme, ThemeSwatch> = {
 /** 外观：主题二选一（两张卡片）+ 等宽字体、中文字体单选。选中立即生效，刷新后保持（localStorage） */
 export function AppearanceSection() {
   const t = useTranslations("settings");
+  const tEnums = useTranslations("enums");
   const { preferences, setTheme, setMonoFont, setCjkFont } = usePreferences();
 
   return (
@@ -61,21 +62,21 @@ export function AppearanceSection() {
       <SectionRow label={t("appearance.theme")}>
         <div className="flex flex-wrap gap-3">
           {THEMES.map((theme) => (
-            <ThemeCard key={theme} theme={theme} active={preferences.theme === theme} onSelect={() => setTheme(theme)} label={t(`appearance.themes.${theme}`)} />
+            <ThemeCard key={theme} theme={theme} active={preferences.theme === theme} onSelect={() => setTheme(theme)} label={tEnums(`theme.${theme}`)} />
           ))}
         </div>
       </SectionRow>
       <SectionRow label={t("appearance.monoFont")}>
         <RadioGroup value={preferences.mono} onValueChange={(v) => setMonoFont(v as MonoFont)} className="flex flex-wrap gap-x-5 gap-y-2">
           {MONO_FONTS.map((font) => (
-            <FontOption key={font} id={`mono-${font}`} value={font} label={t(`appearance.monoFonts.${font}`)} />
+            <FontOption key={font} id={`mono-${font}`} value={font} label={tEnums(`monoFont.${font}`)} />
           ))}
         </RadioGroup>
       </SectionRow>
       <SectionRow label={t("appearance.cjkFont")}>
         <RadioGroup value={preferences.cjk} onValueChange={(v) => setCjkFont(v as CjkFont)} className="flex flex-wrap gap-x-5 gap-y-2">
           {CJK_FONTS.map((font) => (
-            <FontOption key={font} id={`cjk-${font}`} value={font} label={t(`appearance.cjkFonts.${font}`)} />
+            <FontOption key={font} id={`cjk-${font}`} value={font} label={tEnums(`cjkFont.${font}`)} />
           ))}
         </RadioGroup>
       </SectionRow>

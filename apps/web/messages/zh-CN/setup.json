@@ -30,11 +30,6 @@
   "machines": {
     "title": "已接入的机器",
     "empty": "还没有机器接入，完成上面的步骤后会出现在这里。",
-    "os": {
-      "darwin": "macOS",
-      "linux": "Linux",
-      "windows": "Windows"
-    },
     "lastSeen": "最后在线 {value}",
     "never": "从未",
     "joinedAt": "接入于 {value}",

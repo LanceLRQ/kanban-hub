@@ -6,8 +6,19 @@ import { ProjectEditDialog } from "@/components/project/project-edit-dialog";
 import { ProjectHeader } from "@/components/project/project-header";
 import { ProjectTabs } from "@/components/project/project-tabs";
 
-/** 项目页框架：头部（带“编辑”入口）+ 标签栏；项目不存在时 404 */
-export default async function ProjectLayout({ children, params }: { children: ReactNode; params: Promise<{ id: string }> }) {
+/**
+ * 项目页框架：头部（带“编辑”入口）+ 标签栏；项目不存在时 404。
+ * 标签栏右侧是并行路由插槽 `@tabsAside`，由各子页决定放什么（目前只有文档页放机器切换）。
+ */
+export default async function ProjectLayout({
+  children,
+  tabsAside,
+  params,
+}: {
+  children: ReactNode;
+  tabsAside: ReactNode;
+  params: Promise<{ id: string }>;
+}) {
   const { id } = await params;
   const { services } = await authedPageServices();
   const project = buildProjectHeader(services, id, services.now());
@@ -32,7 +43,10 @@ export default async function ProjectLayout({ children, params }: { children: Re
           />
         }
       />
-      <ProjectTabs projectId={project.id} />
+      <div className="kh-project-tabs-row flex flex-wrap items-center justify-between gap-3">
+        <ProjectTabs projectId={project.id} />
+        {tabsAside}
+      </div>
       {children}
     </div>
   );

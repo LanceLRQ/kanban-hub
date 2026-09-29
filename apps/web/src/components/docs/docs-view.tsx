@@ -1,11 +1,11 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import { cn } from "@/lib/utils";
 import type { DocLinkCtx } from "@/lib/doc-links";
 import { docPageHref, rawFileHref } from "@/lib/doc-url";
 import type { DocsView as DocsViewData } from "@/server/views/docs";
 import { DocTreeView } from "./doc-tree-view";
 import { DocFilePanel } from "./doc-file-panel";
+import { DocSidebarPanel } from "./doc-sidebar-panel";
 import "./docs.css";
 
 interface DocsViewProps {
@@ -13,7 +13,7 @@ interface DocsViewProps {
   view: DocsViewData;
 }
 
-/** 项目文档视图：左栏机器切换 + 文件树 + 最近更新，右栏当前文件的路径与正文 */
+/** 项目文档视图：左栏文件树 + 最近更新，右栏当前文件的路径与正文（机器切换在标签栏右侧，见 DocsMachinePicker） */
 export async function DocsView({ projectId, view }: DocsViewProps) {
   const t = await getTranslations("docs");
 
@@ -37,34 +37,19 @@ export async function DocsView({ projectId, view }: DocsViewProps) {
   };
 
   return (
-    <div className="kh-docs-grid grid gap-5 md:grid-cols-[280px_1fr]">
-      <aside className="kh-docs-sidebar flex flex-col gap-3">
-        <div className="flex flex-wrap items-center gap-2">
-          {view.machines.map((m) => (
-            <Link
-              key={m.id}
-              href={docPageHref(projectId, view.file?.path, { machineId: m.id })}
-              data-active={m.selected ? "true" : undefined}
-              className={cn(
-                "kh-doc-machine-chip rounded-sm border border-border px-2 py-1 font-mono text-xs",
-                m.selected ? "bg-secondary text-secondary-foreground" : "bg-card text-foreground hover:bg-accent",
-              )}
-            >
-              {m.name}
-            </Link>
-          ))}
-          {selectedMachine?.lastSyncAtLabel && (
-            <span className="font-mono text-xs text-muted-foreground">{selectedMachine.lastSyncAtLabel}</span>
-          )}
-        </div>
-
-        <div className="kh-doc-tree-box rounded-md border border-border bg-card p-2">
-          <div className="kh-doc-panel-head">{t("sidebar.treeTitle")}</div>
+    <div className="kh-docs-grid grid gap-5 md:grid-cols-[280px_minmax(0,1fr)]">
+      {/* 宽屏下左栏吸顶，高度不超过视口：文件树占剩余高度、最近更新固定高度，都在面板内滚动 */}
+      <aside className="kh-docs-sidebar flex flex-col gap-3 md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:self-start">
+        <DocSidebarPanel
+          title={t("sidebar.treeTitle")}
+          className="kh-doc-tree-box md:min-h-0"
+          bodyClassName="max-h-[50vh] md:max-h-none md:flex-1"
+          activeKey={currentPath}
+        >
           <DocTreeView nodes={view.tree} currentPath={currentPath} hrefFor={(p) => docPageHref(projectId, p, { machineId: selectedMachine?.id })} />
-        </div>
+        </DocSidebarPanel>
 
-        <div className="kh-doc-recent-box rounded-md border border-border bg-card p-2">
-          <div className="kh-doc-panel-head">{t("sidebar.recentTitle")}</div>
+        <DocSidebarPanel title={t("sidebar.recentTitle")} className="kh-doc-recent-box shrink-0" bodyClassName="max-h-56">
           {view.recent.length === 0 ? (
             <p className="px-2 py-1 text-xs text-muted-foreground">{t("sidebar.recentEmpty")}</p>
           ) : (
@@ -82,10 +67,10 @@ export async function DocsView({ projectId, view }: DocsViewProps) {
               ))}
             </ul>
           )}
-        </div>
+        </DocSidebarPanel>
       </aside>
 
-      <article className="kh-doc-article rounded-md border border-border bg-card">
+      <article className="kh-doc-article min-w-0 rounded-md border border-border bg-card">
         <div className="kh-doc-path border-b border-border px-4 py-2 font-mono text-xs text-muted-foreground">
           {view.file?.path ?? t("noFileSelected")}
           {selectedMachine && ` · ${selectedMachine.name}`}

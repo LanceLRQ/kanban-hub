@@ -32,6 +32,13 @@
     letter-spacing: 0.04em;
     color: var(--fg-muted);
   }
+  /* 窄屏折叠后只剩标题栏：抵掉它的下外边距和面板的下内边距，去掉与面板边框重叠的分隔线 */
+  @media (max-width: 767.98px) {
+    .kh-doc-panel-head[aria-expanded="false"] {
+      margin-bottom: -0.5rem;
+      border-bottom-width: 0;
+    }
+  }
 
   /* ---------- Markdown 正文排版 ---------- */
   .kh-doc-markdown {
@@ -40,6 +47,8 @@
     font-size: 0.875rem;
     line-height: 1.75;
     color: var(--foreground);
+    /* 长路径、长行内代码没有自然断点，允许在任意位置折行，不把正文撑出版面 */
+    overflow-wrap: anywhere;
   }
   /* 第一个子元素（一般是 h1）不再额外加顶部外边距，紧跟在上面 0.75rem 的 padding 之后 */
   .kh-doc-markdown > :first-child {
@@ -99,9 +108,17 @@
     font-size: 0.8rem;
     line-height: 1.65;
   }
+  /* 宽表格在自身范围内横向滚动；单元格不跟随正文任意折行，否则窄列会被挤成一字一行 */
   .kh-doc-markdown table {
+    display: block;
+    max-width: 100%;
+    overflow-x: auto;
     border-collapse: collapse;
     margin: 0 0 0.8em;
+  }
+  .kh-doc-markdown th,
+  .kh-doc-markdown td {
+    overflow-wrap: normal;
   }
   .kh-doc-markdown th,
   .kh-doc-markdown td {

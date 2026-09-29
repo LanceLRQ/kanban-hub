@@ -67,6 +67,26 @@ describe("checkWritableDir", () => {
     const msg = await checkWritableDir(path.join(tmp, "missing"), { create: false, inContainer: true });
     expect(msg).toContain("宿主机");
   });
+
+  it("容器里目录不存在：报目录不存在请检查挂载，并给出 compose 挂载与 mkdir 示例", async () => {
+    const msg = await checkWritableDir(path.join(tmp, "missing"), { create: false, inContainer: true });
+    expect(msg).toContain("不存在");
+    expect(msg).toContain("检查挂载");
+    expect(msg).toContain("docker-compose");
+    expect(msg).toContain("mkdir");
+    // 消息里点出容器内具体路径，并给出与该路径对应的挂载示例
+    expect(msg).toContain(path.join(tmp, "missing"));
+    expect(msg).toContain("- ./missing:");
+  });
+
+  // root 对只读目录也能写入，这个用例在 root 身份下没有意义
+  it.skipIf(process.getuid?.() === 0)("容器里目录存在但不可写：维持不可写提示，不再给挂载示例", async () => {
+    await fs.chmod(tmp, 0o500);
+    const msg = await checkWritableDir(tmp, { create: false, inContainer: true });
+    expect(msg).toContain("不可写");
+    expect(msg).toContain("chown");
+    expect(msg).not.toContain("mkdir");
+  });
 });
 
 describe("checkGitAvailable", () => {
@@ -97,6 +117,23 @@ describe("runSelfCheck", () => {
     );
     expect(errors).toHaveLength(3);
     await expect(fs.stat(path.join(tmp, "data"))).rejects.toThrow();
+  });
+
+  it("容器内数据与备份目录都不存在：两条错误各自给出挂载与建目录办法", async () => {
+    const errors = await runSelfCheck(
+      { dataDir: path.join(tmp, "data"), backupDir: path.join(tmp, "backups"), inContainer: true },
+      "git",
+      VALID_ENV,
+    );
+    const dirErrors = errors.filter((e) => e.includes("不存在"));
+    expect(dirErrors).toHaveLength(2);
+    for (const name of ["data", "backups"] as const) {
+      const msg = dirErrors.find((e) => e.includes(path.join(tmp, name)));
+      expect(msg, name).toBeDefined();
+      expect(msg!).toContain("检查挂载");
+      expect(msg!).toContain(`- ./${name}:`);
+      expect(msg!).toContain(`mkdir -p ./${name}`);
+    }
   });
 
   it("缺少 KH_ADMIN_PASSWORD 时自检失败，不创建任何目录", async () => {

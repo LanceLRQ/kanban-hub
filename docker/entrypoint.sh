@@ -1,5 +1,5 @@
 #!/bin/sh
-# kanban-hub 容器入口：统一设置权限掩码、HOME 与 git 身份，再按子命令启动。
+# kanban-hub 容器入口：统一设置权限掩码与 HOME，再按子命令启动。
 set -eu
 
 umask "${UMASK:-022}"
@@ -9,17 +9,18 @@ umask "${UMASK:-022}"
 export HOME=/tmp/kh-home
 mkdir -p "$HOME"
 
-# 服务端提交数据仓库时的 committer；author 由程序按操作者逐次指定。
-export GIT_COMMITTER_NAME=kanban-hub
-export GIT_COMMITTER_EMAIL=kanban-hub@localhost
-
 cmd="${1:-serve}"
 case "$cmd" in
   serve)
     exec node /app/apps/web/server.js
     ;;
+  restore)
+    # 去掉子命令本身，剩下的参数都交给恢复入口
+    shift
+    exec node /app/restore.mjs "$@"
+    ;;
   *)
-    echo "未知子命令：$cmd（可用：serve）" >&2
+    echo "未知子命令：$cmd（可用：serve、restore）" >&2
     exit 2
     ;;
 esac

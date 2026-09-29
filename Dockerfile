@@ -39,12 +39,11 @@ RUN mkdir -p /app/node_modules /app/apps/web/node_modules /app/apps/web/.next \
 WORKDIR /app
 # 不设 WATCHPACK_POLLING：它只对 webpack 生效，Next 16 的开发服务用 Turbopack。
 # 热更新靠挂载目录的原生文件事件（Docker Desktop 会转发，Linux 宿主是 inotify）。
+# git 提交者身份由服务端在每次提交时自带（store/git.ts），不在这里设环境变量。
 ENV HOME=/tmp/kh-home \
     KH_IN_CONTAINER=1 \
     KH_DATA_DIR=/data \
-    KH_BACKUP_DIR=/backups \
-    GIT_COMMITTER_NAME=kanban-hub \
-    GIT_COMMITTER_EMAIL=kanban-hub@localhost
+    KH_BACKUP_DIR=/backups
 
 # ---------- runtime：非 root 精简运行时 ----------
 FROM node:22-bookworm-slim AS runtime
@@ -70,10 +69,11 @@ COPY --from=build /app/apps/web/.next/standalone ./
 COPY --from=build /app/apps/web/.next/static ./apps/web/.next/static
 COPY --from=build /app/apps/web/public ./apps/web/public
 COPY --from=build /app/packages/cli/dist/kh.tgz ./kh.tgz
+COPY --from=build /app/apps/web/dist/restore.mjs ./restore.mjs
 COPY docker/entrypoint.sh /usr/local/bin/kh-entrypoint
-RUN chmod 755 /usr/local/bin/kh-entrypoint \
- && mkdir -p /data /backups \
- && chown node:node /data /backups
+# 不预建 /data /backups：漏挂载要在启动自检里报出来（目录不存在→挂载提示），
+# 而不是被镜像里 root 属主的空目录盖住，让命名卷悄悄继承错误权限
+RUN chmod 755 /usr/local/bin/kh-entrypoint
 USER node
 EXPOSE 28970
 ENTRYPOINT ["kh-entrypoint"]

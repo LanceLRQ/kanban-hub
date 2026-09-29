@@ -16,6 +16,20 @@ function chownHint(dir: string, inContainer: boolean): string {
 }
 
 /**
+ * 容器里目录不存在：镜像不预建数据与备份目录，八成是漏挂载或宿主机目录没建。
+ * 给出能照抄的 compose 挂载与 mkdir 示例，路径按出问题的目录逐一指出。
+ */
+function missingMountHint(dir: string): string {
+  const name = path.basename(dir);
+  return [
+    `目录 ${dir} 不存在，请检查挂载：镜像不预建该目录，需要在宿主机上建好再挂进容器。`,
+    "compose 挂载示例（docker-compose.yml 的 volumes 段）：",
+    `  - ./${name}:${dir}`,
+    `并在宿主机上先执行：mkdir -p ./${name}`,
+  ].join("\n");
+}
+
+/**
  * 数据目录必须是绝对路径：standalone 的 server.js 启动时会切换工作目录，
  * 相对路径会指到构建产物所在的目录。有问题返回错误信息，没问题返回 null。
  */
@@ -37,7 +51,12 @@ export async function checkWritableDir(
     if ((e as NodeJS.ErrnoException).code !== "ENOENT") {
       return `无法访问 ${dir}：${(e as Error).message}`;
     }
-    if (!opts.create) return `目录 ${dir} 不存在。${chownHint(dir, inContainer)}`;
+    // 前置分支：目录不存在和存在但不可写是两回事。容器里的目录只能靠挂载提供，
+    // 不存在多半是漏挂载或宿主机目录没建，给挂载示例；存在但写不进才轮到 chown 提示。
+    if (!opts.create) {
+      if (inContainer) return missingMountHint(dir);
+      return `目录 ${dir} 不存在。${chownHint(dir, inContainer)}`;
+    }
     try {
       await fs.mkdir(dir, { recursive: true });
     } catch (err) {

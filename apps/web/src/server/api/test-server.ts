@@ -15,6 +15,7 @@ import { GET as healthGet } from "@/app/api/health/route";
 import { POST as authLoginPost } from "@/app/api/v1/auth/login/route";
 import { POST as authLogoutPost } from "@/app/api/v1/auth/logout/route";
 import { GET as eventsGet } from "@/app/api/v1/events/route";
+import { PATCH as machinePatch } from "@/app/api/v1/machines/[id]/route";
 import { POST as machineRevokePost } from "@/app/api/v1/machines/[id]/revoke/route";
 import { GET as machinesGet } from "@/app/api/v1/machines/route";
 import { GET as meGet } from "@/app/api/v1/me/route";
@@ -81,6 +82,7 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/auth/logout", handlers: { POST: asRouteHandler(authLogoutPost) } },
   { pattern: "/api/v1/events", handlers: { GET: asRouteHandler(eventsGet) } },
   { pattern: "/api/v1/machines", handlers: { GET: asRouteHandler(machinesGet) } },
+  { pattern: "/api/v1/machines/:id", handlers: { PATCH: asRouteHandler(machinePatch) } },
   { pattern: "/api/v1/machines/:id/revoke", handlers: { POST: asRouteHandler(machineRevokePost) } },
   { pattern: "/api/v1/me", handlers: { GET: asRouteHandler(meGet) } },
   { pattern: "/api/v1/pair", handlers: { POST: asRouteHandler(pairPost) } },

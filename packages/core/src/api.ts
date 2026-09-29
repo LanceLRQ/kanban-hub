@@ -92,6 +92,14 @@ export const pairInput = z
   .strict();
 export type PairInput = z.input<typeof pairInput>;
 
+/** PATCH /machines/:id 的请求体：改机器名称，限制与配对时的名称一致 */
+export const machineRenameInput = z
+  .object({
+    name: z.string().trim().min(1).max(100),
+  })
+  .strict();
+export type MachineRenameInput = z.input<typeof machineRenameInput>;
+
 export const loginInput = z
   .object({
     password: z.string().min(1),

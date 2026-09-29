@@ -207,6 +207,19 @@ describe("kh login / logout / whoami", () => {
       expect(result.stdout).toContain(KH_VERSION);
     });
 
+    it("网页上改过机器名称后，显示新名称并同步到本机配置", async () => {
+      const { code } = server.issuePairingCode();
+      await runKh(["login", "--server", server.url, "--code", code, "--name", "旧名字"], { cwd: home.dir, khHome: home.dir });
+      const machine = server.api.store.auth.listMachines().find((m) => m.name === "旧名字");
+      if (!machine) throw new Error("测试前置条件失败：找不到刚登录的机器");
+      await server.api.store.auth.updateMachine(machine.id, { name: "书房的 Mac" });
+
+      const result = await runKh(["whoami"], { cwd: home.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("书房的 Mac");
+      expect((await readMachineConfig(home.dir))?.machineName).toBe("书房的 Mac");
+    });
+
     it("未登录，退出码 3", async () => {
       const result = await runKh(["whoami"], { cwd: home.dir, khHome: home.dir });
       expect(result.code).toBe(3);

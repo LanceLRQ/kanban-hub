@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getTranslations } from "next-intl/server";
 import type { User } from "@kanban-hub/core/schema";
 import { formatToday, serverTimeZone } from "@/lib/time";
@@ -7,8 +8,9 @@ import { NavLinks } from "./nav-links";
 import { LogoutButton } from "./logout-button";
 import { LiveIndicator } from "./live-indicator";
 import { LayoutToggle } from "./layout-toggle";
+import { LogoMark } from "./logo-mark";
 
-/** 顶栏：wordmark、导航（总览/时间线/设置）、当天日期、用户区、退出。日期按服务端时区显示 */
+/** 顶栏：logo 与字标（点击回总览）、导航（总览/时间线/设置）、当天日期、用户区、退出。日期按服务端时区显示 */
 export async function TopBar({ user, now }: { user: User; now: Date }) {
   const t = await getTranslations("common");
   const tz = serverTimeZone();
@@ -22,7 +24,10 @@ export async function TopBar({ user, now }: { user: User; now: Date }) {
   return (
     <header className="border-b bg-card">
       <div className="mx-auto flex flex-wrap items-center gap-x-6 gap-y-2 px-8 py-3.5 narrow:max-w-[1240px]">
-        <div className="kh-wordmark text-2xl font-semibold tracking-tight">{t("wordmark")}</div>
+        <Link href="/" aria-label={t("nav.home")} className="kh-brand flex items-center gap-2 rounded-sm">
+          <LogoMark className="size-8 shrink-0" />
+          <span className="kh-wordmark text-2xl font-semibold tracking-tight">{t("wordmark")}</span>
+        </Link>
         <span className="hidden self-end pb-0.5 text-[11px] font-bold tracking-[0.14em] text-muted-foreground sm:inline">
           {t("tagline")}
         </span>

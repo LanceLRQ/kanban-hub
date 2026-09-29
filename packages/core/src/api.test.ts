@@ -18,6 +18,7 @@ import {
   machineTokenSchema,
   meResponse,
   pairInput,
+  machineRenameInput,
   pairResponse,
   parseEventsQuery,
   projectCreatedResponse,
@@ -111,6 +112,18 @@ describe("pairInput", () => {
     expect(pairInput.safeParse({ code: "ABC-DEF", machineName: "my-mac", os: "darwin", extra: 1 }).success).toBe(
       false,
     );
+  });
+});
+
+describe("machineRenameInput", () => {
+  it("去掉首尾空白后接受", () => {
+    expect(machineRenameInput.parse({ name: "  书房的 Mac  " })).toEqual({ name: "书房的 Mac" });
+  });
+
+  it("空名称、超过 100 字、未知字段都校验失败", () => {
+    expect(machineRenameInput.safeParse({ name: "   " }).success).toBe(false);
+    expect(machineRenameInput.safeParse({ name: "a".repeat(101) }).success).toBe(false);
+    expect(machineRenameInput.safeParse({ name: "mac", os: "darwin" }).success).toBe(false);
   });
 });
 

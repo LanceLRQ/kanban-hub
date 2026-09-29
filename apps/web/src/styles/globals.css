@@ -237,6 +237,10 @@
   [data-theme="collage"] .kh-wordmark {
     font-family: var(--cjk-heading);
   }
+  /* 顶栏图标：主题 B 微微歪着，像贴上去的贴纸 */
+  [data-theme="collage"] .kh-logo-mark {
+    transform: rotate(-5deg);
+  }
 
   /* 顶栏日期：主题 B 加下划线（手账页首的气质），主题 A 不带 */
   [data-theme="collage"] .kh-topbar-date {

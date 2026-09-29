@@ -99,10 +99,27 @@ async function runLogout(ctx: CliContext): Promise<void> {
   ctx.stdout.write("提示：令牌在服务端仍然有效，如需失效请到网页的设置页面吊销这台机器\n");
 }
 
+/**
+ * 机器名称可以在网页上修改，本机配置里缓存的是配对时的名称：whoami 发现两者不同时把新名称
+ * 写回本机配置。写入失败不影响 whoami 的输出，下次执行时再同步。
+ */
+async function syncLocalMachineName(ctx: CliContext, name: string): Promise<void> {
+  const home = resolveKhHome(ctx);
+  try {
+    const cfg = await readMachineConfig(home);
+    if (cfg?.machineName !== undefined) await writeMachineConfig(home, { ...cfg, machineName: name });
+  } catch {
+    // 缓存的名称只用于提示文字，同步失败不必打断命令
+  }
+}
+
 async function runWhoami(ctx: CliContext, agentFlag?: string): Promise<void> {
   const { client, machine, server } = await requireLogin(ctx, agentFlag);
   const me = await client.get("/api/v1/me", meResponse);
   const machineInfo = me.machine ?? machine;
+  if (me.machine && me.machine.id === machine.id && me.machine.name !== machine.name) {
+    await syncLocalMachineName(ctx, me.machine.name);
+  }
 
   ctx.stdout.write(`服务端：${server}\n`);
   ctx.stdout.write(`用户：${me.user.name}\n`);

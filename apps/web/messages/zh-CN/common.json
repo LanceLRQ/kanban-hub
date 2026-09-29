@@ -3,6 +3,7 @@
   "tagline": "自托管 · 多项目进度看板",
   "nav": {
     "ariaLabel": "主导航",
+    "home": "kanban-hub 总览",
     "overview": "总览",
     "timeline": "时间线",
     "settings": "设置"

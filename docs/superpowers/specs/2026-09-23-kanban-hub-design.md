@@ -127,7 +127,7 @@ kanban-hub/
 
 | 字段 | 说明 |
 |---|---|
-| `name` | 别名，默认取主机名 |
+| `name` | 别名，默认取主机名；可在网页的接入页改名，各页面按机器 ID 显示当前名称，`kh whoami` 会把新名称同步到本机配置 |
 | `userId` | 所属用户 |
 | `os` | `darwin` / `linux` / `windows` |
 | `tokenHash` | 令牌的 SHA-256 |
@@ -539,7 +539,7 @@ events:                 # 可选：历史日志
 | 健康检查 | `GET /api/health`（无需鉴权） |
 | 配对 | `POST /pair`：`{ code, machineName, os }` → `{ token, machineId }` |
 | 会话 | `POST /auth/login`、`POST /auth/logout`、`GET /me`（当前用户与服务端版本；令牌鉴权时还带上本机信息） |
-| 机器 | `GET /machines`、`POST /machines/:id/revoke`、`POST /pairing-codes` |
+| 机器 | `GET /machines`、`PATCH /machines/:id`（改名）、`POST /machines/:id/revoke`、`POST /pairing-codes` |
 | 项目 | `GET /projects`、`GET /projects?fingerprint=…`、`POST /projects`、`GET /projects/:id`、`PATCH /projects/:id`、`PUT /projects/:id/locations/:machineId` |
 | 容器 | `POST /projects/:id/containers`、`PATCH /projects/:id/containers/:cid` |
 | 任务 | `POST /projects/:id/tasks`、`PATCH /projects/:id/tasks/:tid` |

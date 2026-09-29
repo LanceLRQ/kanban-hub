@@ -89,6 +89,41 @@ export function makeBoard(containers: Container[] = [makeContainer()], tasks: Ta
   return { containers: [makeMisc(), ...containers], tasks };
 }
 
+/**
+ * 把看板归一化成便于深度比较的形状：按 order 排出相对顺序，只保留业务字段，
+ * 丢弃各个 ID、order 的具体值、createdAt、updatedAt、version、assigneeUserId。
+ * 用于往返测试：导出再导入同一个/另一个项目，结果应当与原看板等价。
+ */
+export function normalizeBoardForCompare(board: Board): unknown {
+  const containers = [...board.containers].sort((a, b) => a.order - b.order);
+  return containers.map((c) => ({
+    kind: c.kind,
+    code: c.code,
+    title: c.title,
+    targetVersion: c.targetVersion,
+    targetDate: c.targetDate,
+    manualStatus: c.manualStatus,
+    manualReason: c.manualReason,
+    tasks: board.tasks
+      .filter((t) => t.containerId === c.id)
+      .sort((a, b) => a.order - b.order)
+      .map((t) => ({
+        code: t.code,
+        title: t.title,
+        status: t.status,
+        suspendReason: t.suspendReason,
+        human: t.human,
+        group: t.group,
+        note: t.note,
+        docRefs: t.docRefs,
+        checklist: t.checklist,
+        dueDate: t.dueDate,
+        startedAt: t.startedAt,
+        completedAt: t.completedAt,
+      })),
+  }));
+}
+
 export function makeEvent(overrides: Partial<Event> = {}): Event {
   return {
     id: fixtureId("e", 1),

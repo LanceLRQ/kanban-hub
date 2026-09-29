@@ -14,6 +14,7 @@ import {
   type EventType,
 } from "./schema";
 import { findManifestPathProblem, incomingFileSchema, manifestFileSchema, sha256HexSchema, SYNC_MAX_MANIFEST_FILES } from "./sync";
+import { importSummarySchema, transferDocSchema } from "./transfer";
 
 // ---------- 网页与 kh 共用的请求头 ----------
 
@@ -325,6 +326,15 @@ export type PullReportInput = z.input<typeof pullReportInput>;
 /** commit 因为缺少内容而返回 400 时，details 的形状；kh 用它识别“缺少内容”这种失败原因 */
 export const syncMissingDetails = z.object({ missingBlobs: z.array(sha256HexSchema) });
 export type SyncMissingDetails = z.infer<typeof syncMissingDetails>;
+
+/**
+ * POST /projects/:id/import 的请求体与响应：直接转出 transfer.ts 的 schema，保持依赖方向
+ * 只能是 api.ts → transfer.ts（反过来会在模块求值时触发 TDZ 错误，M5 遇到过一次）。
+ */
+export const importInput = transferDocSchema;
+export type ImportInput = z.input<typeof importInput>;
+export const importResponse = importSummarySchema;
+export type ImportResponse = z.infer<typeof importResponse>;
 
 /** POST /projects/:id/raw-tokens 的请求体：网页为某台机器签一个 /raw 令牌 */
 export const rawTokenInput = z.object({ machineId: idSchema }).strict();

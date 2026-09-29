@@ -104,10 +104,15 @@ describe("看板", () => {
     expect(issuePaths(boardSchema.safeParse(board))).toEqual(["tasks.0.containerId"]);
   });
 
-  it("ID 重复时指出位置", () => {
+  it("任务 ID 重复时指出位置", () => {
     expect(issuePaths(boardSchema.safeParse(makeBoard([makeContainer()], [makeTask(), makeTask()])))).toEqual([
       "tasks.1.id",
     ]);
+  });
+
+  it("容器 ID 重复时指出位置", () => {
+    const dup = makeContainer({ code: "M2" }); // 与 makeBoard 自带的容器 id 相同，但编号不同以避免同时触发编号冲突
+    expect(issuePaths(boardSchema.safeParse(makeBoard([makeContainer(), dup], [])))).toEqual(["containers.2.id"]);
   });
 });
 

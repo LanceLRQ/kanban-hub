@@ -11,6 +11,8 @@ import {
   apiErrorSchema,
   decodeEventCursor,
   encodeEventCursor,
+  importInput,
+  importResponse,
   latestManifestResponse,
   loginInput,
   machineTokenSchema,
@@ -449,5 +451,23 @@ describe("同步相关的响应头与 schema", () => {
   it("syncMissingDetails 的形状", () => {
     expect(syncMissingDetails.safeParse({ missingBlobs: [SHA] }).success).toBe(true);
     expect(syncMissingDetails.safeParse({ missingBlobs: ["not-a-sha"] }).success).toBe(false);
+  });
+});
+
+describe("importInput / importResponse", () => {
+  it("importInput 转出 transferDocSchema", () => {
+    expect(importInput.safeParse({ format: "kanban-hub/v1", containers: [] }).success).toBe(true);
+    expect(importInput.safeParse({ format: "other", containers: [] }).success).toBe(false);
+  });
+
+  it("importResponse 转出 importSummarySchema", () => {
+    const body = {
+      dryRun: true,
+      project: [],
+      containers: { created: [], updated: [] },
+      tasks: { created: [], updated: [], statusChanges: [] },
+      events: { added: 0, duplicates: 0 },
+    };
+    expect(importResponse.safeParse(body).success).toBe(true);
   });
 });

@@ -1,5 +1,5 @@
 /*
- * 时间线专属的样式钩子：类型徽标按事件分组上色、日期分组标题右侧的延伸分隔线、筛选按钮的
+ * 时间线专属的样式钩子：类型徽标按事件分组上色（淡染）、日期分组标题右侧的延伸分隔线、筛选按钮的
  * 当前项、行卡片的不对称圆角、项目标签。颜色只引用 tokens.css / themes/collage.css 里已有的
  * 变量，这里不新定义任何色值。两套主题共用组件，差异都落在 `[data-theme="collage"]` 选择器上。
  *
@@ -12,25 +12,29 @@
 
 @layer kh-base {
   /* ---------- 类型徽标：按事件分组上色 ----------
-   * 任务用 --task-in-progress（主题 B 下改用浅纸色，见下）、
-   * 容器用 --task-review（雾霾蓝）、文档用 --health-on-track（鼠尾草绿）——这三个语义色 token
-   * 在主题 A 下正好是任务、容器、文档三类需要的颜色，不用新增 token。
-   * 日志、项目、导入三个分组，用页面背景色，视觉上接近描边（跟卡片背景
-   * 只有极细微的色差，边框仍然可见）。
+   * 每个分组一个色调（--tl-tone）：浅色底 + 同色描边 + 同色系深字。实心底色 + 白字留给状态类
+   * 标签，这里只做淡染，时间线每行都有徽标，全部实心会太花。
+   * 任务、容器、文档复用任务进行中、待验收、健康度正常的语义色；项目用砖红（主题 B 的对应色
+   * 见 kh-theme）；日志、导入较少见，用中性色，靠文字区分。
    */
+  .kh-timeline-badge {
+    --tl-tone: var(--fg-muted);
+    background: color-mix(in srgb, var(--tl-tone) 32%, var(--card));
+    border-color: color-mix(in srgb, var(--tl-tone) 65%, #000);
+    color: color-mix(in srgb, var(--tl-tone) 50%, #000);
+    font-weight: 700;
+  }
   .kh-timeline-badge[data-group="task"] {
-    background: var(--task-in-progress);
+    --tl-tone: var(--task-in-progress);
   }
   .kh-timeline-badge[data-group="container"] {
-    background: var(--task-review);
+    --tl-tone: var(--task-review);
   }
   .kh-timeline-badge[data-group="docs"] {
-    background: var(--health-on-track);
+    --tl-tone: var(--health-on-track);
   }
-  .kh-timeline-badge[data-group="log"],
-  .kh-timeline-badge[data-group="project"],
-  .kh-timeline-badge[data-group="import"] {
-    background: var(--background);
+  .kh-timeline-badge[data-group="project"] {
+    --tl-tone: var(--brick);
   }
 
   /* ---------- 日期分组标题：右侧延伸到行尾的分隔线，主题 A 实线、主题 B 虚线 ---------- */
@@ -70,18 +74,8 @@
 }
 
 @layer kh-theme {
-  /*
-   * 主题 B 的任务状态语义色是加重的“墨色”（给状态点、文字用），直接拿来填徽标背景太深，
-   * 这里改用浅纸色：任务 → --paper-kraft，文档 → --paper-sage，容器 → --paper-gray。
-   */
-  [data-theme="collage"] .kh-timeline-badge[data-group="task"] {
-    background: var(--paper-kraft);
-  }
-  [data-theme="collage"] .kh-timeline-badge[data-group="container"] {
-    background: var(--paper-gray);
-  }
-  [data-theme="collage"] .kh-timeline-badge[data-group="docs"] {
-    background: var(--paper-sage);
+  [data-theme="collage"] .kh-timeline-badge[data-group="project"] {
+    --tl-tone: var(--ink-brick);
   }
 
   [data-theme="collage"] .kh-timeline-day-heading::after {

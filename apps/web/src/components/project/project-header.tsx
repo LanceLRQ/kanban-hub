@@ -1,24 +1,17 @@
 import type { ReactNode } from "react";
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import type { Health } from "@kanban-hub/core/schema";
+import { HEALTH_TONE } from "@/lib/solid-tone";
 import { cn } from "@/lib/utils";
 import { buttonVariants } from "@/components/ui/button";
 import { formatLocationLine } from "@/lib/location";
 import type { ProjectHeaderView } from "@/server/views/project-header";
 
-/** 健康度徽标的颜色：语义色，来自 tokens.css 的 --health-*，两套主题各自取值 */
-const HEALTH_BG_CLASS: Record<Health, string> = {
-  on_track: "bg-health-on-track",
-  at_risk: "bg-health-at-risk",
-  blocked: "bg-health-blocked",
-};
-
 /**
  * 项目页头部（只读显示）：返回入口、项目名、周期、健康度、焦点、主位置摘要。
- * `.kh-project-header`/`.kh-project-header-divider`/`.kh-health-badge`/`.kh-health-icon`
- * 是主题相关的样式钩子（见 globals.css）：主题 B 用不对称圆角、虚线分隔线、描边徽标 + 圆点，
- * 主题 A 保留实心圆角卡片、实线分隔线、实心徽标 + 对勾方框，组件本身不分叉。
+ * `.kh-project-header`/`.kh-project-header-divider` 是主题相关的样式钩子（见 globals.css）：
+ * 主题 B 用不对称圆角、虚线分隔线，主题 A 保留实心圆角卡片、实线分隔线，组件本身不分叉。
+ * 健康度徽标两套主题都是实心底色 + 白字（lib/solid-tone.ts）。
  * `actions` 放在第一行最右侧（项目页放“编辑”按钮）。
  */
 export async function ProjectHeader({ project, actions }: { project: ProjectHeaderView; actions?: ReactNode }) {
@@ -36,9 +29,8 @@ export async function ProjectHeader({ project, actions }: { project: ProjectHead
           <span className="inline-flex items-center rounded-sm border bg-card px-2.5 py-0.5 text-xs font-bold">
             {te(`cycle.${project.cycle}`)}
           </span>
-          <span className={cn("kh-health-badge inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-xs font-bold", HEALTH_BG_CLASS[project.health])}>
-            <span className={cn("kh-health-icon", HEALTH_BG_CLASS[project.health])} aria-hidden="true" />
-            {te(`health.${project.health}`)}
+          <span className={cn("kh-health-badge inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-xs font-bold", HEALTH_TONE[project.health])}>
+                {te(`health.${project.health}`)}
           </span>
         </div>
         {actions && <div className="ml-auto flex items-center gap-2">{actions}</div>}

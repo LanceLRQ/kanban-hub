@@ -1,21 +1,14 @@
 import Link from "next/link";
 import { getTranslations } from "next-intl/server";
-import type { Health } from "@kanban-hub/core/schema";
 import { formatActorLabel } from "@/lib/actor";
 import { formatRelative } from "@/lib/time";
+import { HEALTH_TONE } from "@/lib/solid-tone";
 import { cn } from "@/lib/utils";
 import { formatLocationLine } from "@/lib/location";
 import type { ProjectCardView } from "@/server/views/overview";
 import { looseTranslator } from "./loose-translator";
 import "./overview.css";
 import { ProgressBar } from "./progress-bar";
-
-/** 健康度徽标的颜色：语义色，来自 tokens.css 的 --health-*，与项目页头部同一套 */
-const HEALTH_BG_CLASS: Record<Health, string> = {
-  on_track: "bg-health-on-track",
-  at_risk: "bg-health-at-risk",
-  blocked: "bg-health-blocked",
-};
 
 /** 卡片的不对称圆角按卡片序号循环，只在主题 B 生效（overview.css），主题 A 下四个值都等于 --radius */
 const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
@@ -53,10 +46,9 @@ export async function ProjectCard({ project, now, index }: { project: ProjectCar
       <span
         className={cn(
           "kh-health-badge inline-flex w-fit items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-xs font-bold",
-          HEALTH_BG_CLASS[project.health],
+          HEALTH_TONE[project.health],
         )}
       >
-        <span className={cn("kh-health-icon", HEALTH_BG_CLASS[project.health])} aria-hidden="true" />
         {te(`health.${project.health}`)}
       </span>
 

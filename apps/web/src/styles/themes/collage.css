@@ -67,6 +67,9 @@ html[data-theme="collage"] {
   /* 语义色 · 停滞 */
   --stale: var(--ink-brick);
 
+  /* 实心标签：墨色本身较深，稍压暗即可 */
+  --solid-shade: 80%;
+
   /* 焦点：少量胶带 */
   --focus-ring: var(--ink-mustard);
 

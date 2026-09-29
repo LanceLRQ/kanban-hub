@@ -2,7 +2,8 @@
 
 import { useTranslations } from "next-intl";
 import type { ContainerStatus } from "@kanban-hub/core/derive";
-import type { HumanFlag, HumanKind, TaskStatus } from "@kanban-hub/core/schema";
+import type { HumanFlag, TaskStatus } from "@kanban-hub/core/schema";
+import { HUMAN_TONE, statusTone } from "@/lib/solid-tone";
 import { cn } from "@/lib/utils";
 
 /**
@@ -46,23 +47,24 @@ export function StatusMark({ status, small = false }: { status: ContainerStatus 
   );
 }
 
-/** 容器表头与侧栏里用的状态标签：小标记 + 状态名 */
+/**
+ * 容器表头里的状态标签：小标记 + 状态名。进行中、待验收、已完成、挂起是实心底色 + 白字
+ * （小标记也变成白色，见 board.css）；待开始、待排期、已取消保持描边。
+ */
 export function StatusChip({ status, label, className }: { status: ContainerStatus | TaskStatus; label: string; className?: string }) {
+  const tone = statusTone(status);
   return (
-    <span className={cn("kh-board-chip inline-flex items-center gap-1.5 rounded-sm border bg-card px-2 py-0.5 text-xs font-bold whitespace-nowrap", className)}>
+    <span
+      data-status={status}
+      className={cn("kh-board-chip inline-flex items-center gap-1.5 rounded-sm border px-2 py-0.5 text-xs font-bold whitespace-nowrap", tone ?? "bg-card", className)}
+    >
       <StatusMark status={status} small />
       {label}
     </span>
   );
 }
 
-const HUMAN_FILL: Record<HumanKind, string> = {
-  decision: "bg-human-decision",
-  verify: "bg-human-verify",
-  action: "bg-human-action",
-};
-
-/** 待你处理的徽标：主题 A 实心填色；主题 B 米白纸底 + 语义色小圆点（见 board.css） */
+/** 待你处理的徽标：两套主题都是实心底色 + 白字 */
 export function HumanBadge({ human, className }: { human: HumanFlag; className?: string }) {
   const t = useTranslations("board");
   const te = useTranslations("enums");
@@ -70,11 +72,10 @@ export function HumanBadge({ human, className }: { human: HumanFlag; className?:
     <span
       className={cn(
         "kh-human-badge inline-flex max-w-full items-center gap-1.5 rounded-sm border px-1.5 text-[11.5px] leading-normal font-extrabold",
-        HUMAN_FILL[human.kind],
+        HUMAN_TONE[human.kind],
         className,
       )}
     >
-      <span aria-hidden="true" className={cn("kh-human-dot hidden size-[7px] flex-none rounded-full border border-border", HUMAN_FILL[human.kind])} />
       <span className="truncate">{t("human.badge", { kind: te(`humanKind.${human.kind}`), note: human.note })}</span>
     </span>
   );

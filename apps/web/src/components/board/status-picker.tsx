@@ -5,6 +5,7 @@ import { useTranslations } from "next-intl";
 import { TASK_STATUSES, type TaskStatus } from "@kanban-hub/core/schema";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { statusTone } from "@/lib/solid-tone";
 import { cn } from "@/lib/utils";
 import { isPlainEnter } from "./editable-text";
 import { StatusMark } from "./marks";
@@ -55,6 +56,8 @@ export function StatusPicker({ status, onChange }: StatusPickerProps) {
       <div role="radiogroup" aria-label={t("sheet.status")} className="flex flex-wrap gap-2">
         {TASK_STATUSES.map((s) => {
           const active = s === status || (askingReason && s === "suspended");
+          // 选中项与容器状态标签一致：有语义色的状态用实心底色 + 白字（小标记也变成白色）
+          const tone = active ? statusTone(s) : null;
           return (
             <button
               key={s}
@@ -65,7 +68,8 @@ export function StatusPicker({ status, onChange }: StatusPickerProps) {
               disabled={busy}
               onClick={() => void pick(s)}
               className={cn(
-                "kh-status-opt inline-flex items-center gap-1.5 rounded-[3px] border-[1.5px] border-border bg-card px-2 py-1 text-xs font-bold transition-transform hover:translate-x-px hover:translate-y-px disabled:opacity-60",
+                "kh-status-opt inline-flex items-center gap-1.5 rounded-[3px] border-[1.5px] border-border px-2 py-1 text-xs font-bold transition-transform hover:translate-x-px hover:translate-y-px disabled:opacity-60",
+                tone ?? "bg-card",
                 active && "font-black shadow-[var(--shadow-hover)]",
               )}
             >

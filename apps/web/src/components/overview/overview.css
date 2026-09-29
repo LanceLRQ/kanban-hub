@@ -1,7 +1,7 @@
 /*
  * 总览页专属的样式：收件箱分组与项目卡片的纸色区分、胶带装饰、虚线分隔、圆形收起按钮、
- * 区块标题的双线与去方框，只在主题 B「纸本拼贴」下生效；两个默认隐藏的开关类
- * （`.kh-overview-tape`、`.kh-overview-kind-dot`）不带主题前缀，主题 A 下始终不显示。
+ * 区块标题的双线与去方框，只在主题 B「纸本拼贴」下生效；默认隐藏的开关类
+ * `.kh-overview-tape` 不带主题前缀，主题 A 下始终不显示。
  * 颜色和圆角只引用 tokens.css / themes/collage.css 里已有的变量，这里不新定义任何色值。
  *
  * 不带主题前缀的规则放进 `@layer kh-base`，带 `[data-theme="collage"]` 前缀的覆盖放进
@@ -11,11 +11,8 @@
  */
 
 @layer kh-base {
-  /* ---------- 收件箱胶带、待你处理圆点：默认隐藏，只在主题 B 下显示 ---------- */
+  /* ---------- 收件箱胶带：默认隐藏，只在主题 B 下显示 ---------- */
   .kh-overview-tape {
-    display: none;
-  }
-  .kh-overview-kind-dot {
     display: none;
   }
 }
@@ -69,21 +66,6 @@
     border: 1px solid var(--border);
     background: var(--card);
     font-size: 0.8125rem;
-  }
-
-  /* ---------- 待你处理的语义色徽标：主题 A 填充，主题 B 描边加圆点 ---------- */
-  [data-theme="collage"] .kh-overview-kind-badge {
-    background: transparent;
-    border-color: var(--border);
-    color: var(--foreground);
-  }
-  [data-theme="collage"] .kh-overview-kind-dot {
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    flex: none;
-    border-radius: 999px;
-    border: 1px solid var(--border);
   }
 
   /* ---------- 项目卡片：纸色区分 ---------- */

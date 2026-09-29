@@ -202,25 +202,13 @@
   }
 
   /*
-   * 健康度徽标：主题 A 保持实心填色，前面加一个带对勾的小方框；主题 B 的覆盖（描边 + 圆点）
-   * 见 @layer kh-theme。
+   * 实心标签（容器状态、健康度、待你处理）：背景是元素上 `--solid-tone` 指定的语义色按
+   * --solid-shade 压暗，字色 --on-solid。语义色与类名的对应见 lib/solid-tone.ts。
+   * 用到它的元素不能再带 bg-*、text-* 这类工具类（utilities 层排在后面，会盖掉这里）。
    */
-  .kh-health-icon {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    width: 14px;
-    height: 14px;
-    flex: none;
-    border: 1.5px solid var(--border);
-    border-radius: 3px;
-  }
-  .kh-health-icon::before {
-    content: "\2713";
-    font-size: 9px;
-    font-weight: 900;
-    line-height: 1;
-    color: var(--card);
+  .kh-solid {
+    background: color-mix(in srgb, var(--solid-tone) var(--solid-shade), #000);
+    color: var(--on-solid);
   }
 }
 
@@ -297,24 +285,5 @@
   [data-theme="collage"] .kh-project-header-divider {
     border-top-style: dashed;
     border-top-color: var(--border-soft);
-  }
-
-  /*
-   * 健康度徽标：主题 B 改成描边 + 圆点，圆点颜色仍然是健康度语义色（同一个 bg-health-*
-   * 工具类，只是形状和边框由主题决定）。
-   */
-  [data-theme="collage"] .kh-health-badge {
-    background: transparent;
-    border-color: var(--border);
-    color: var(--foreground);
-  }
-  [data-theme="collage"] .kh-health-icon {
-    width: 9px;
-    height: 9px;
-    border-radius: 999px;
-    border-color: var(--border);
-  }
-  [data-theme="collage"] .kh-health-icon::before {
-    content: "";
   }
 }

@@ -1,9 +1,22 @@
 /*
- * 项目看板在主题 B「纸本拼贴」下的覆盖。主题 A 的外观全部写在组件的 Tailwind 类里，
- * 这里只放 [data-theme="collage"] 作用域的规则，颜色、阴影、圆角都引用 token。
- * 这份文件整个都是主题覆盖，放进 `@layer kh-theme`（层顺序声明见 globals.css 文件头），
- * 层的优先级只看层顺序、不看选择器优先级，不用拔高声明的优先级就能盖过 Tailwind 工具类。
+ * 项目看板的样式。主题 A 的外观基本都写在组件的 Tailwind 类里，这里放两类规则：
+ * - kh-base：实心标签里的状态标记（两套主题共用）；
+ * - kh-theme：主题 B「纸本拼贴」的覆盖（[data-theme="collage"] 作用域），颜色、阴影、圆角都引用 token。
+ * 两层都排在 utilities 之后（层顺序声明见 globals.css 文件头），层的优先级只看层顺序、
+ * 不看选择器优先级，不用拔高声明的优先级就能盖过 Tailwind 工具类。
  */
+
+@layer kh-base {
+  /*
+   * 实心标签（.kh-solid）里的状态标记：去掉语义色填充，描边和字符都用白色，
+   * 保留形状提示，也让标签宽度与描边状态时一致（选中后不会挤得整排重新换行）。
+   */
+  .kh-solid > .kh-status-mark {
+    background: transparent;
+    border-color: currentColor;
+    color: currentColor;
+  }
+}
 
 @layer kh-theme {
   /* ---------- 容器分区：相邻容器换纸色，表头是同色系略深的纸条，分隔线用虚线 ---------- */
@@ -47,6 +60,10 @@
     border-width: 1px;
     border-color: var(--border);
     border-radius: 2px 6px 3px 6px;
+  }
+  /* 实心标签（.kh-solid）保留自己的底色和白字，只有描边标签换成米白纸底 */
+  [data-theme="collage"] .kh-board-chip:not(.kh-solid),
+  [data-theme="collage"] .kh-doc-chip {
     background: var(--bg-card);
     color: var(--fg);
   }
@@ -78,17 +95,16 @@
     width: 8px;
     height: 8px;
   }
-  [data-theme="collage"] .kh-status-mark[data-status="suspended"] {
+  /* 实心标签里的圆点填成白色：空心圆点在这个主题里表示“待开始”，不能混用 */
+  [data-theme="collage"] .kh-solid > .kh-status-mark {
+    background: currentColor;
+  }
+  [data-theme="collage"] :not(.kh-solid) > .kh-status-mark[data-status="suspended"] {
     background: var(--health-blocked);
   }
   [data-theme="collage"] .kh-status-mark[data-status="cancelled"] {
     background: transparent;
     border-style: dashed;
-  }
-
-  /* ---------- 待你处理徽标：米白纸底 + 语义色小圆点 ---------- */
-  [data-theme="collage"] .kh-human-dot {
-    display: inline-block;
   }
 
   /* ---------- 侧栏：牛皮纸浮层，虚线分块，状态选项是虚线纸片 ---------- */
@@ -122,17 +138,22 @@
   [data-theme="collage"] .kh-status-opt {
     border: 1px dashed var(--border-soft);
     border-radius: 2px 6px 3px 6px;
-    background: color-mix(in srgb, var(--bg-card) 55%, transparent);
     font-weight: 600;
+  }
+  /* 实心的选中项（.kh-solid）保留自己的底色 */
+  [data-theme="collage"] .kh-status-opt:not(.kh-solid) {
+    background: color-mix(in srgb, var(--bg-card) 55%, transparent);
   }
   [data-theme="collage"] .kh-status-opt:hover {
     transform: var(--press-hover);
   }
   [data-theme="collage"] .kh-status-opt[data-active="true"] {
     border: 1.5px solid var(--border);
-    background: var(--bg-card);
     box-shadow: var(--shadow-raised);
     font-weight: 800;
+  }
+  [data-theme="collage"] .kh-status-opt[data-active="true"]:not(.kh-solid) {
+    background: var(--bg-card);
   }
   [data-theme="collage"] .kh-check-box {
     border-radius: 2px 4px 2px 4px;

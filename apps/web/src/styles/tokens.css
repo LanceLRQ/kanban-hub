@@ -12,6 +12,7 @@
  *     --task-done --task-suspended --task-cancelled
  *   - 语义色 · 待你处理：--human-decision --human-verify --human-action
  *   - 语义色 · 停滞：--stale
+ *   - 实心标签（状态、健康度、待你处理）：--solid-shade 语义色加深后的保留比例，--on-solid 字色
  *   - 焦点：--focus-ring
  *   - shadcn/ui 语义层（由上面这些 token 派生，供 components/ui 使用）：
  *     --background --foreground --card --card-foreground --popover
@@ -82,6 +83,10 @@
 
   /* 语义色 · 停滞 */
   --stale: var(--brick);
+
+  /* 实心标签：主题 A 的语义色偏浅，压暗到 65% 后白字才看得清 */
+  --solid-shade: 65%;
+  --on-solid: #fff;
 
   /* 焦点：套印错位阴影 */
   --focus-ring: var(--mustard-deep);

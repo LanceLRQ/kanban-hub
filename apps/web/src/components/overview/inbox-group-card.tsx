@@ -4,6 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import type { HumanKind } from "@kanban-hub/core/schema";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
+import { HUMAN_TONE } from "@/lib/solid-tone";
 import { cn } from "@/lib/utils";
 import "./overview.css";
 
@@ -15,13 +16,6 @@ export interface InboxGroupItemView {
   projectName: string;
   relativeTime: string;
 }
-
-/** 待你处理的语义色，来自 tokens.css 的 --human-*；主题 A 直接填充，主题 B 改成描边加圆点（overview.css） */
-const HUMAN_BG_CLASS: Record<HumanKind, string> = {
-  decision: "bg-human-decision",
-  verify: "bg-human-verify",
-  action: "bg-human-action",
-};
 
 /** 三组固定各用一种不对称圆角，只在主题 B 生效（overview.css），主题 A 下 --radius-a/-b/-c 都等于 --radius */
 const RADIUS_CLASS: Record<HumanKind, string> = {
@@ -64,8 +58,7 @@ export function InboxGroupCard({
         className="flex w-full items-center gap-2.5 border-b bg-muted/40 px-3.5 py-2.5 text-left"
         aria-label={open ? collapseLabel : expandLabel}
       >
-        <span className={cn("kh-overview-kind-badge kh-num inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-sm font-extrabold", HUMAN_BG_CLASS[kind])}>
-          <span className={cn("kh-overview-kind-dot", HUMAN_BG_CLASS[kind])} aria-hidden="true" />
+        <span className={cn("kh-overview-kind-badge kh-num inline-flex items-center gap-1.5 rounded-sm border px-2.5 py-0.5 text-sm font-extrabold", HUMAN_TONE[kind])}>
           {title}
         </span>
         <span className="kh-overview-fold ml-auto font-mono text-base leading-none font-bold" aria-hidden="true">

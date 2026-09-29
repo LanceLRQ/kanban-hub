@@ -176,17 +176,22 @@ describe("kh sync", () => {
     expect(Buffer.from(bytes ?? []).toString("utf8")).toBe("a");
   });
 
-  it("同步锁被占用时，退出码 1", async () => {
-    const repo = await tempRepo();
-    const { home, projectId } = await setupProject(repo);
-    const lockFile = path.join(home.dir, "cache", projectId, "lock");
-    await fs.mkdir(path.dirname(lockFile), { recursive: true });
-    await fs.writeFile(lockFile, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
+  it(
+    "同步锁被占用时，等待后仍占用，退出码 1",
+    async () => {
+      const repo = await tempRepo();
+      const { home, projectId } = await setupProject(repo);
+      const lockFile = path.join(home.dir, "cache", projectId, "lock");
+      await fs.mkdir(path.dirname(lockFile), { recursive: true });
+      await fs.writeFile(lockFile, JSON.stringify({ pid: process.pid, startedAt: new Date().toISOString() }));
 
-    const result = await runKh(["sync"], { cwd: repo.dir, khHome: home.dir });
-    expect(result.code).toBe(1);
-    expect(result.stderr).toContain("正在进行");
-  });
+      // 锁被占用时会先等待（最多 5 秒）才报错，这里接受这个等待，用更长的测试超时
+      const result = await runKh(["sync"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(1);
+      expect(result.stderr).toContain("正在进行");
+    },
+    10_000,
+  );
 
   it("--quiet：成功时不输出内容", async () => {
     const repo = await tempRepo();

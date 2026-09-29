@@ -10,6 +10,11 @@ import { loginHint, readMachineConfig, readToken, resolveKhHome } from "../confi
 import { ApiClient } from "../http/client";
 import { recordReport } from "../report-log";
 import { findRegisteredRepo, type RegisteredRepo } from "../repo/root";
+import { containerRefLabel, displayEmpty } from "../status/format";
+
+// containerRefLabel、displayEmpty 的实现挪进了 status/format.ts（status 不再依赖命令层），
+// 这里转出，command 层不必改动导入路径
+export { containerRefLabel, displayEmpty };
 
 const REGISTER_HINT = "kh register";
 
@@ -166,26 +171,6 @@ export function parseNullableDateOption(raw: string | undefined): string | null 
     throw new CliError(EXIT.USAGE, `日期格式不对：${value}`, "使用 YYYY-MM-DD 格式，例如 2026-09-25");
   }
   return value;
-}
-
-/** 命令输出里统一的空值占位：null 或空字符串都显示成全角“（无）”，非空原样显示 */
-export function displayEmpty(value: string | null | undefined): string {
-  return value === null || value === undefined || value === "" ? "（无）" : value;
-}
-
-/**
- * 容器在命令输出里的显示标签：有编号用编号；杂项容器固定显示 misc；否则用整个看板范围内
- * 能互相区分的最短 ID 前缀（至少 4 位）——resolveContainerRef 认 ID 前缀，这样写出来的
- * "<前缀>/2.4" 能直接拿来引用容器或任务，不会像旧版的 "(无编号)" 占位那样没法用。
- */
-export function containerRefLabel(
-  container: Pick<Container, "id" | "kind" | "code">,
-  allContainers: readonly Pick<Container, "id">[],
-): string {
-  if (container.code !== null) return container.code;
-  if (container.kind === "misc") return "misc";
-  const prefixes = shortIdPrefixes(allContainers.map((c) => c.id));
-  return prefixes.get(container.id) ?? container.id;
 }
 
 /** 至少要给一个要修改的选项，否则用法错误（2），不发请求；project/container/task set 共用 */

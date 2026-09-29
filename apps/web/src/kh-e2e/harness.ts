@@ -6,10 +6,12 @@
  * /private/var 的软链接，而 git 输出的是解析后的物理路径，混用会让仓库内路径的换算出错。
  */
 import { execFileSync } from "node:child_process";
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Readable } from "node:stream";
+import { afterAll } from "vitest";
 import type { Actor } from "@kanban-hub/core/schema";
 import { SYNC_DEFAULT_MAX_FILE_SIZE } from "@kanban-hub/core/sync";
 import { readMachineConfig } from "../../../../packages/cli/src/config/home";
@@ -87,6 +89,13 @@ export async function cleanupAll(...items: readonly TempDir[]): Promise<void> {
   await Promise.all(items.map((item) => item.cleanup()));
 }
 
+/** 一次 spawnBackground 调用的参数记录，供测试断言 */
+export interface SpawnBackgroundCall {
+  args: string[];
+  cwd: string;
+  logFile: string;
+}
+
 export interface RunKhOptions {
   cwd: string;
   khHome: string;
@@ -95,10 +104,18 @@ export interface RunKhOptions {
   /** 交互式确认要读的输入；省略时 stdin 视为立即 EOF（空输入） */
   stdin?: string;
   isTTY?: boolean;
-  /** ctx.homeDir，默认取真实的 os.homedir()；用来测试“默认 KH_HOME 与仓库配置撞路径”这类场景 */
+  /**
+   * ctx.homeDir；默认是一个临时目录（不再是真实主目录），这样测试忘了传它、
+   * 不小心执行到 kh setup 这类直接写主目录的命令时，也不会碰到真实的 ~/.agents、~/.claude。
+   * 用来测试“默认 KH_HOME 与仓库配置撞路径”这类场景时，显式传一个自定义值。
+   */
   homeDir?: string;
   /** ctx.fetch，默认取全局 fetch；用来在个别测试里包一层拦截请求（例如模拟暂存被提前清理） */
   fetch?: typeof fetch;
+  /** ctx.now，默认取真实的当前时间；hook 相关的测试用它注入固定或递进的时间 */
+  now?: () => Date;
+  /** ctx.spawnBackground；省略时用一个只记录调用参数的默认实现，通过返回值的 spawnCalls 读出 */
+  spawnBackground?: (args: string[], opts: { cwd: string; logFile: string }) => void;
 }
 
 export interface RunKhResult {
@@ -107,10 +124,32 @@ export interface RunKhResult {
   stderr: string;
 }
 
+/** 本模块创建过的默认 homeDir，测试文件结束时统一删除 */
+const defaultHomeDirs: string[] = [];
+
+/** 造一个临时目录当默认 homeDir 用：同步创建并解析成真实路径，登记后由 afterAll 清理 */
+function makeDefaultHomeDirSync(): string {
+  const dir = fsSync.mkdtempSync(path.join(os.tmpdir(), "kh-e2e-default-home-"));
+  const real = fsSync.realpathSync(dir);
+  defaultHomeDirs.push(real);
+  return real;
+}
+
+/** 删除已登记的默认 homeDir；harness 只被测试文件导入，afterAll 会在每个测试文件结束时调用它 */
+export async function cleanupDefaultHomeDirs(): Promise<void> {
+  const dirs = defaultHomeDirs.splice(0);
+  await Promise.all(dirs.map((dir) => fs.rm(dir, { recursive: true, force: true })));
+}
+
+afterAll(cleanupDefaultHomeDirs);
+
 /** 按 runKh 的同一套规则构造 CliContext，输出写进返回的缓冲区；直接调用 kh 内部函数的测试用它 */
-export function makeKhContext(opts: RunKhOptions): { ctx: CliContext; output(): { stdout: string; stderr: string } } {
+export function makeKhContext(
+  opts: RunKhOptions,
+): { ctx: CliContext; output(): { stdout: string; stderr: string }; spawnCalls: SpawnBackgroundCall[] } {
   let stdout = "";
   let stderr = "";
+  const spawnCalls: SpawnBackgroundCall[] = [];
   const ctx: CliContext = {
     cwd: opts.cwd,
     // 带上真实的 process.env（主要是 PATH）：runGit 现在只用 ctx.env，不会退回 process.env，
@@ -128,13 +167,18 @@ export function makeKhContext(opts: RunKhOptions): { ctx: CliContext; output(): 
     },
     stdin: opts.stdin !== undefined ? Readable.from([opts.stdin]) : Readable.from([]),
     isTTY: opts.isTTY ?? false,
-    now: () => new Date(),
+    now: opts.now ?? (() => new Date()),
     platform: process.platform,
     hostname: os.hostname(),
-    homeDir: opts.homeDir ?? os.homedir(),
+    homeDir: opts.homeDir ?? makeDefaultHomeDirSync(),
     fetch: opts.fetch ?? globalThis.fetch.bind(globalThis),
+    spawnBackground:
+      opts.spawnBackground ??
+      ((args, spawnOpts) => {
+        spawnCalls.push({ args, cwd: spawnOpts.cwd, logFile: spawnOpts.logFile });
+      }),
   };
-  return { ctx, output: () => ({ stdout, stderr }) };
+  return { ctx, output: () => ({ stdout, stderr }), spawnCalls };
 }
 
 /** 用捕获输出的 CliContext 调用 cli 的 main()，驱动一次 kh 命令；不 fork 真实进程 */

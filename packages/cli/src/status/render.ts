@@ -5,7 +5,7 @@
 import type { ContainerStatus } from "@kanban-hub/core/derive";
 import type { TaskStatus } from "@kanban-hub/core/schema";
 import { CYCLE_LABELS, HEALTH_LABELS, HUMAN_KIND_LABELS, MANUAL_STATUS_LABELS, TASK_STATUS_LABELS } from "../commands/labels";
-import { displayEmpty } from "../commands/shared";
+import { displayEmpty } from "./format";
 import type { StatusView, StatusViewContainer, StatusViewTask } from "./view";
 
 /** 任务状态符号（规格 5.3）；已取消没有符号，折叠计数里用文字 */

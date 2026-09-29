@@ -8,7 +8,7 @@ import { checklistProgress, projectProgress, summarizeContainer } from "@kanban-
 import type { ContainerStatus, Progress } from "@kanban-hub/core/derive";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import type { Container, ContainerKind, Cycle, Health, HumanFlag, TaskStatus } from "@kanban-hub/core/schema";
-import { containerRefLabel } from "../commands/shared";
+import { containerRefLabel } from "./format";
 
 const DAY_MS = 86_400_000;
 

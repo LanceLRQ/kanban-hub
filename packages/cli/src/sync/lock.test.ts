@@ -5,7 +5,10 @@ import { spawnSync } from "node:child_process";
 import { afterEach, describe, expect, it } from "vitest";
 import { EXIT } from "../errors";
 import { fakeContext } from "../repo/test-helpers";
-import { withSyncLock } from "./lock";
+import { isSyncLockBusy, isSyncLockBusyError, withSyncLock } from "./lock";
+
+/** 现有测试注入的小等待时长：验证“确实被占用会报错”，不必真的等上默认的 5 秒 */
+const SHORT_WAIT = { waitMs: 50, retryIntervalMs: 10 };
 
 const dirs: string[] = [];
 
@@ -45,8 +48,8 @@ describe("withSyncLock", () => {
     // 当前测试进程自己的 pid 一定存活；startedAt 就是 ctx.now()，不超过 10 分钟
     await fs.writeFile(file, JSON.stringify({ pid: process.pid, startedAt: ctx.now().toISOString() }));
 
-    await expect(withSyncLock(ctx, "p000000001", async () => "x")).rejects.toMatchObject({
-      name: "CliError",
+    await expect(withSyncLock(ctx, "p000000001", async () => "x", SHORT_WAIT)).rejects.toMatchObject({
+      name: "SyncLockBusyError",
       exitCode: EXIT.UNEXPECTED,
     });
   });
@@ -91,7 +94,7 @@ describe("withSyncLock", () => {
     await fs.writeFile(file, JSON.stringify({ pid: process.pid, startedAt: start.toISOString() }));
 
     const ctx = fakeContext({ env: { KH_HOME: home }, now: () => soon });
-    await expect(withSyncLock(ctx, "p000000001", async () => "x")).rejects.toMatchObject({
+    await expect(withSyncLock(ctx, "p000000001", async () => "x", SHORT_WAIT)).rejects.toMatchObject({
       exitCode: EXIT.UNEXPECTED,
     });
   });
@@ -105,8 +108,8 @@ describe("withSyncLock", () => {
     await fs.writeFile(file, "");
 
     const ctx = fakeContext({ env: { KH_HOME: home }, now: () => start });
-    await expect(withSyncLock(ctx, "p000000001", async () => "x")).rejects.toMatchObject({
-      name: "CliError",
+    await expect(withSyncLock(ctx, "p000000001", async () => "x", SHORT_WAIT)).rejects.toMatchObject({
+      name: "SyncLockBusyError",
       exitCode: EXIT.UNEXPECTED,
     });
   });
@@ -158,7 +161,7 @@ describe("withSyncLock", () => {
         await waitFor(async () => (JSON.parse(await fs.readFile(file, "utf8")) as { refreshedAt?: string }).refreshedAt === new Date(nowMs).toISOString());
         // 到第 15 分钟：距开始已超过 10 分钟，但距上次刷新不到 10 分钟，另一个 kh 不能接管
         nowMs = start + 15 * 60 * 1000;
-        await expect(withSyncLock(ctx, "p000000001", async () => "stolen")).rejects.toMatchObject({
+        await expect(withSyncLock(ctx, "p000000001", async () => "stolen", SHORT_WAIT)).rejects.toMatchObject({
           exitCode: EXIT.UNEXPECTED,
         });
         return "held";
@@ -196,6 +199,83 @@ describe("withSyncLock", () => {
     expect(tokens[0]).toMatch(/^[0-9a-f]{32}$/);
     expect(tokens[1]).toMatch(/^[0-9a-f]{32}$/);
     expect(tokens[0]).not.toBe(tokens[1]);
+  });
+
+  it("锁在等待时间内释放：拿到锁继续执行", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const file = await lockFilePath(home, "p000000001");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ pid: process.pid, startedAt: ctx.now().toISOString() }));
+
+    // 100ms 后释放，等待窗口 500ms 内应该能重试成功
+    setTimeout(() => {
+      fs.rm(file, { force: true }).catch(() => {});
+    }, 100);
+
+    const result = await withSyncLock(ctx, "p000000001", async () => "acquired", { waitMs: 500, retryIntervalMs: 20 });
+    expect(result).toBe("acquired");
+  });
+
+  it("一直被占用：等待期满后抛出的错误 isSyncLockBusyError 为 true，退出码 1，文字与原来相同", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const file = await lockFilePath(home, "p000000001");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ pid: process.pid, startedAt: ctx.now().toISOString() }));
+
+    const err: Error = await withSyncLock(ctx, "p000000001", async () => "x", SHORT_WAIT).then(
+      () => {
+        throw new Error("应该抛出");
+      },
+      (e: unknown) => e as Error,
+    );
+    expect(isSyncLockBusyError(err)).toBe(true);
+    expect((err as { exitCode?: number }).exitCode).toBe(EXIT.UNEXPECTED);
+    expect(err.message).toBe("另一个同步或拉取正在进行");
+  });
+});
+
+describe("isSyncLockBusy", () => {
+  it("没有锁文件：返回 false", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    expect(await isSyncLockBusy(ctx, "p000000001")).toBe(false);
+  });
+
+  it("活着的新锁：返回 true", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const file = await lockFilePath(home, "p000000001");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ pid: process.pid, startedAt: ctx.now().toISOString() }));
+
+    expect(await isSyncLockBusy(ctx, "p000000001")).toBe(true);
+  });
+
+  it("持有者进程已退出的锁：返回 false（陈旧，不算占用）", async () => {
+    const home = await tempDir();
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const file = await lockFilePath(home, "p000000001");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+
+    const child = spawnSync(process.execPath, ["-e", "process.exit(0)"]);
+    const stalePid = child.pid;
+    await fs.writeFile(file, JSON.stringify({ pid: stalePid, startedAt: ctx.now().toISOString() }));
+
+    expect(await isSyncLockBusy(ctx, "p000000001")).toBe(false);
+  });
+
+  it("超过 10 分钟没有刷新的锁：返回 false（陈旧，不算占用）", async () => {
+    const home = await tempDir();
+    const start = new Date("2026-01-01T00:00:00.000Z");
+    const later = new Date(start.getTime() + 11 * 60 * 1000);
+    const file = await lockFilePath(home, "p000000001");
+    await fs.mkdir(path.dirname(file), { recursive: true });
+    await fs.writeFile(file, JSON.stringify({ pid: process.pid, startedAt: start.toISOString() }));
+
+    const ctx = fakeContext({ env: { KH_HOME: home }, now: () => later });
+    expect(await isSyncLockBusy(ctx, "p000000001")).toBe(false);
   });
 });
 

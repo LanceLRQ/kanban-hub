@@ -1,6 +1,6 @@
 import os from "node:os";
 import { describe, expect, it } from "vitest";
-import { createNodeContext } from "./context";
+import { createNodeContext, type Writer } from "./context";
 
 describe("createNodeContext", () => {
   it("反映真实进程的 cwd、env、platform、hostname、homeDir", () => {
@@ -29,5 +29,21 @@ describe("createNodeContext", () => {
   it("isTTY 反映 stdin.isTTY", () => {
     const ctx = createNodeContext();
     expect(ctx.isTTY).toBe(Boolean(process.stdin.isTTY));
+  });
+
+  it("提供可用的 spawnBackground", () => {
+    const ctx = createNodeContext();
+    expect(typeof ctx.spawnBackground).toBe("function");
+  });
+});
+
+describe("Writer", () => {
+  it("只收字符串的 writer 不能当作能收字节数组的 writer 使用（属性写法下的逆变检查）", () => {
+    function acceptsBytes(writer: Writer): void {
+      writer.write(new Uint8Array([1, 2, 3]));
+    }
+    const stringOnlyWriter = { write: (_s: string) => {} };
+    // @ts-expect-error 只收字符串的 write 不满足 Writer（收字符串或字节数组）
+    acceptsBytes(stringOnlyWriter);
   });
 });

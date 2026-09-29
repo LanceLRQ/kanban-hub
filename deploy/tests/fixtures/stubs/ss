@@ -1,0 +1,5 @@
+#!/usr/bin/env bash
+# 测试用 ss 桩：输出 $STUB_SS_TABLE（默认空 = 没有任何端口在监听），
+# 有内容时按真实 ss -tln 的列布局：第 4 列是「本地地址:端口」
+printf '%b' "${STUB_SS_TABLE:-}"
+exit 0

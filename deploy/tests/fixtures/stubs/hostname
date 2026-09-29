@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# 测试用 hostname 桩：-I 输出 $STUB_IPS（空格分隔的局域网 IP 列表，可为空）
+if [ "${1:-}" = "-I" ]; then
+  printf '%b\n' "${STUB_IPS:-}"
+fi
+exit 0

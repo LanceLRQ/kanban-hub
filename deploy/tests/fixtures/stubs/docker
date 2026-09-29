@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# 测试用 docker 桩：调用参数追加到 $STUB_LOG；按子命令给固定输出，行为由 STUB_* 环境变量控制
+[ -n "${STUB_LOG:-}" ] && echo "docker $*" >>"$STUB_LOG"
+case "${1:-}" in
+  info)
+    if [ "${STUB_INFO_NEEDS_SUDO:-}" = 1 ] && [ "${STUB_VIA_SUDO:-}" != 1 ]; then exit 1; fi
+    exit "${STUB_INFO_EXIT:-0}"
+    ;;
+  version) echo "${STUB_SERVER_VERSION:-27.0.0}" ;;
+  compose)
+    case "${2:-}" in
+      version) echo "Docker Compose version v2.29.0"; exit "${STUB_COMPOSE_VERSION_EXIT:-0}" ;;
+      pull) exit "${STUB_PULL_EXIT:-0}" ;;
+      *) exit "${STUB_COMPOSE_EXIT:-0}" ;;
+    esac
+    ;;
+  inspect) echo "${STUB_RUNNING:-false}" ;;
+  ps) printf '%b' "${STUB_PS:-}" ;;
+  image)
+    # image inspect：默认镜像不存在（返回 1），STUB_IMAGE_EXISTS=1 表示已在本地
+    if [ "${STUB_IMAGE_EXISTS:-0}" = 1 ]; then exit 0; else exit 1; fi
+    ;;
+  build)
+    echo "build ok: $*"
+    exit "${STUB_BUILD_EXIT:-0}"
+    ;;
+  *) exit 0 ;;
+esac

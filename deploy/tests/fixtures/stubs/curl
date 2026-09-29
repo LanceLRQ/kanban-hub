@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# 测试用 curl 桩：就绪探测（-s 开头）返回 $STUB_HTTP_CODE（默认 200）；
+# 下载（-fsSL 开头）把 $STUB_CURL_BODY 写到 -o 指定的文件，退出码 $STUB_CURL_EXIT
+[ -n "${STUB_LOG:-}" ] && echo "curl $*" >>"$STUB_LOG"
+if [ "${1:-}" = "-s" ]; then
+  printf '%s' "${STUB_HTTP_CODE:-200}"
+  exit 0
+fi
+if [ "${1:-}" = "-fsSL" ]; then
+  out=""
+  prev=""
+  for a in "$@"; do
+    if [ "$prev" = "-o" ]; then out="$a"; fi
+    prev="$a"
+  done
+  if [ -n "$out" ]; then
+    printf '%b' "${STUB_CURL_BODY:-}" >"$out"
+  fi
+  exit "${STUB_CURL_EXIT:-0}"
+fi
+exit 0

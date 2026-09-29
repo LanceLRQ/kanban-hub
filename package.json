@@ -8,6 +8,7 @@
   },
   "scripts": {
     "test": "vitest run",
+    "test:deploy": "bash deploy/tests/run.sh",
     "typecheck": "pnpm -r typecheck",
     "lint": "pnpm -r lint",
     "build": "pnpm -r build",

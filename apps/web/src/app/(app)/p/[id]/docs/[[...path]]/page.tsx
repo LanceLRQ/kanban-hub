@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import { authedPageServices } from "@/server/web/services";
 import { buildDocsView } from "@/server/views/docs";
 import { DocsView } from "@/components/docs/docs-view";
+import { decodeDocPathParam } from "@/lib/doc-url";
 
 /** 项目文档：选机器、看文件树与最近更新、读渲染后的 Markdown、打开原文件 */
 export default async function ProjectDocsPage({
@@ -18,7 +19,7 @@ export default async function ProjectDocsPage({
   const machineParam = sp.m;
   const machineId = typeof machineParam === "string" ? machineParam : undefined;
 
-  const view = await buildDocsView(services, id, { machineId, path: path?.join("/") }, services.now());
+  const view = await buildDocsView(services, id, { machineId, path: decodeDocPathParam(path) }, services.now());
   if (!view) notFound();
 
   return <DocsView projectId={id} view={view} />;

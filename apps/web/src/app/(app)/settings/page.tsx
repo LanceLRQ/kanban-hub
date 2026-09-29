@@ -42,7 +42,7 @@ export default async function SettingsPage() {
       </SectionCard>
 
       <SectionCard title={t("backup.title")} subtitle="backup">
-        <BackupSection />
+        <BackupSection backups={view.backups} now={services.now()} />
       </SectionCard>
 
       <SectionCard title={t("machines.title")} subtitle="machines">

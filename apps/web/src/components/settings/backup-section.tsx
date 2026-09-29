@@ -1,29 +1,27 @@
 import { getTranslations } from "next-intl/server";
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Input } from "@/components/ui/input";
-import { DisabledEntry } from "@/components/shell/disabled-entry";
+import { serverTimeZone } from "@/lib/time";
+import type { BackupFileInfo } from "@/server/store/backup";
+import { BackupCreateForm } from "./backup-create-form";
+import { BackupList } from "./backup-list";
 import { SectionRow } from "./section-card";
 
-/** 加密备份：M7 才提供，这一版先按既定布局放上，整个区块置灰、悬停提示“后续版本提供” */
-export async function BackupSection() {
+/** 加密备份区块：上面是创建表单（进行中禁用并提示），下面是备份列表，每行可下载 */
+export async function BackupSection({ backups, now }: { backups: BackupFileInfo[]; now: Date }) {
   const t = await getTranslations("settings");
-  const td = await getTranslations("common");
 
   return (
-    <DisabledEntry tooltip={td("disabledEntry.tooltip")} className="block w-full">
+    <>
       <SectionRow label={t("backup.create")}>
-        <div className="flex flex-wrap items-center gap-3">
-          <Input disabled placeholder={t("backup.passwordPlaceholder")} className="max-w-64" />
-          <label className="flex items-center gap-1.5 text-sm">
-            <Checkbox disabled defaultChecked />
-            {t("backup.includeHistory")}
-          </label>
-          <Button type="button" size="sm" disabled>
-            {t("backup.createButton")}
-          </Button>
-        </div>
+        <BackupCreateForm />
       </SectionRow>
-    </DisabledEntry>
+      <BackupList
+        backups={backups}
+        now={now}
+        timeZone={serverTimeZone()}
+        listLabel={t("backup.listLabel")}
+        emptyLabel={t("backup.empty")}
+        downloadLabel={t("backup.download")}
+      />
+    </>
   );
 }

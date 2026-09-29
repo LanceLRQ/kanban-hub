@@ -23,6 +23,8 @@ export interface TestApi {
   services: Services;
   /** 服务容器里的同一个 Store，方便测试直接读写数据做前置准备 */
   store: Store;
+  /** 备份目录（临时目录里的 backups），供备份接口的测试直接放文件、核对产物 */
+  backupDir: string;
   /** 同步管理员账号时用的明文密码，用于测试 /auth/login */
   adminPassword: string;
 
@@ -66,12 +68,17 @@ const TEST_SCRYPT_PARAMS = { N: 16, r: 1, p: 1 };
 const DEFAULT_BASE_URL = "http://localhost";
 
 export async function setupTestApi(): Promise<TestApi> {
-  const dataDir = await fs.mkdtemp(path.join(os.tmpdir(), "kh-api-test-"));
+  // 备份目录不能在数据目录里面，否则打备份时会把备份文件自己也打包进去，放在旁边
+  const root = await fs.mkdtemp(path.join(os.tmpdir(), "kh-api-test-"));
+  const dataDir = path.join(root, "data");
+  const backupDir = path.join(root, "backups");
+  // 存储打开时 git 以数据目录为工作目录，目录得先存在
+  await fs.mkdir(dataDir, { recursive: true });
   const now = () => new Date();
   const log = () => {};
 
   // 去抖设得比任何一个测试用例都长，保证测试期间不会有中间提交；close() 时仍会补提交一次
-  const store = await Store.open({ dataDir, now, commitDebounceMs: 60_000, log });
+  const store = await Store.open({ dataDir, backupDir, now, commitDebounceMs: 60_000, log });
 
   const adminPassword = "test-admin-password";
   await syncAdminPassword(store.auth, adminPassword, TEST_SCRYPT_PARAMS);
@@ -97,6 +104,7 @@ export async function setupTestApi(): Promise<TestApi> {
   return {
     services,
     store,
+    backupDir,
     adminPassword,
 
     sessionCookie(): string {
@@ -130,7 +138,8 @@ export async function setupTestApi(): Promise<TestApi> {
     async cleanup(): Promise<void> {
       setServices(undefined);
       await store.close();
-      await fs.rm(dataDir, { recursive: true, force: true });
+      // 数据目录和备份目录都在同一个临时目录下，一起删掉
+      await fs.rm(root, { recursive: true, force: true });
     },
   };
 }

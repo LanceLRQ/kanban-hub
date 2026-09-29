@@ -332,6 +332,37 @@ describe("恢复备份", () => {
     }
   });
 
+  it("entry 名含反斜杠的路径段拒绝：Windows 上反斜杠是分隔符，可能写出暂存目录之外的位置", async () => {
+    await seedData();
+    // 第一个名字带 .. 段，zip.js 在读取层就会拒绝；第二个是它放行的普通反斜杠段，
+    // 必须由恢复前的 entry 名校验拦下
+    const cases = ["data/..\\.restore-tmp/evil.txt", "data/keep\\x.txt"];
+    for (const badName of cases) {
+      const file = path.join(root, `crafted-${badName.replace(/\W/g, "_")}.zip`);
+      await writeCraftedZip(file, [
+        { name: "manifest.json", content: manifestText() },
+        { name: "data/keep.txt", content: "正常的" },
+        { name: badName, content: "越界" },
+      ]);
+      const target = path.join(root, `t-${badName.replace(/\W/g, "_")}`);
+      const err = await rejection(restoreArchive(file, target));
+      expect(err, badName).toBeInstanceOf(KhError);
+      expect((err as KhError).code, badName).toBe("invalid");
+      expect(await fs.readdir(target).catch(() => []), badName).toEqual([]);
+    }
+  });
+
+  it("恢复目标是普通文件时按 conflict 拒绝，文件本身不动", async () => {
+    await seedData();
+    const info = await writeBackupArchive(dataDir, backupDir);
+    const target = path.join(root, "occupied");
+    await fs.writeFile(target, "占位");
+    const err = await rejection(restoreArchive(path.join(backupDir, info.fileName), target));
+    expect(err).toBeInstanceOf(KhError);
+    expect((err as KhError).code).toBe("conflict");
+    expect(await fs.readFile(target, "utf8")).toBe("占位");
+  });
+
   it("manifest 的格式或版本不认识时拒绝", async () => {
     await seedData();
     const cases: Array<Record<string, unknown>> = [{ format: "另一个程序" }, { version: 2 }];

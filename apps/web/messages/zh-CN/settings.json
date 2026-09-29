@@ -24,7 +24,11 @@
     "create": "创建备份",
     "passwordPlaceholder": "备份密码（AES-256）",
     "includeHistory": "含历史",
-    "createButton": "创建加密备份"
+    "createButton": "创建加密备份",
+    "creating": "创建中…",
+    "listLabel": "已有备份",
+    "empty": "还没有备份文件",
+    "download": "下载"
   },
   "machines": {
     "title": "已接入的机器"

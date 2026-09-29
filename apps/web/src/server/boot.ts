@@ -21,7 +21,7 @@ export async function boot(): Promise<void> {
   if (peekStore()) return;
   const paths = resolveServerPaths();
   await enforceSelfCheck(paths);
-  const store = await openStoreOrExit(paths.dataDir);
+  const store = await openStoreOrExit(paths.dataDir, paths.backupDir);
 
   await syncAdminPasswordOrExit(store);
   const now = () => new Date();
@@ -53,9 +53,9 @@ export async function boot(): Promise<void> {
   console.log(`[kanban-hub] 数据目录已就绪：${paths.dataDir}`);
 }
 
-async function openStoreOrExit(dataDir: string): Promise<Store> {
+async function openStoreOrExit(dataDir: string, backupDir: string): Promise<Store> {
   try {
-    return await Store.open({ dataDir });
+    return await Store.open({ dataDir, backupDir });
   } catch (e) {
     // DataFileError 的消息里带有文件和行号（规格第 15 节）
     console.error(`[kanban-hub] 启动失败：${e instanceof Error ? e.message : String(e)}`);

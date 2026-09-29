@@ -304,7 +304,8 @@ async function readEntries(handle: fs.FileHandle, password?: string): Promise<En
 
 /**
  * 恢复前校验每个 entry 名（补充安全防线）：只能是 manifest.json，或 data/ 前缀下的相对路径，
- * 不得含 .. 段；中间有空段的、非结尾斜杠造成的空段也当坏名字拒绝。
+ * 不得含 .. 段；路径段里出现反斜杠也拒绝（Windows 把它当分隔符，恢复出来的位置会偏出暂存目录）；
+ * 中间有空段的、非结尾斜杠造成的空段也当坏名字拒绝。
  */
 function assertSafeEntryNames(entries: readonly Entry[]): void {
   for (const entry of entries) {
@@ -317,7 +318,7 @@ function assertSafeEntryNames(entries: readonly Entry[]): void {
     if (segments.some((s) => s === "..")) {
       throw new KhError("invalid", `备份里有越出数据目录的条目（${name}），拒绝恢复`);
     }
-    if (segments.some((s) => s === "")) {
+    if (segments.some((s) => s === "" || s.includes("\\"))) {
       throw new KhError("invalid", `备份里有不合法的条目名（${name}），拒绝恢复`);
     }
   }
@@ -397,6 +398,11 @@ async function assertEmptyTarget(dataDir: string): Promise<void> {
     existing = await fs.readdir(dataDir);
   } catch (e) {
     if ((e as NodeJS.ErrnoException).code === "ENOENT") return;
+    // 目标位置已经有个同名普通文件：readdir 抛 ENOTDIR，同样按“不是空目录”的冲突处理，
+    // 不让原始错误冒成服务端内部错误
+    if ((e as NodeJS.ErrnoException).code === "ENOTDIR") {
+      throw new KhError("conflict", "恢复目标已存在同名文件，只能恢复到空目录");
+    }
     throw e;
   }
   if (existing.length > 0) {

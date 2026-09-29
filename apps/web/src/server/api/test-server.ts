@@ -14,6 +14,8 @@ import { pipeline } from "node:stream/promises";
 import { GET as healthGet } from "@/app/api/health/route";
 import { POST as authLoginPost } from "@/app/api/v1/auth/login/route";
 import { POST as authLogoutPost } from "@/app/api/v1/auth/logout/route";
+import { GET as backupFileGet } from "@/app/api/v1/backups/[name]/route";
+import { GET as backupsGet, POST as backupsPost } from "@/app/api/v1/backups/route";
 import { GET as eventsGet } from "@/app/api/v1/events/route";
 import { PATCH as machinePatch } from "@/app/api/v1/machines/[id]/route";
 import { POST as machineRevokePost } from "@/app/api/v1/machines/[id]/revoke/route";
@@ -80,6 +82,8 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/health", handlers: { GET: asRouteHandler(healthGet) } },
   { pattern: "/api/v1/auth/login", handlers: { POST: asRouteHandler(authLoginPost) } },
   { pattern: "/api/v1/auth/logout", handlers: { POST: asRouteHandler(authLogoutPost) } },
+  { pattern: "/api/v1/backups", handlers: { GET: asRouteHandler(backupsGet), POST: asRouteHandler(backupsPost) } },
+  { pattern: "/api/v1/backups/:name", handlers: { GET: asRouteHandler(backupFileGet) } },
   { pattern: "/api/v1/events", handlers: { GET: asRouteHandler(eventsGet) } },
   { pattern: "/api/v1/machines", handlers: { GET: asRouteHandler(machinesGet) } },
   { pattern: "/api/v1/machines/:id", handlers: { PATCH: asRouteHandler(machinePatch) } },

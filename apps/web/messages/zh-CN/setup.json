@@ -25,6 +25,12 @@
       "repoPlaceholder": "<仓库根目录>",
       "noteLabel": "说明",
       "note": "kh 只在仓库里写 .kanban-hub/（默认写进本地排除），其余一律只读。"
+    },
+    "agent": {
+      "title": "接入 agent",
+      "label": "安装 skill 与 hook",
+      "noteLabel": "说明",
+      "note": "kh setup 会写通用 skill；检测到 Claude Code 时，另外安装它的 skill 与两个 hook（修改 settings.json 之前先备份）。先用 --dry-run 看计划，再用 --yes 执行。"
     }
   },
   "machines": {
@@ -39,5 +45,10 @@
     "revokeConfirmBody": "吊销后这台机器上的 kh 将无法再上报。",
     "revokeCancel": "取消",
     "revokeConfirm": "确认吊销"
+  },
+  "sentences": {
+    "copyLabel": "可复制给 agent 的话",
+    "agent": "请按 {url}/setup/agent.md 的说明把本机接入 kanban-hub，配对码 {code}。",
+    "migrate": "请按 {url}/setup/migrate.md 的说明把当前仓库接入 kanban-hub。"
   }
 }

@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
-import { buildSetupView, type RequestOrigin } from "./setup";
+import type { RequestOrigin } from "@/server/web/public-url";
+import { buildSetupView } from "./setup";
 
 let api: TestApi;
 
@@ -78,14 +79,14 @@ describe("buildSetupView", () => {
     expect(view.publicUrl).toBe("");
   });
 
-  it("host 带路径时只取 origin，丢弃路径", async () => {
+  it("host 带路径时不再截取 origin，整体视为不可信，给空串（改用占位符）", async () => {
     api = await setupTestApi();
     const view = buildSetupView(api.services, adminId(api), {
       forwardedProto: "https",
       forwardedHost: "kanban.example.com/evil?x=1#y",
       host: null,
     });
-    expect(view.publicUrl).toBe("https://kanban.example.com");
+    expect(view.publicUrl).toBe("");
   });
 
   it("host 带换行时给空串，不依赖 URL 静默剥离控制字符", async () => {

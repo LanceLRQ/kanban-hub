@@ -8,12 +8,14 @@ import { Button } from "@/components/ui/button";
 import { useMutation } from "@/lib/client/api";
 import { CopyCommand } from "./copy-command";
 import { formatCountdown, remainingSeconds } from "./countdown";
+import { agentSentence } from "./sentences";
 
 const pairingResponseSchema = z.object({ code: z.string(), expiresAt: z.string() });
 
 /**
  * 步骤 2“登录本机”：生成配对码、显示倒计时、拼好 `kh login` 命令。
  * 没生成配对码时命令里的配对码用占位 `<配对码>`；过期后提示重新生成，不再显示旧码。
+ * 配对码有效时，命令下面多一行可以直接复制给 agent 的话；没有配对码或已过期时不显示。
  */
 export function PairingPanel({ publicUrl }: { publicUrl: string }) {
   const t = useTranslations("setup");
@@ -66,6 +68,14 @@ export function PairingPanel({ publicUrl }: { publicUrl: string }) {
         {expired && <span className="text-xs text-destructive">{t("codeExpired")}</span>}
       </div>
       <CopyCommand command={loginCommand} />
+      {code && (
+        <div className="flex flex-col gap-1">
+          <span className="text-xs text-muted-foreground">{t("sentences.copyLabel")}</span>
+          <CopyCommand
+            command={agentSentence(publicUrl, code, t("serverPlaceholder"), (key, values) => t(key, values))}
+          />
+        </div>
+      )}
     </div>
   );
 }

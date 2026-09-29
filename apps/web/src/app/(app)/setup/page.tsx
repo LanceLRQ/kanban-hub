@@ -6,8 +6,9 @@ import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/se
 import { CopyCommand } from "@/components/setup/copy-command";
 import { PairingPanel } from "@/components/setup/pairing-panel";
 import { MachineList } from "@/components/setup/machine-list";
+import { migrateSentence } from "@/components/setup/sentences";
 
-/** 接入引导：安装 kh、生成配对码登录本机、注册仓库，加机器列表。 */
+/** 接入引导：安装 kh、生成配对码登录本机、注册仓库、接入 agent，加机器列表。 */
 export default async function SetupPage() {
   const t = await getTranslations("setup");
   const { services, user } = await authedPageServices();
@@ -43,6 +44,23 @@ export default async function SetupPage() {
         </SectionRow>
         <SectionRow label={t("steps.register.noteLabel")}>
           <p className="text-sm text-muted-foreground">{t("steps.register.note")}</p>
+        </SectionRow>
+        <SectionRow label={t("sentences.copyLabel")}>
+          <CopyCommand
+            command={migrateSentence(view.publicUrl, t("serverPlaceholder"), (key, values) => t(key, values))}
+          />
+        </SectionRow>
+      </SectionCard>
+
+      <SectionCard no="4" title={t("steps.agent.title")} subtitle="kh setup">
+        <SectionRow label={t("steps.agent.label")}>
+          <div className="flex flex-col gap-2">
+            <CopyCommand command="kh setup --dry-run" />
+            <CopyCommand command="kh setup --yes" />
+          </div>
+        </SectionRow>
+        <SectionRow label={t("steps.agent.noteLabel")}>
+          <p className="text-sm text-muted-foreground">{t("steps.agent.note")}</p>
         </SectionRow>
       </SectionCard>
 

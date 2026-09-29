@@ -39,7 +39,9 @@ import { POST as tasksPost } from "@/app/api/v1/projects/[id]/tasks/route";
 import { GET as projectsGet, POST as projectsPost } from "@/app/api/v1/projects/route";
 import { GET as streamGet } from "@/app/api/v1/stream/route";
 import { GET as rawGet } from "@/app/raw/[token]/[...path]/route";
+import { GET as agentGuideGet } from "@/app/setup/agent.md/route";
 import { GET as khTgzGet } from "@/app/setup/kh.tgz/route";
+import { GET as migrateGuideGet } from "@/app/setup/migrate.md/route";
 
 import { setupTestApi, type TestApi } from "./testing";
 
@@ -100,7 +102,9 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/projects/:id/tasks/:tid", handlers: { PATCH: asRouteHandler(taskPatch) } },
   { pattern: "/api/v1/stream", handlers: { GET: asRouteHandler(streamGet) } },
   { pattern: "/raw/:token/:path*", handlers: { GET: asRouteHandler(rawGet) } },
+  { pattern: "/setup/agent.md", handlers: { GET: asRouteHandler(agentGuideGet) } },
   { pattern: "/setup/kh.tgz", handlers: { GET: asRouteHandler(khTgzGet) } },
+  { pattern: "/setup/migrate.md", handlers: { GET: asRouteHandler(migrateGuideGet) } },
 ];
 
 function segmentsOf(pattern: string): string[] {

@@ -21,7 +21,7 @@ export async function ProjectHeader({ project, actions }: { project: ProjectHead
   return (
     <section className="kh-project-header rounded-md border bg-card px-6 py-5 shadow-[var(--shadow-raised)]">
       <div className="flex flex-wrap items-center gap-4">
-        <Link href="/" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
+        <Link href="/projects" className={cn(buttonVariants({ variant: "outline", size: "sm" }))}>
           &larr; {t("projectHeader.back")}
         </Link>
         <h1 className="text-[26px] tracking-tight">{project.name}</h1>

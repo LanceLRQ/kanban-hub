@@ -1,6 +1,6 @@
 /*
  * 设置页、接入页、项目设置标签共用的 `SectionCard`/`SectionRow`/`PageTitleCard`
- * （见 `section-card.tsx`）在主题 B「纸本拼贴」下的覆盖，处理方式和总览、看板一致：
+ * （见 `section-card.tsx`）在主题 B「纸本拼贴」下的覆盖，处理方式和首页、项目列表、看板一致：
  * 不对称圆角、纸色表头、虚线分隔、去掉编号方框的边框。规则都限定在
  * `[data-theme="collage"]` 下，颜色和圆角只引用 tokens.css / themes/collage.css 里
  * 已有的变量，这里不新定义视觉色值。这份文件整个都是主题覆盖，放进 `@layer kh-theme`

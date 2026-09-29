@@ -36,7 +36,7 @@ export async function requirePageSession(currentPath: string): Promise<{ user: U
  * Server Component 本身拿不到请求路径，只有 Proxy 能从 `NextRequest.nextUrl` 里读到）。
  * 读不到这个头（理论上不会发生，除非 Proxy 被绕过或它的 matcher 排除了这个路径）时
  * `resolveForwardedPath` 退回 `"/"`，不影响安全性——未登录访问仍然会被拦下，只是登录后
- * 会先落到总览页。
+ * 会先落到首页。
  *
  * 必须由每个需要鉴权的页面和布局直接调用（通过 `authedPageServices`），不能只放在
  * `(app)/layout.tsx` 里：App Router 的局部渲染（RSC 导航）按需只重跑发生变化的那一段，

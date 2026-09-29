@@ -1,16 +1,12 @@
 import { getTranslations } from "next-intl/server";
-import { InboxSection } from "@/components/overview/inbox-section";
 import { looseTranslator } from "@/components/overview/loose-translator";
-import { NoProjectsHint } from "@/components/overview/project-section";
+import { ProjectSection } from "@/components/overview/project-section";
 import type { EnumLabelFn } from "@/lib/events";
 import { authedPageServices } from "@/server/web/services";
 import { buildOverview } from "@/server/views/overview";
 
-/**
- * 首页：跨项目的“待你处理”收件箱。项目卡片在项目列表页（/projects）。
- * 一个项目都还没有时，收件箱下面再给一条去接入页的提示，新装好的服务打开首页也知道下一步做什么。
- */
-export default async function HomePage() {
+/** 项目列表：所有项目的卡片（周期、健康度、焦点、进度、最近活动、位置），点击进入项目页 */
+export default async function ProjectsPage() {
   const { services } = await authedPageServices();
   const now = services.now();
 
@@ -20,10 +16,5 @@ export default async function HomePage() {
 
   const view = await buildOverview(services, now, enumLabel, tev("common.none"));
 
-  return (
-    <div className="flex flex-col gap-11">
-      <InboxSection view={view} now={now} />
-      {view.projects.length === 0 && <NoProjectsHint />}
-    </div>
-  );
+  return <ProjectSection view={view} now={now} />;
 }

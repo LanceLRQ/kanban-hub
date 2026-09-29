@@ -10,13 +10,13 @@ import { LiveIndicator } from "./live-indicator";
 import { LayoutToggle } from "./layout-toggle";
 import { LogoMark } from "./logo-mark";
 
-/** 顶栏：logo 与字标（点击回总览）、导航（总览/时间线/设置）、当天日期、用户区、退出。日期按服务端时区显示 */
+/** 顶栏：logo 与字标（点击回首页，即“待你处理”）、导航（项目/时间线/设置）、当天日期、用户区、退出。日期按服务端时区显示 */
 export async function TopBar({ user, now }: { user: User; now: Date }) {
   const t = await getTranslations("common");
   const tz = serverTimeZone();
 
   const navItems = [
-    { href: "/", label: t("nav.overview") },
+    { href: "/projects", label: t("nav.projects") },
     { href: "/timeline", label: t("nav.timeline") },
     { href: "/settings", label: t("nav.settings") },
   ];

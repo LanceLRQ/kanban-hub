@@ -6,21 +6,15 @@ import type { OverviewView } from "@/server/views/overview";
 import { ProjectCard } from "./project-card";
 import { SectionHead } from "./section-head";
 
-/** 总览页“项目”区块：卡片网格；没有项目时显示提示和去接入页的链接 */
+/** 项目列表页的区块：卡片网格；没有项目时显示提示和去接入页的链接 */
 export async function ProjectSection({ view, now }: { view: OverviewView; now: Date }) {
   const t = await getTranslations("overview");
 
   return (
     <section>
-      <SectionHead no="02" title={t("projects.heading")} count={view.projects.length} tag="projects" />
+      <SectionHead title={t("projects.heading")} count={view.projects.length} tag="projects" />
       {view.projects.length === 0 ? (
-        <div className="kh-radius-d rounded-md border border-dashed bg-card px-6 py-10 text-center">
-          <p className="text-base font-bold">{t("projects.empty.heading")}</p>
-          <p className="mt-1.5 text-sm text-muted-foreground">{t("projects.empty.body")}</p>
-          <Link href="/setup" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}>
-            {t("projects.empty.cta")}
-          </Link>
-        </div>
+        <NoProjectsHint />
       ) : (
         <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4 @[100rem]:grid-cols-5 @[120rem]:grid-cols-6">
           {view.projects.map((project, index) => (
@@ -29,5 +23,19 @@ export async function ProjectSection({ view, now }: { view: OverviewView; now: D
         </div>
       )}
     </section>
+  );
+}
+
+/** 还没有任何项目时的提示和去接入页的链接；项目列表页和首页共用 */
+export async function NoProjectsHint() {
+  const t = await getTranslations("overview");
+  return (
+    <div className="kh-radius-d rounded-md border border-dashed bg-card px-6 py-10 text-center">
+      <p className="text-base font-bold">{t("projects.empty.heading")}</p>
+      <p className="mt-1.5 text-sm text-muted-foreground">{t("projects.empty.body")}</p>
+      <Link href="/setup" className={cn(buttonVariants({ variant: "outline", size: "sm" }), "mt-4")}>
+        {t("projects.empty.cta")}
+      </Link>
+    </div>
   );
 }

@@ -3,8 +3,8 @@
   "tagline": "自托管 · 多项目进度看板",
   "nav": {
     "ariaLabel": "主导航",
-    "home": "kanban-hub 总览",
-    "overview": "总览",
+    "home": "kanban-hub 首页",
+    "projects": "项目",
     "timeline": "时间线",
     "settings": "设置"
   },
@@ -31,7 +31,7 @@
     "settings": "设置"
   },
   "projectHeader": {
-    "back": "返回总览",
+    "back": "返回项目列表",
     "focus": "焦点",
     "focusEmpty": "（无）",
     "syncedAt": "同步于 {value}"
@@ -43,12 +43,12 @@
     "project": {
       "heading": "项目不存在",
       "body": "这个项目可能已被删除，或者链接不对。",
-      "back": "返回总览"
+      "back": "返回项目列表"
     },
     "page": {
       "heading": "页面不存在",
       "body": "这个地址可能已经失效，或者链接不对。",
-      "back": "返回总览"
+      "back": "返回首页"
     }
   },
   "error": {

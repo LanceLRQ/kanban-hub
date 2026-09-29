@@ -1,5 +1,5 @@
 /**
- * 总览页的数据视图：跨项目“待你处理”收件箱 + 项目卡片。
+ * 首页与项目列表的数据视图：跨项目“待你处理”收件箱（首页）+ 项目卡片（/projects）。
  *
  * 事件描述、操作者显示都复用 lib/events.ts、lib/actor.ts 的纯函数；enumLabel 由调用方注入
  * （页面用 next-intl 的 getTranslations("enums") 构造，测试用 createTranslator 加载真实

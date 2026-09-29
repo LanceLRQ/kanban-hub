@@ -215,7 +215,7 @@ export class Store {
 
   /**
    * 各项目在内存窗口里最新的一条事件；只读 recentEvents，不进写入队列，不读历史文件
-   * （比对每个项目分别调 listEvents 便宜得多，总览页的“最近活动”用它）。
+   * （比对每个项目分别调 listEvents 便宜得多，项目卡片的“最近活动”用它）。
    * 内存窗口里没有事件的项目不出现在结果里。同一时刻的多条事件，按与 lib/events.ts 的
    * sortEventsForDisplay 一致的次级顺序取最新一条：*.created → *.updated →
    * task.status_changed → task.human_changed → 其他，最后按 id 兜底。

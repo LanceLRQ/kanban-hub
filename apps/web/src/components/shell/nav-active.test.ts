@@ -2,14 +2,18 @@ import { describe, expect, it } from "vitest";
 import { resolveActiveNavHref } from "./nav-active";
 
 describe("resolveActiveNavHref", () => {
-  it("根路径高亮总览", () => {
-    expect(resolveActiveNavHref("/")).toBe("/");
+  it("首页（待你处理）不在顶栏导航里，没有高亮项", () => {
+    expect(resolveActiveNavHref("/")).toBeNull();
   });
 
-  it("项目页（/p/*）高亮总览", () => {
-    expect(resolveActiveNavHref("/p/proj1")).toBe("/");
-    expect(resolveActiveNavHref("/p/proj1/timeline")).toBe("/");
-    expect(resolveActiveNavHref("/p/proj1/settings")).toBe("/");
+  it("项目列表高亮项目", () => {
+    expect(resolveActiveNavHref("/projects")).toBe("/projects");
+  });
+
+  it("项目页（/p/*）也高亮项目", () => {
+    expect(resolveActiveNavHref("/p/proj1")).toBe("/projects");
+    expect(resolveActiveNavHref("/p/proj1/timeline")).toBe("/projects");
+    expect(resolveActiveNavHref("/p/proj1/settings")).toBe("/projects");
   });
 
   it("全局时间线高亮时间线", () => {
@@ -27,7 +31,8 @@ describe("resolveActiveNavHref", () => {
     expect(resolveActiveNavHref("/setup/agent")).toBe("/settings");
   });
 
-  it("无法识别的路径退回总览", () => {
-    expect(resolveActiveNavHref("/anything-else")).toBe("/");
+  it("无法识别的路径没有高亮项", () => {
+    expect(resolveActiveNavHref("/anything-else")).toBeNull();
+    expect(resolveActiveNavHref("/projectsx")).toBeNull();
   });
 });

@@ -1,6 +1,6 @@
 /**
  * 事件的分组、显示排序、结构化描述。
- * 总览的“最近活动”和时间线共用 describeEvent 产出的描述：组件用 t(key, values) 渲染，
+ * 项目卡片的“最近活动”和时间线共用 describeEvent 产出的描述：组件用 t(key, values) 渲染，
  * 消息文本在 messages/zh-CN/events.json 里。events.json 是嵌套结构，key 用点号分隔的路径
  * （例如 "task.updated.title"），与 next-intl 按命名空间嵌套解析 key 的方式对应。
  *

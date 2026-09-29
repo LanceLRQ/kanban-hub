@@ -4,7 +4,7 @@ import { formatRelative } from "@/lib/time";
 import { InboxGroupCard } from "./inbox-group-card";
 import { SectionHead } from "./section-head";
 
-/** 总览页“待你处理”收件箱：三个固定分组，跨项目汇总；没有任何条目时显示空状态提示 */
+/** 首页的“待你处理”收件箱：三个固定分组，跨项目汇总；没有任何条目时显示空状态提示 */
 export async function InboxSection({ view, now }: { view: OverviewView; now: Date }) {
   const t = await getTranslations("overview");
   const te = await getTranslations("enums");
@@ -12,7 +12,7 @@ export async function InboxSection({ view, now }: { view: OverviewView; now: Dat
 
   return (
     <section>
-      <SectionHead no="01" title={t("inbox.heading")} count={total} tag="inbox" tone="attention" />
+      <SectionHead title={t("inbox.heading")} count={total} tag="inbox" tone="attention" />
       {total === 0 ? (
         <p className="kh-radius-c rounded-md border border-dashed bg-card px-6 py-8 text-center text-sm font-medium text-muted-foreground">
           {t("inbox.empty")}

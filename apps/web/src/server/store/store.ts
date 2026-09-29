@@ -57,6 +57,7 @@ import { type CommitActor, Committer } from "./committer";
 import { EventLog, monthOf, recentMonths } from "./events";
 import { DataFileError, readYamlFile, writeFileAtomic, writeYamlFile } from "./fsio";
 import { GitRepo } from "./git";
+import { acquireInstanceLock, INSTANCE_LOCK_FILE, type InstanceLock } from "./instance-lock";
 import { WriteQueue } from "./queue";
 import {
   type StagingMeta,
@@ -72,10 +73,11 @@ import {
 } from "./snapshots";
 
 /**
- * 数据目录的 .gitignore，由程序管理，启动时内容不一致就重写：凭据、同步暂存、原子写的临时文件
- * 都不进 git 历史。只忽略根目录下的这几个目录，不按文件名模式忽略——快照里的文档可以叫任何名字。
+ * 数据目录的 .gitignore，由程序管理，启动时内容不一致就重写：凭据、同步暂存、原子写的临时文件、
+ * 单实例锁都不进 git 历史。只忽略根目录下的这几个目录和锁文件，不按文件名模式忽略——
+ * 快照里的文档可以叫任何名字。
  */
-export const DATA_GITIGNORE = ["# kanban-hub 数据目录", "/auth/", "/.staging/", "/.tmp/", ""].join("\n");
+export const DATA_GITIGNORE = ["# kanban-hub 数据目录", "/auth/", "/.staging/", "/.tmp/", `/${INSTANCE_LOCK_FILE}`, ""].join("\n");
 /**
  * 数据仓库的 .git/info/attributes（优先级高于任何 .gitattributes）：快照里可能带着仓库自己的
  * .gitattributes，其中的换行转换、filter、ident、编码转换会改变提交进数据仓库的内容，这里一律关闭，
@@ -165,6 +167,8 @@ export class Store {
   private closing = false;
   /** 备份是否在创建中（已排队或正在打包），API 用它立即拒绝并发创建 */
   private backingUp = false;
+  /** 单实例锁：open 时拿到，close 时释放。别的进程持有同一数据目录时 open 直接失败 */
+  private lock: InstanceLock | null = null;
   private readonly backupDir: string;
   private readonly now: () => Date;
   private readonly newId: () => string;
@@ -191,10 +195,22 @@ export class Store {
     });
   }
 
-  /** 打开数据目录。数据文件有问题时抛出 DataFileError（带文件和行号） */
+  /**
+   * 打开数据目录。数据文件有问题时抛出 DataFileError（带文件和行号）；
+   * 数据目录已被别的存活进程占用时抛出 conflict，加载失败时释放已拿到的锁再抛。
+   */
   static async open(opts: StoreOptions): Promise<Store> {
     const store = new Store(opts.dataDir, opts);
-    await store.load();
+    // 锁在加载之前拿：加载会写数据目录（建 git 仓库、补提交），不能和另一个进程并发
+    store.lock = await acquireInstanceLock(opts.dataDir);
+    try {
+      await store.load();
+    } catch (e) {
+      // 打开失败时进程还活着，锁不会有人来接管，必须自己释放
+      await store.lock.release().catch(() => {});
+      store.lock = null;
+      throw e;
+    }
     return store;
   }
 
@@ -552,7 +568,7 @@ export class Store {
     });
   }
 
-  /** 关机：停止接收写入，等写入队列跑完，再提交全部待提交的改动。超时返回 false */
+  /** 关机：停止接收写入，等写入队列跑完，再提交全部待提交的改动，最后释放单实例锁。超时返回 false */
   async close(timeoutMs = CLOSE_TIMEOUT_MS): Promise<boolean> {
     this.closing = true;
     const done = await withTimeout(
@@ -561,6 +577,14 @@ export class Store {
       false,
     );
     this.committer.close();
+    // 锁放在提交全部完成之后释放：释放后别的进程就能打开并接管这个目录，得是数据都落盘之后。
+    // 释放失败不改变 close 的结果（它只反映提交是否完成），残留的锁会被下次启动按死进程接管消化
+    try {
+      await this.lock?.release();
+    } catch (e) {
+      this.log(`释放单实例锁失败：${(e as Error).message}`);
+    }
+    this.lock = null;
     return done;
   }
 

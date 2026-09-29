@@ -188,10 +188,19 @@ describe("打包备份", () => {
     const info = await writeBackupArchive(dataDir, backupDir, { password });
     const zipped = await readZipBytes(path.join(backupDir, info.fileName), password);
     const disk = await diskFiles(dataDir);
+    // 实例锁是运行时状态，不进备份（见下一条用例）
+    disk.delete(".instance.lock");
     expect([...zipped.keys()].sort()).toEqual([...[...disk.keys()].map((r) => `data/${r}`), "manifest.json"].sort());
     for (const [rel, content] of disk) {
       expect(sameBytes(zipped.get(`data/${rel}`)!, content), rel).toBe(true);
     }
+  });
+
+  it("实例锁不进备份：恢复到空目录不会带出旧进程的锁", async () => {
+    await seedData();
+    const info = await writeBackupArchive(dataDir, backupDir);
+    const names = [...(await readZipBytes(path.join(backupDir, info.fileName))).keys()];
+    expect(names).not.toContain("data/.instance.lock");
   });
 
   it("文件名按本机时区生成", async () => {

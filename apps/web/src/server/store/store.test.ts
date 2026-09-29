@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { spawn } from "node:child_process";
+import { once } from "node:events";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -6,6 +8,7 @@ import type { KhError } from "@kanban-hub/core/errors";
 import type { Actor, Event } from "@kanban-hub/core/schema";
 import { DataFileError } from "./fsio";
 import { GitRepo } from "./git";
+import { INSTANCE_LOCK_FILE } from "./instance-lock";
 import { Store, type StoreChange } from "./store";
 
 let dir: string;
@@ -72,6 +75,16 @@ async function rejection(promise: Promise<unknown>): Promise<unknown> {
   throw new Error("预期抛出错误");
 }
 
+/**
+ * 模拟进程被强杀：实例锁文件残留，但持锁进程已死。起一个立刻退出的子进程拿它的 pid——
+ * 本测试进程没法“死”，死 pid 是崩溃残留锁最忠实的等价物。
+ */
+async function simulateCrashedHolder(): Promise<void> {
+  const child = spawn(process.execPath, ["-e", ""]);
+  await once(child, "exit");
+  await fs.writeFile(path.join(dir, INSTANCE_LOCK_FILE), `${child.pid}\n`);
+}
+
 async function readEventLines(projectId: string, month: string): Promise<Event[]> {
   const text = await fs.readFile(path.join(dir, "projects", projectId, "events", `${month}.jsonl`), "utf8");
   return text
@@ -111,7 +124,8 @@ describe("打开数据目录", () => {
   it("启动时补提交上次未提交的改动", async () => {
     const first = await open();
     const { project } = await first.createProject({ name: "看板" }, await cliActor(first));
-    // 模拟进程被强杀：不关闭 first，它的改动还在等待提交
+    // 模拟进程被强杀：不关闭 first，它的改动还在等待提交；残留的锁按死进程接管
+    await simulateCrashedHolder();
     const second = await open();
     expect(await git("log", "-1", "--format=%s|%an")).toBe("补提交上次未提交的改动|kanban-hub");
     expect(await git("status", "--porcelain")).toBe("");
@@ -122,6 +136,8 @@ describe("打开数据目录", () => {
     const first = await open();
     await first.createProject({ name: "看板" }, await cliActor(first));
     await fs.writeFile(path.join(dir, ".git", "index.lock"), "");
+    // 模拟进程被强杀：残留的实例锁按死进程接管
+    await simulateCrashedHolder();
     const second = await open();
     expect(await git("log", "-1", "--format=%s")).toBe("补提交上次未提交的改动");
     expect(second.listProjects()).toHaveLength(1);
@@ -153,6 +169,35 @@ describe("打开数据目录", () => {
     expect(err).toBeInstanceOf(DataFileError);
     expect(err).toMatchObject({ file: boardFile, line: 1 });
     expect((err as DataFileError).reason).toContain("杂项容器");
+  });
+
+  it("打开时持有实例锁，关闭后释放，可再次打开", async () => {
+    const lockFile = path.join(dir, INSTANCE_LOCK_FILE);
+    const first = await open();
+    expect(await fs.readFile(lockFile, "utf8")).toContain(String(process.pid));
+    await first.close();
+    await expect(fs.access(lockFile)).rejects.toMatchObject({ code: "ENOENT" });
+    await open();
+  });
+
+  it("同一数据目录已被存活进程占用时拒绝打开", async () => {
+    await open();
+    // 同进程内锁文件里的 pid 就是自己、还活着：第二个 Store 打不开同一目录
+    const err = await rejection(Store.open({ dataDir: dir, log: () => {} }));
+    expect(err).toMatchObject({ code: "conflict" });
+    expect((err as Error).message).toContain(`PID ${process.pid}`);
+  });
+
+  it("打开失败（数据文件有问题）时不留下实例锁，修复后还能打开", async () => {
+    const first = await open();
+    const { project } = await first.createProject({ name: "看板" }, await cliActor(first));
+    await first.close();
+    await fs.writeFile(path.join(dir, "projects", project.id, "board.yaml"), "containers: []\ntasks: []\n");
+    await rejection(Store.open({ dataDir: dir, log: () => {} }));
+    await expect(fs.access(path.join(dir, INSTANCE_LOCK_FILE))).rejects.toMatchObject({ code: "ENOENT" });
+    // 把坏文件挪走再打开：这里验证的是锁不残留会挡住下次启动，不是坏文件本身
+    await fs.rm(path.join(dir, "projects", project.id), { recursive: true });
+    await open();
   });
 });
 

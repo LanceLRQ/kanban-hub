@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { execFileSync } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
+import { once } from "node:events";
 import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
@@ -10,6 +11,7 @@ import type { Actor, Event } from "@kanban-hub/core/schema";
 import { type IncomingFile, applyManifestDiff } from "@kanban-hub/core/sync";
 import { DataFileError } from "./fsio";
 import { GitRepo } from "./git";
+import { INSTANCE_LOCK_FILE } from "./instance-lock";
 import { type StagingMeta, resolveSnapshotPath } from "./snapshots";
 import { DATA_GITIGNORE, DATA_GIT_ATTRIBUTES, Store, type StoreChange } from "./store";
 
@@ -40,8 +42,15 @@ async function open(): Promise<Store> {
   return store;
 }
 
-/** 模拟进程被强杀：不关闭旧的 Store，直接重新打开（旧实例的提交定时器由 afterEach 统一关掉） */
+/**
+ * 模拟进程被强杀：不关闭旧的 Store，直接重新打开（旧实例的提交定时器由 afterEach 统一关掉）。
+ * 强杀会留下实例锁文件、持锁进程已死——起一个立刻退出的子进程拿它的 pid 写进锁文件，
+ * 重新打开按“进程已死则接管”消化。
+ */
 async function reopen(): Promise<Store> {
+  const child = spawn(process.execPath, ["-e", ""]);
+  await once(child, "exit");
+  await fs.writeFile(path.join(dir, INSTANCE_LOCK_FILE), `${child.pid}\n`);
   return open();
 }
 

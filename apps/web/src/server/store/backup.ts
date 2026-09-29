@@ -11,6 +11,7 @@ import { readdirSync, statSync, type Dirent } from "node:fs";
 import path from "node:path";
 import { KhError } from "@kanban-hub/core/errors";
 import { KH_VERSION } from "@kanban-hub/core/version";
+import { INSTANCE_LOCK_FILE } from "./instance-lock";
 import {
   ERR_INVALID_AUTHENTICATION_CODE,
   ERR_INVALID_PASSWORD,
@@ -240,6 +241,8 @@ async function listDataFiles(dataDir: string, includeGit: boolean, rel = ""): Pr
       if (!includeGit && childRel === ".git") continue;
       out.push(...(await listDataFiles(dataDir, includeGit, childRel)));
     } else if (entry.isFile()) {
+      // 实例锁是运行时状态：恢复到空目录后带出旧进程的锁没有意义（pid 大概率还是个不相干的活进程）
+      if (rel === "" && entry.name === INSTANCE_LOCK_FILE) continue;
       out.push(childRel);
     }
   }

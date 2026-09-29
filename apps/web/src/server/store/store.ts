@@ -46,6 +46,13 @@ import {
 } from "@kanban-hub/core/sync";
 import { type ImportSummary, type TransferDoc, importLogKey, planImport, transferDocSchema } from "@kanban-hub/core/transfer";
 import { AUTH_DIR, AuthRepo } from "./auth";
+import {
+  BACKUP_FILE_NAME_RE,
+  listBackupFiles,
+  writeBackupArchive,
+  type BackupFileInfo,
+  type CreateBackupOptions,
+} from "./backup";
 import { type CommitActor, Committer } from "./committer";
 import { EventLog, monthOf, recentMonths } from "./events";
 import { DataFileError, readYamlFile, writeFileAtomic, writeYamlFile } from "./fsio";
@@ -82,6 +89,8 @@ export const CLOSE_TIMEOUT_MS = 5_000;
 
 export interface StoreOptions {
   dataDir: string;
+  /** 备份目录；默认是数据目录旁边的 backups（Docker 里就是 /data 旁的 /backups） */
+  backupDir?: string;
   now?: () => Date;
   newId?: () => string;
   commitDebounceMs?: number;
@@ -154,6 +163,9 @@ export class Store {
   private readonly lastEventAt = new Map<string, string>();
   private readonly listeners = new Set<(change: StoreChange) => void>();
   private closing = false;
+  /** 备份是否在创建中（已排队或正在打包），API 用它立即拒绝并发创建 */
+  private backingUp = false;
+  private readonly backupDir: string;
   private readonly now: () => Date;
   private readonly newId: () => string;
   private readonly log: (message: string) => void;
@@ -165,6 +177,7 @@ export class Store {
     this.now = opts.now ?? (() => new Date());
     this.newId = opts.newId ?? (() => generateId());
     this.log = opts.log ?? ((m) => console.warn(`[kanban-hub] ${m}`));
+    this.backupDir = opts.backupDir ?? path.join(path.dirname(dataDir), "backups");
     this.tmpDir = path.join(dataDir, TMP_DIR);
     this.git = new GitRepo(dataDir, opts.gitBin, { timeoutMs: opts.gitTimeoutMs });
     this.eventLog = new EventLog(dataDir);
@@ -549,6 +562,47 @@ export class Store {
     );
     this.committer.close();
     return done;
+  }
+
+  // ---------- 备份 ----------
+
+  /**
+   * 创建备份（规格 6.4、6.6）：打包作为写入队列里的一项执行，打包期间写入自然暂停；
+   * 打包之前先立即提交一次待提交的改动，备份里的 git 历史因此是完整的。
+   */
+  createBackup(opts: CreateBackupOptions = {}): Promise<BackupFileInfo> {
+    if (this.closing) return Promise.reject(new KhError("unavailable", "服务正在关闭，请稍后重试"));
+    // 排队就算进行中：并发的第二个请求要立即拿到 409，而不是排队之后再打一份
+    this.backingUp = true;
+    return this.queue.run(async () => {
+      try {
+        await this.committer.flushNow();
+        return await writeBackupArchive(this.dataDir, this.backupDir, opts);
+      } finally {
+        this.backingUp = false;
+      }
+    });
+  }
+
+  /** 备份是否在创建中（含排队等待），供创建接口立即拒绝并发请求 */
+  backupRunning(): boolean {
+    return this.backingUp;
+  }
+
+  /** 列出备份目录里的备份文件，按创建时间倒序 */
+  listBackups(): BackupFileInfo[] {
+    return listBackupFiles(this.backupDir);
+  }
+
+  /** 读一份备份文件的内容，供下载。文件名先过约定正则，挡住路径穿越 */
+  async readBackupFile(fileName: string): Promise<Uint8Array> {
+    if (!BACKUP_FILE_NAME_RE.test(fileName)) throw new KhError("not_found", "备份文件不存在");
+    try {
+      return new Uint8Array(await fs.readFile(path.join(this.backupDir, fileName)));
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code === "ENOENT") throw new KhError("not_found", "备份文件不存在");
+      throw e;
+    }
   }
 
   // ---------- 内部 ----------

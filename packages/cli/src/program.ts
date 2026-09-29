@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { registerAuth } from "./commands/auth";
+import { registerBackup } from "./commands/backup";
 import { registerConflicts } from "./commands/conflicts";
 import { registerContainer } from "./commands/container";
 import { registerDocs } from "./commands/docs";
@@ -38,6 +39,7 @@ export function buildProgram(ctx: CliContext): Command {
   registerTask(program, ctx);
   registerLog(program, ctx);
   registerTransfer(program, ctx);
+  registerBackup(program, ctx);
   registerSync(program, ctx);
   registerDocs(program, ctx);
   registerPull(program, ctx);

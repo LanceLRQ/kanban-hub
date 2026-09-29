@@ -179,6 +179,39 @@ export class ApiClient {
     });
   }
 
+  /**
+   * 下载二进制内容并逐块交给 write 回调（例如把备份 zip 直接写进文件）：响应体不在内存里
+   * 整存。默认超时只约束到收到响应头为止——之后的下载速度由 write 侧（磁盘）决定，大文件
+   * 不受 15 秒请求超时的限制。write 想报自己的错（写盘失败等）就抛 CliError，这里原样上抛；
+   * 其余异常都出自响应流本身（中途断开），按“连不上”（4）处理。调用方负责善后（例如
+   * 删除半截文件）。
+   */
+  async downloadTo(path: string, write: (chunk: Uint8Array) => Promise<void>): Promise<void> {
+    const response = await this.withNetworkErrors(async (signal) => {
+      const url = new URL(path, this.opts.server).toString();
+      const response = await this.opts.fetch(url, { method: "GET", headers: this.baseHeaders(), signal, redirect: "manual" });
+      if (isRedirectStatus(response.status)) throw this.buildRedirectError(response);
+      if (!response.ok) throw await this.buildError(response);
+      return response;
+    });
+    if (!response.body) throw new CliError(EXIT.UNEXPECTED, "服务端没有返回文件内容");
+    const reader = response.body.getReader();
+    try {
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) return;
+        await write(value);
+      }
+    } catch (err) {
+      // CliError（4xx/5xx 响应、写盘失败的业务包装）原样上抛；其余是响应流自己断了
+      if (err instanceof CliError) throw err;
+      throw new CliError(EXIT.UNREACHABLE, `下载中断：${this.opts.server}`);
+    } finally {
+      // 提前退出（出错、调用方放弃）时把底层连接收掉；流已经读完的 cancel 是无害的
+      await reader.cancel().catch(() => {});
+    }
+  }
+
   /** 除 Authorization / X-KH-Agent 之外的通用请求头；每个发请求的方法都从这份基础上再加内容 */
   private baseHeaders(extra?: Record<string, string>): Record<string, string> {
     const headers: Record<string, string> = { [HEADER_KH_VERSION]: KH_VERSION, ...extra };

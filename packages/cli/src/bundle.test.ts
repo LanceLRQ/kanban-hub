@@ -122,6 +122,12 @@ describe("kh 打包产物", () => {
     expect(exp.stdout).toContain("--md");
   });
 
+  it("kh backup --help：退出码 0，列出 --no-history（新命令的解析依赖在真实产物上验证）", async () => {
+    const backup = await execFileAsync(process.execPath, [outfile, "backup", "--help"]);
+    expect(backup.stdout).toContain("backup");
+    expect(backup.stdout).toContain("--no-history");
+  });
+
   it("kh setup --help：退出码 0", async () => {
     const { stdout } = await execFileAsync(process.execPath, [outfile, "setup", "--help"]);
     expect(stdout).toContain("setup");

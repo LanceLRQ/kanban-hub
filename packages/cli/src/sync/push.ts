@@ -13,7 +13,7 @@ import {
   type SyncCommitResponse,
   type SyncManifestInput,
 } from "@kanban-hub/core/api";
-import { rememberSeen } from "@kanban-hub/core/pull";
+import { rememberPushed, rememberSeen } from "@kanban-hub/core/pull";
 import { validateSyncGlob, type IncomingFile } from "@kanban-hub/core/sync";
 import type { RegisteredRepo } from "../repo/root";
 import { toSyncScope } from "../repo/config";
@@ -21,10 +21,10 @@ import type { CliContext } from "../context";
 import { CliError, EXIT } from "../errors";
 import type { ApiClient } from "../http/client";
 import { formatByteSize } from "../repo/config";
-import { collectGitState } from "./git-state";
+import { collectGitState, listTrackedPaths } from "./git-state";
 import { withSyncLock } from "./lock";
 import { scanSyncFiles, type ScanResult } from "./scan";
-import { openSyncState } from "./state";
+import { openSyncState, type SyncState } from "./state";
 
 export interface PushResult {
   added: number;
@@ -101,6 +101,58 @@ function manifestDigest(body: SyncManifestInput): string {
   return createHash("sha256").update(stableStringify(body)).digest("hex");
 }
 
+/** 读取文件并核对内容仍是 expectedSha；读不到或对不上时返回 null */
+async function readIfUnchanged(absPath: string, expectedSha: string): Promise<Uint8Array | null> {
+  let bytes: Uint8Array;
+  try {
+    bytes = await fs.readFile(absPath);
+  } catch {
+    // 留存推送内容只是本机缓存：推送已经成功，文件刚被删掉或读不到时不记这一条，不让整次推送失败
+    return null;
+  }
+  return createHash("sha256").update(bytes).digest("hex") === expectedSha ? bytes : null;
+}
+
+/** 这个路径的推送历史需不需要记下这次推送的 sha：与最后一项相同时不需要 */
+function needsRemember(state: SyncState, filePath: string, sha: string): boolean {
+  return state.pushed.get(filePath)?.at(-1) !== sha;
+}
+
+/**
+ * 推送成功后留存本机推送的内容（见 SyncState.pushed）：
+ * - 本次清单里已经没有的路径（删除或移出同步范围）和被 git 跟踪的路径（拉取一律跳过，用不上）删掉历史；
+ * - 其余路径把这次的 sha 记进推送历史，内容存进本机缓存（上传时读过的直接用，其余重新读取并核对）。
+ *
+ * 留存只是本机缓存，服务端已经提交成功：某个文件核对不上、读不到或写缓存出错时，只是不记这一次，
+ * 这个路径原有的历史保留（那些版本确实推送过，对方可能正基于其中之一修改），不让整次推送失败。
+ */
+async function rememberPushedContent(
+  state: SyncState,
+  files: readonly { path: string; absPath: string }[],
+  shaByPath: ReadonlyMap<string, string>,
+  isTracked: (relPath: string) => boolean,
+  uploaded: ReadonlyMap<string, Uint8Array>,
+): Promise<void> {
+  for (const filePath of [...state.pushed.keys()]) {
+    if (!shaByPath.has(filePath) || isTracked(filePath)) state.pushed.delete(filePath);
+  }
+  for (const file of files) {
+    const sha = shaByPath.get(file.path);
+    if (sha === undefined || isTracked(file.path) || !needsRemember(state, file.path, sha)) continue;
+    const history = state.pushed.get(file.path) ?? [];
+    try {
+      if (!history.includes(sha) && !(await state.hasBlob(sha))) {
+        const bytes = uploaded.get(sha) ?? (await readIfUnchanged(file.absPath, sha));
+        if (bytes === null) continue;
+        await state.putBlob(sha, bytes);
+      }
+    } catch {
+      continue;
+    }
+    state.pushed.set(file.path, rememberPushed(history, sha));
+  }
+}
+
 /** 一次完整的尝试：扫描 → 计算 hash → 采集 git 状态 → manifest → 补传缺少的内容 → commit */
 async function runAttempt(
   ctx: CliContext,
@@ -140,6 +192,18 @@ async function runAttempt(
   }
   const manifest = await client.post(`/api/v1/projects/${projectId}/sync/manifest`, manifestBody, syncManifestResponse);
 
+  // 被 git 跟踪的文件拉取时一律跳过，不留存它们的推送内容。读不出跟踪列表时这次不动推送历史
+  const isTracked = await listTrackedPaths(ctx, repo.root).catch(() => null);
+
+  // 推送成功后需要留存到本机缓存的内容：上传时读到的这些直接留在内存里，免得再读一遍
+  const toRemember = new Set<string>();
+  if (isTracked !== null) {
+    for (const [filePath, sha] of shaByPath) {
+      if (!isTracked(filePath) && needsRemember(state, filePath, sha)) toRemember.add(sha);
+    }
+  }
+  const uploaded = new Map<string, Uint8Array>();
+
   async function uploadOne(sha: string): Promise<void> {
     const absPath = absByFirstSha.get(sha);
     if (absPath === undefined) {
@@ -153,6 +217,7 @@ async function runAttempt(
       );
     }
     await client.putBytes(`/api/v1/projects/${projectId}/sync/blobs/${sha}`, bytes, putBlobResponse);
+    if (toRemember.has(sha)) uploaded.set(sha, bytes);
   }
 
   for (const sha of manifest.missing) await uploadOne(sha);
@@ -178,11 +243,12 @@ async function runAttempt(
     }
   }
 
-  // 推送成功：把本次涉及的内容记进 seen（推送不更新基准，见规格 9.3“基准”），再清理不再引用的
-  // 本机缓存内容，最后落盘
+  // 推送成功：把本次涉及的内容记进 seen（推送不更新基准，见规格 9.3“基准”），留存推送的内容，
+  // 再清理不再引用的本机缓存内容，最后落盘
   for (const [filePath, sha] of shaByPath) {
     state.seen.set(filePath, rememberSeen(state.seen.get(filePath) ?? [], sha));
   }
+  if (isTracked !== null) await rememberPushedContent(state, scan.files, shaByPath, isTracked, uploaded);
   state.lastPush = { at: ctx.now().toISOString(), digest };
   await state.gcBlobs();
   await state.save();

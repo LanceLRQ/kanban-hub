@@ -1,5 +1,14 @@
 import { describe, expect, it } from "vitest";
-import { SEEN_LIMIT, decidePull, looksBinary, rememberSeen, type PullFileInput } from "./pull";
+import {
+  PUSHED_LIMIT,
+  SEEN_LIMIT,
+  decidePull,
+  looksBinary,
+  pickMergeBase,
+  rememberPushed,
+  rememberSeen,
+  type PullFileInput,
+} from "./pull";
 
 const SHA_X = "1".repeat(64); // 共同起点
 const SHA_Y = "2".repeat(64); // A 改成的版本
@@ -14,6 +23,8 @@ function input(overrides: Partial<PullFileInput> = {}): PullFileInput {
     base: SHA_X,
     seen: [],
     remote: { sha: SHA_X, base: SHA_X },
+    pushed: [],
+    remoteBaseStored: false,
     ...overrides,
   };
 }
@@ -114,9 +125,9 @@ describe("decidePull：表格判定", () => {
     });
   });
 
-  it("7 两边都改了，有基准内容：登记为 merge，不带 nextBase，交给调用方判断能否自动合并", () => {
+  it("7 两边都改了，有基准内容：登记为 merge，带上选中的基准、不带 nextBase，交给调用方判断能否自动合并", () => {
     const result = decidePull(input({ local: SHA_Y, base: SHA_X, remote: { sha: SHA_Z, base: SHA_X } }));
-    expect(result).toEqual({ kind: "merge" });
+    expect(result).toEqual({ kind: "merge", base: SHA_X });
     expect(result).not.toHaveProperty("nextBase");
   });
 
@@ -133,7 +144,7 @@ describe("decidePull：补充场景", () => {
   it("A、B 都从 X 出发，A 改成 Y 并推送，B 改成 Z 并推送，A 拉取：结果是 merge，不是覆盖", () => {
     // A 本地是 Y，基准仍是 X（推送不改基准），对方（B）内容是 Z，B 的基准也是 X
     const result = decidePull(input({ local: SHA_Y, base: SHA_X, remote: { sha: SHA_Z, base: SHA_X } }));
-    expect(result).toEqual({ kind: "merge" });
+    expect(result).toEqual({ kind: "merge", base: SHA_X });
   });
 
   it("A 推送 Y 之后，拉取到 B 快照里的旧版本 X（X 在 A 的 seen 里）：结果是跳过（旧版本）", () => {
@@ -150,6 +161,79 @@ describe("decidePull：补充场景", () => {
     // B 本地没有改过（本地内容等于基准），对方给的是 C 的旧内容，等于基准 -> 5a 不动
     const result = decidePull(input({ local: SHA_X, base: SHA_X, remote: { sha: SHA_X, base: SHA_X } }));
     expect(result.kind).toBe("skip");
+  });
+});
+
+describe("pickMergeBase：两边都改了时用哪一份共同基准", () => {
+  const pushedX = { pushed: [SHA_X], seen: [SHA_X], remoteBaseStored: true };
+
+  it("对方推送时的基准是本机推送过的某个版本、在 seen 里、本机有内容：用它（即使本机另有基准）", () => {
+    expect(pickMergeBase(input({ ...pushedX, base: SHA_Y, remote: { sha: SHA_Z, base: SHA_X } }))).toBe(SHA_X);
+  });
+
+  it("推送历史里有多个版本时，对方基于其中较早的一个也能用", () => {
+    const entry = input({ base: null, pushed: [SHA_X, SHA_Y], seen: [SHA_X, SHA_Y], remoteBaseStored: true, remote: { sha: SHA_Z, base: SHA_X } });
+    expect(pickMergeBase(entry)).toBe(SHA_X);
+  });
+
+  it("本机没有它的内容：退回本机基准", () => {
+    expect(pickMergeBase(input({ ...pushedX, remoteBaseStored: false, base: SHA_Y, remote: { sha: SHA_Z, base: SHA_X } }))).toBe(SHA_Y);
+  });
+
+  it("不在 seen 里：退回本机基准", () => {
+    expect(pickMergeBase(input({ ...pushedX, seen: [], base: SHA_Y, remote: { sha: SHA_Z, base: SHA_X } }))).toBe(SHA_Y);
+  });
+
+  it("不在推送历史里（例如只是见过、从别处拉来的内容）：退回本机基准", () => {
+    expect(pickMergeBase(input({ ...pushedX, pushed: [], base: SHA_Y, remote: { sha: SHA_Z, base: SHA_X } }))).toBe(SHA_Y);
+  });
+
+  it("对方推送时没有基准：用本机基准", () => {
+    expect(pickMergeBase(input({ ...pushedX, base: SHA_Y, remote: { sha: SHA_Z, base: null } }))).toBe(SHA_Y);
+  });
+
+  it("两者都没有：返回 null", () => {
+    expect(pickMergeBase(input({ ...pushedX, remoteBaseStored: false, base: null, remote: { sha: SHA_Z, base: SHA_X } }))).toBeNull();
+    expect(pickMergeBase(input({ base: null, remote: { sha: SHA_Z, base: null } }))).toBeNull();
+  });
+});
+
+describe("decidePull：推送过的内容作为共同基准", () => {
+  it("本机没有基准，但对方是在本机推送过的内容上改的、本机留有内容：merge，基准用它", () => {
+    // A 新建 X 并推送（从没拉取过，没有基准），又改成 Y 推送；B 拉到 X 改成 Z 推送
+    const result = decidePull(
+      input({ local: SHA_Y, base: null, seen: [SHA_X, SHA_Y], pushed: [SHA_X, SHA_Y], remote: { sha: SHA_Z, base: SHA_X }, remoteBaseStored: true }),
+    );
+    expect(result).toEqual({ kind: "merge", base: SHA_X });
+  });
+
+  it("本机没有基准，对方的基准推送过但本机没有留内容：仍然登记冲突", () => {
+    const result = decidePull(
+      input({ local: SHA_Y, base: null, seen: [SHA_X, SHA_Y], pushed: [SHA_X], remote: { sha: SHA_Z, base: SHA_X }, remoteBaseStored: false }),
+    );
+    expect(result).toEqual({ kind: "conflict", reason: "no-base", nextBase: "keep" });
+  });
+});
+
+describe("rememberPushed", () => {
+  it("与最后一项不同：追加到末尾", () => {
+    expect(rememberPushed(["a"], "b")).toEqual(["a", "b"]);
+  });
+
+  it("与最后一项相同：不变", () => {
+    expect(rememberPushed(["a", "b"], "b")).toEqual(["a", "b"]);
+  });
+
+  it("已在列表里：移到末尾，不重复", () => {
+    expect(rememberPushed(["a", "b", "c"], "a")).toEqual(["b", "c", "a"]);
+  });
+
+  it(`只保留最近 PUSHED_LIMIT（${PUSHED_LIMIT}）份，丢最旧的`, () => {
+    const seed = Array.from({ length: PUSHED_LIMIT }, (_, i) => `sha-${i}`);
+    const result = rememberPushed(seed, "new-one");
+    expect(result).toHaveLength(PUSHED_LIMIT);
+    expect(result[0]).toBe("sha-1");
+    expect(result[PUSHED_LIMIT - 1]).toBe("new-one");
   });
 });
 

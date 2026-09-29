@@ -218,3 +218,62 @@ describe("openSyncState：lastPush", () => {
     expect(reopened.lastPush).toEqual({ at: "2026-09-29T00:00:00.000Z", digest: SHA_B });
   });
 });
+
+describe("openSyncState：pushed", () => {
+  async function writeRaw(home: string, content: unknown): Promise<void> {
+    const dir = path.join(home, "cache", "p000000001");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "state.json"), JSON.stringify(content));
+  }
+
+  it("没有 pushed 的旧状态文件照常读取，pushed 为空", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    await writeRaw(home, { root: repo, base: { "a.md": SHA_A } });
+    const state = await openSyncState(fakeContext({ env: { KH_HOME: home } }), "p000000001", repo);
+    expect(state.pushed.size).toBe(0);
+  });
+
+  it("每个路径只记一个 sha 的旧格式照常读取，当作只有一项的列表", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    await writeRaw(home, { root: repo, pushed: { "a.md": SHA_A, "b.md": [SHA_B, SHA_C] } });
+    const state = await openSyncState(fakeContext({ env: { KH_HOME: home } }), "p000000001", repo);
+    expect(state.pushed.get("a.md")).toEqual([SHA_A]);
+    expect(state.pushed.get("b.md")).toEqual([SHA_B, SHA_C]);
+  });
+
+  it("设置后保存，重新打开仍在，写出的是列表", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const state = await openSyncState(ctx, "p000000001", repo);
+    state.pushed.set("a.md", [SHA_A, SHA_B]);
+    await state.save();
+    const reopened = await openSyncState(ctx, "p000000001", repo);
+    expect(reopened.pushed.get("a.md")).toEqual([SHA_A, SHA_B]);
+  });
+
+  it("gcBlobs 保留推送历史引用的所有 blob", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    const state = await openSyncState(fakeContext({ env: { KH_HOME: home } }), "p000000001", repo);
+    await state.putBlob(SHA_A, new Uint8Array([1]));
+    await state.putBlob(SHA_B, new Uint8Array([2]));
+    await state.putBlob(SHA_C, new Uint8Array([3]));
+    state.pushed.set("a.md", [SHA_A, SHA_B]);
+    await state.gcBlobs();
+    expect(await state.readBlob(SHA_A)).toEqual(Buffer.from([1]));
+    expect(await state.readBlob(SHA_B)).toEqual(Buffer.from([2]));
+    expect(await state.readBlob(SHA_C)).toBeNull();
+  });
+
+  it("hasBlob：有内容时为 true，没有时为 false", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    const state = await openSyncState(fakeContext({ env: { KH_HOME: home } }), "p000000001", repo);
+    expect(await state.hasBlob(SHA_A)).toBe(false);
+    await state.putBlob(SHA_A, new Uint8Array([1]));
+    expect(await state.hasBlob(SHA_A)).toBe(true);
+  });
+});

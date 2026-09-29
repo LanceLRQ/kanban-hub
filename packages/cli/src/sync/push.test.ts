@@ -7,12 +7,20 @@ import { createHash } from "node:crypto";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { ApiClient } from "../http/client";
 import { fakeContext } from "../repo/test-helpers";
 import type { RegisteredRepo } from "../repo/root";
 import { CliError, EXIT } from "../errors";
+import { PUSHED_LIMIT } from "@kanban-hub/core/pull";
 import { pushDocs } from "./push";
+import { openSyncState } from "./state";
+
+// 默认原样调用真实实现；个别用例用 mockImplementationOnce 注入写缓存失败
+vi.mock("./state", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("./state")>();
+  return { ...actual, openSyncState: vi.fn(actual.openSyncState) };
+});
 
 const dirs: string[] = [];
 
@@ -63,9 +71,19 @@ function stateJsonPath(home: string, projectId: string): string {
   return path.join(home, "cache", projectId, "state.json");
 }
 
-/** 断言本机同步状态没有落盘：失败的尝试不应该写入 seen / base / state.json */
+function blobPath(home: string, projectId: string, sha: string): string {
+  return path.join(home, "cache", projectId, "blobs", sha);
+}
+
+/** 断言本机同步状态没有落盘：失败的尝试不应该写入 seen / base / state.json，也不留推送内容的缓存 */
 async function expectNoLocalState(home: string, projectId: string): Promise<void> {
   await expect(fs.stat(stateJsonPath(home, projectId))).rejects.toMatchObject({ code: "ENOENT" });
+  await expect(fs.stat(path.join(home, "cache", projectId, "blobs"))).rejects.toMatchObject({ code: "ENOENT" });
+}
+
+async function readPushed(home: string, projectId: string): Promise<Record<string, string[]> | undefined> {
+  const saved = JSON.parse(await fs.readFile(stateJsonPath(home, projectId), "utf8")) as { pushed?: Record<string, string[]> };
+  return saved.pushed;
 }
 
 type PostHandler = (url: string, body: unknown) => unknown | Promise<unknown>;
@@ -337,5 +355,124 @@ describe("pushDocs：skipIfUnchangedWithinMs", () => {
     const r = await pushDocs(ctxAt(repo.home, T0 + 1000), repo.registered, asApiClient(client), { quiet: true });
     expect(r.skippedUnchanged).toBe(false);
     expect(client.postCalls).toHaveLength(2);
+  });
+});
+
+describe("pushDocs：留存推送过的内容", () => {
+  const PID = "p000000001";
+
+  /** 服务端要求补传 missing 里的内容，commit 成功；onCommit 在 commit 应答之前执行 */
+  function client(missing: (body: unknown) => string[] = () => [], onCommit: () => Promise<void> = async () => {}): FakeClient {
+    return new FakeClient(async (url, body) => {
+      if (isManifestUrl(url)) return { syncId: "s1", missing: missing(body), expiresAt: "2026-09-30T00:00:00.000Z" };
+      if (isCommitUrl(url)) {
+        await onCommit();
+        return { added: 1, modified: 0, removed: 0, unchanged: 0, lastSyncAt: "2026-09-29T00:00:00.000Z" };
+      }
+      throw new Error(`未预期的请求：${url}`);
+    });
+  }
+
+  function ctxOf(home: string) {
+    return fakeContext({ env: { ...process.env, KH_HOME: home } });
+  }
+
+  async function pushContent(repo: RepoFixture, content: string): Promise<void> {
+    await fs.writeFile(path.join(repo.root, "docs", "a.md"), content);
+    await pushDocs(ctxOf(repo.home), repo.registered, asApiClient(client()), { quiet: true });
+  }
+
+  async function blobExists(home: string, blobSha: string): Promise<boolean> {
+    return fs.stat(blobPath(home, PID, blobSha)).then(
+      () => true,
+      () => false,
+    );
+  }
+
+  it("上传过的内容：推送成功后记进推送历史，内容存进本机缓存", async () => {
+    const repo = await setupRepo();
+    const shaA = sha256("hello");
+    await pushDocs(ctxOf(repo.home), repo.registered, asApiClient(client(() => [shaA])), { quiet: true });
+    expect(await readPushed(repo.home, PID)).toEqual({ "docs/a.md": [shaA] });
+    expect(await fs.readFile(blobPath(repo.home, PID, shaA), "utf8")).toBe("hello");
+  });
+
+  it("服务端已有、不需要上传的内容：重新读取后同样存进本机缓存", async () => {
+    const repo = await setupRepo();
+    const shaA = sha256("hello");
+    await pushDocs(ctxOf(repo.home), repo.registered, asApiClient(client()), { quiet: true });
+    expect(await readPushed(repo.home, PID)).toEqual({ "docs/a.md": [shaA] });
+    expect(await fs.readFile(blobPath(repo.home, PID, shaA), "utf8")).toBe("hello");
+  });
+
+  it("没有拉取过：推送过的每个版本都按先后留下；内容没变再推送不重复记", async () => {
+    const repo = await setupRepo();
+    await pushContent(repo, "hello");
+    await pushContent(repo, "hello v2");
+    await pushContent(repo, "hello v2");
+    expect(await readPushed(repo.home, PID)).toEqual({ "docs/a.md": [sha256("hello"), sha256("hello v2")] });
+    expect(await blobExists(repo.home, sha256("hello"))).toBe(true);
+    expect(await blobExists(repo.home, sha256("hello v2"))).toBe(true);
+  });
+
+  it("改回推送过的旧版本：移到末尾，不重复", async () => {
+    const repo = await setupRepo();
+    await pushContent(repo, "v1");
+    await pushContent(repo, "v2");
+    await pushContent(repo, "v1");
+    expect(await readPushed(repo.home, PID)).toEqual({ "docs/a.md": [sha256("v2"), sha256("v1")] });
+  });
+
+  it(`推送 ${PUSHED_LIMIT + 1} 个不同版本后只剩最近 ${PUSHED_LIMIT} 份，最旧的内容被清理`, async () => {
+    const repo = await setupRepo();
+    for (let i = 0; i <= PUSHED_LIMIT; i++) await pushContent(repo, `version ${i}`);
+    const history = (await readPushed(repo.home, PID))!["docs/a.md"]!;
+    expect(history).toHaveLength(PUSHED_LIMIT);
+    expect(history[0]).toBe(sha256("version 1"));
+    expect(history.at(-1)).toBe(sha256(`version ${PUSHED_LIMIT}`));
+    expect(await blobExists(repo.home, sha256("version 0"))).toBe(false);
+    expect(await blobExists(repo.home, sha256("version 1"))).toBe(true);
+  });
+
+  it("文件删除后再推送：推送历史和对应的内容都被清理", async () => {
+    const repo = await setupRepo();
+    await fs.writeFile(path.join(repo.root, "docs", "b.md"), "keep");
+    await pushContent(repo, "v1");
+    await pushContent(repo, "v2");
+    await fs.rm(path.join(repo.root, "docs", "a.md"));
+    await pushDocs(ctxOf(repo.home), repo.registered, asApiClient(client()), { quiet: true });
+    expect(await readPushed(repo.home, PID)).toEqual({ "docs/b.md": [sha256("keep")] });
+    expect(await blobExists(repo.home, sha256("v1"))).toBe(false);
+    expect(await blobExists(repo.home, sha256("v2"))).toBe(false);
+  });
+
+  it("推送成功后重新读取时文件又被改了：hash 对不上，不追加这一次，已有的历史保留", async () => {
+    const repo = await setupRepo();
+    await pushContent(repo, "v1");
+    await fs.writeFile(path.join(repo.root, "docs", "a.md"), "v2");
+    const changeDuringCommit = () => fs.writeFile(path.join(repo.root, "docs", "a.md"), "v3");
+    await pushDocs(ctxOf(repo.home), repo.registered, asApiClient(client(() => [], changeDuringCommit)), { quiet: true });
+    expect(await readPushed(repo.home, PID)).toEqual({ "docs/a.md": [sha256("v1")] });
+    expect(await blobExists(repo.home, sha256("v1"))).toBe(true);
+    expect(await blobExists(repo.home, sha256("v2"))).toBe(false);
+    expect(await blobExists(repo.home, sha256("v3"))).toBe(false);
+  });
+
+  it("写本机缓存出错（例如磁盘满）：推送照样成功、只推一次，不追加这一次", async () => {
+    const repo = await setupRepo();
+    const actual = await vi.importActual<typeof import("./state")>("./state");
+    vi.mocked(openSyncState).mockImplementationOnce(async (...args) => {
+      const state = await actual.openSyncState(...args);
+      state.putBlob = async () => {
+        throw Object.assign(new Error("no space left on device"), { code: "ENOSPC" });
+      };
+      return state;
+    });
+    const fake = client();
+    const result = await pushDocs(ctxOf(repo.home), repo.registered, asApiClient(fake), { quiet: true });
+    expect(result.added).toBe(1);
+    expect(fake.postCalls.filter((c) => isCommitUrl(c.url))).toHaveLength(1);
+    expect(fake.postCalls.filter((c) => isManifestUrl(c.url))).toHaveLength(1);
+    expect(await readPushed(repo.home, PID)).toEqual({});
   });
 });

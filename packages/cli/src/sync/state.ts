@@ -50,13 +50,20 @@ export interface SyncState {
   conflicts: Map<string, ConflictRecord>;
   /** 路径 → 已经报告过的“对方给的是旧版本”的那个 hash，避免重复提醒 */
   staleReported: Map<string, string>;
+  /**
+   * 路径 → 上次拉取以来本机推送过的版本（sha256，按推送先后排列，见 core 的 rememberPushed），
+   * 内容另存 blob：对方若是在其中某个版本上改的，拉取时可以拿它做三方合并的共同基准。
+   * 基准被更新为对方内容时清空，路径离开推送清单时删除
+   */
+  pushed: Map<string, string[]>;
   /** 本机上一次成功推送的时间与清单摘要；hook 的后台同步据此跳过没有变化的推送。从没推送过时为 null */
   lastPush: LastPush | null;
   putBlob(sha: string, bytes: Uint8Array): Promise<void>;
   readBlob(sha: string): Promise<Uint8Array | null>;
+  hasBlob(sha: string): Promise<boolean>;
   /** 原子写回 state.json */
   save(): Promise<void>;
-  /** 删除不再被 base 或 conflicts 引用的 blob */
+  /** 删除不再被 base、conflicts、pushed 引用的 blob */
   gcBlobs(): Promise<void>;
 }
 
@@ -82,6 +89,10 @@ const stateFileSchema = z.object({
   seen: z.record(z.string(), z.array(shaSchema)).default({}),
   conflicts: z.record(z.string(), conflictRecordSchema).default({}),
   staleReported: z.record(z.string(), shaSchema).default({}),
+  /** 旧版本写的状态文件可能没有这个字段，也可能每个路径只记一个 sha（当作只有一项的列表），都照常读取 */
+  pushed: z
+    .record(z.string(), z.union([z.array(shaSchema), shaSchema.transform((sha) => [sha])]))
+    .default({}),
   /** 旧版本写的状态文件没有这个字段，照常读取 */
   lastPush: z.object({ at: timestampSchema, digest: shaSchema }).optional(),
 });
@@ -135,6 +146,7 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
   let seen = new Map<string, string[]>();
   let conflicts = new Map<string, ConflictRecord>();
   let staleReported = new Map<string, string>();
+  let pushed = new Map<string, string[]>();
   let lastPush: LastPush | null = null;
 
   if (raw !== null) {
@@ -153,6 +165,7 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
     seen = new Map(Object.entries(data.seen));
     conflicts = new Map(Object.entries(data.conflicts));
     staleReported = new Map(Object.entries(data.staleReported));
+    pushed = new Map(Object.entries(data.pushed));
     lastPush = data.lastPush ?? null;
     if (data.root === root) {
       hashCache = new Map(Object.entries(data.hashCache));
@@ -164,6 +177,7 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
     seen,
     conflicts,
     staleReported,
+    pushed,
     lastPush,
 
     async hashOf(target) {
@@ -193,6 +207,15 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
       }
     },
 
+    async hasBlob(sha) {
+      try {
+        return (await fsp.stat(path.join(blobs, sha))).isFile();
+      } catch (err) {
+        if (isNoEntError(err)) return false;
+        throw err;
+      }
+    },
+
     async save() {
       const payload = stateFileSchema.parse({
         root,
@@ -201,13 +224,14 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
         seen: Object.fromEntries(seen),
         conflicts: Object.fromEntries(conflicts),
         staleReported: Object.fromEntries(staleReported),
+        pushed: Object.fromEntries(pushed),
         ...(state.lastPush !== null ? { lastPush: state.lastPush } : {}),
       });
       await writeFileAtomic(file, JSON.stringify(payload, null, 2), { mkdir: true });
     },
 
     async gcBlobs() {
-      const referenced = new Set<string>(base.values());
+      const referenced = new Set<string>([...base.values(), ...[...pushed.values()].flat()]);
       for (const conflict of conflicts.values()) {
         referenced.add(conflict.remoteSha);
         if (conflict.baseSha !== null) referenced.add(conflict.baseSha);

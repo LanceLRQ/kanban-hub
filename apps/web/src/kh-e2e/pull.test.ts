@@ -250,7 +250,7 @@ describe("kh pull", () => {
   });
 
   describe("逐文件判定", () => {
-    it("不会静默覆盖：A、B 都从 X 出发，A 改成 Y 推送，B 改成 Z 推送，A 拉取后不是 Z", async () => {
+    it("不会静默覆盖：A、B 都从 X 出发，A 改成 Y 推送，B 改成 Z 推送，A 拉取后不是 Z，而是两边合并的结果", async () => {
       await A.write("notes/a.md", "X1\nX2\nX3\nX4\nX5\n");
       expectOk(await A.kh(["sync"]));
       expectOk(await B.kh(["pull"]));
@@ -262,10 +262,11 @@ describe("kh pull", () => {
 
       const pull = expectOk(await A.kh(["pull"]));
       expect(await A.read("notes/a.md")).not.toBe("X1\nX2\nX3\nX4\nZ5\n");
-      // A 从来没有拉取过这个文件，推送又不改基准，所以 A 没有基准：两边都改了、没有共同基准，
-      // 登记冲突，本地保持 Y
-      expect(pull.stdout).toContain("冲突");
-      expect(await A.read("notes/a.md")).toBe("Y1\nX2\nX3\nX4\nX5\n");
+      // A 从来没有拉取过这个文件，推送又不改基准，所以 A 没有基准；但 A 留着上次拉取以来推送过的
+      // 每个版本（X、Y），B 推送时的基准正是 X：以 X 为共同基准三方合并，两边改动不重叠，自动合并
+      expect(pull.stdout).toContain("自动合并");
+      expect(pull.stdout).not.toContain("冲突");
+      expect(await A.read("notes/a.md")).toBe("Y1\nX2\nX3\nX4\nZ5\n");
     });
 
     it("不会静默覆盖（A 有基准时）：A 快进到 B 的版本后，两边各自改了不重叠的地方并推送，A 拉取后自动合并", async () => {
@@ -604,6 +605,100 @@ describe("kh pull", () => {
       const staleEvent = events.find((e) => (e.change as Record<string, { to: unknown }>).stale?.to === 1);
       // 被跳过的旧版本没有被取用，不计入来源机器
       expect(staleEvent?.change).toMatchObject({ stale: { to: 1 }, from: { to: [] } });
+    });
+  });
+
+  describe("推送过的内容作为共同基准", () => {
+    const BASE_TEXT = "X1\nX2\nX3\nX4\nX5\n";
+
+    async function blobExists(machine: Machine, blobSha: string): Promise<boolean> {
+      try {
+        await fs.stat(path.join(machine.home, "cache", fleet.projectId, "blobs", blobSha));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+
+    async function pushedOf(machine: Machine): Promise<Record<string, string[]>> {
+      return ((await machine.state()) as unknown as { pushed: Record<string, string[]> }).pushed;
+    }
+
+    /** A 新建文件并推送（从没拉取过）；B 拉取后改成 fromB 并推送；A 同时把本地改成 fromA（未推送） */
+    async function concurrentEdits(fromA: string, fromB: string): Promise<void> {
+      await A.write("notes/a.md", BASE_TEXT);
+      expectOk(await A.kh(["sync"]));
+      expectOk(await B.kh(["pull"]));
+      await B.write("notes/a.md", fromB);
+      expectOk(await B.kh(["sync"]));
+      await A.write("notes/a.md", fromA);
+    }
+
+    it("只推送过的文件、本地修改还没推送：两边改动不重叠时自动合并，不再登记冲突", async () => {
+      await concurrentEdits("Y1\nX2\nX3\nX4\nX5\n", "X1\nX2\nX3\nX4\nZ5\n");
+      expect((await A.state()).base["notes/a.md"]).toBeUndefined();
+
+      const pull = expectOk(await A.kh(["pull"]));
+      expect(pull.stdout).toContain("自动合并");
+      expect(pull.stdout).not.toContain("冲突");
+      expect(await A.read("notes/a.md")).toBe("Y1\nX2\nX3\nX4\nZ5\n");
+      const state = await A.state();
+      expect(state.conflicts).toEqual({});
+      // 自动合并之后基准取对方内容
+      expect(state.base["notes/a.md"]).toBe(sha("X1\nX2\nX3\nX4\nZ5\n"));
+    });
+
+    it("先推送、后拉取：推送过的每个版本都留着，拉取自动合并后该路径的推送历史清空、旧内容被清理", async () => {
+      const fromA = "Y1\nX2\nX3\nX4\nX5\n";
+      await concurrentEdits(fromA, "X1\nX2\nX3\nX4\nZ5\n");
+      expectOk(await A.kh(["sync"]));
+      expect((await pushedOf(A))["notes/a.md"]).toEqual([sha(BASE_TEXT), sha(fromA)]);
+      expect(await blobExists(A, sha(BASE_TEXT))).toBe(true);
+      expect(await blobExists(A, sha(fromA))).toBe(true);
+
+      const pull = expectOk(await A.kh(["pull"]));
+      expect(pull.stdout).toContain("自动合并");
+      expect(await A.read("notes/a.md")).toBe("Y1\nX2\nX3\nX4\nZ5\n");
+      expect(await pushedOf(A)).not.toHaveProperty(["notes/a.md"]);
+      expect(await blobExists(A, sha(BASE_TEXT))).toBe(false);
+      expect(await blobExists(A, sha(fromA))).toBe(false);
+    });
+
+    it("改动重叠时登记冲突，冲突记录与 kh conflicts show 的共同基准是 A 推送过的内容；解决后推送历史清空", async () => {
+      await concurrentEdits("X1\nX2\nX3\nX4\nA5\n", "X1\nX2\nX3\nX4\nB5\n");
+
+      const pull = expectOk(await A.kh(["pull"]));
+      expect(pull.stdout).toContain("冲突");
+      expect(await A.read("notes/a.md")).toBe("X1\nX2\nX3\nX4\nA5\n");
+      const record = (await A.state()).conflicts["notes/a.md"] as { baseSha: string | null };
+      expect(record.baseSha).toBe(sha(BASE_TEXT));
+
+      const show = expectOk(await A.kh(["conflicts", "show", "notes/a.md"]));
+      const baseSection = show.stdout.split("||||||| 共同基准\n")[1]?.split("=======")[0];
+      expect(baseSection).toBe("X5\n");
+      expect(show.stdout).toContain("<<<<<<< 本机");
+      expect(show.stdout).toContain(">>>>>>> 机器B");
+
+      expectOk(await A.kh(["conflicts", "resolve", "notes/a.md", "--take-local"]));
+      expect(await pushedOf(A)).not.toHaveProperty(["notes/a.md"]);
+    });
+
+    it("文件删除并推送后，推送历史和对应的内容都被清理", async () => {
+      await A.write("notes/a.md", "gone soon\n");
+      await A.write("notes/b.md", "stays\n");
+      expectOk(await A.kh(["sync"]));
+      await A.remove("notes/a.md");
+      expectOk(await A.kh(["sync"]));
+      const pushed = await pushedOf(A);
+      expect(pushed).not.toHaveProperty(["notes/a.md"]);
+      expect(pushed["notes/b.md"]).toEqual([sha("stays\n")]);
+      expect(await blobExists(A, sha("gone soon\n"))).toBe(false);
+    });
+
+    it("被 git 跟踪的文件照常推送，但不留存推送内容（拉取一律跳过它们）", async () => {
+      expectOk(await A.kh(["sync"]));
+      expect(await pushedOf(A)).not.toHaveProperty(["notes/tracked.md"]);
+      expect(await blobExists(A, sha("tracked in git\n"))).toBe(false);
     });
   });
 

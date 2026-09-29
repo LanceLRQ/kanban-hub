@@ -18,7 +18,8 @@ import { toRepoPath, type RegisteredRepo } from "../repo/root";
 import { inspectLocalPath, LocalChangedError, writeLocalFile } from "../sync/local";
 import { withSyncLock } from "../sync/lock";
 import { diff3Text, diffNoIndex } from "../sync/merge";
-import { isReservedPath, listTrackedPaths } from "../sync/pull";
+import { listTrackedPaths } from "../sync/git-state";
+import { isReservedPath } from "../sync/pull";
 import { assertValidScope } from "../sync/push";
 import { createSyncScopeMatcher } from "../sync/scan";
 import { openSyncState, type ConflictRecord, type SyncState } from "../sync/state";
@@ -194,8 +195,10 @@ async function runResolve(ctx: CliContext, input: string, mode: ResolveMode): Pr
       finalSha = record.remoteSha;
     }
 
-    // 三种方式都一样：基准取对方版本，对方内容与本地最终内容都记为见过，删除冲突记录
+    // 三种方式都一样：基准取对方版本（推送历史随之清空，之后以它为共同起点），对方内容与本地
+    // 最终内容都记为见过，删除冲突记录
     state.base.set(relPath, record.remoteSha);
+    state.pushed.delete(relPath);
     const shas = finalSha !== null && finalSha !== record.remoteSha ? [record.remoteSha, finalSha] : [record.remoteSha];
     state.seen.set(relPath, rememberSeen(state.seen.get(relPath) ?? [], ...shas));
     state.conflicts.delete(relPath);

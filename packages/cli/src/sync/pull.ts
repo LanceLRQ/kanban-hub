@@ -22,8 +22,8 @@ import { CliError, EXIT } from "../errors";
 import { isNoEntError, KH_TMP_PATTERN } from "../fs-utils";
 import type { ApiClient } from "../http/client";
 import { REPO_CONFIG_DIR, toSyncScope } from "../repo/config";
-import { runGit } from "../repo/git";
-import { inspectRepo, type RegisteredRepo } from "../repo/root";
+import type { RegisteredRepo } from "../repo/root";
+import { listTrackedPaths, pathKey } from "./git-state";
 import { inspectLocalPath, LocalChangedError, writeLocalFile, type LocalEntry } from "./local";
 import { withSyncLock } from "./lock";
 import { mergeText } from "./merge";
@@ -113,42 +113,6 @@ async function selectRemote(
   return { files: latest.files, nameOf: (id) => names.get(id) ?? id };
 }
 
-/**
- * 路径的比较键：先规范化成 NFC 再转小写，与 core 判定路径冲突时的规则一致。大小写不敏感、
- * 对 Unicode 规范化形式不敏感的文件系统（例如 macOS）上，只差这两点的路径是同一个文件。
- */
-function pathKey(p: string): string {
-  return p.normalize("NFC").toLowerCase();
-}
-
-/**
- * 本机被 git 跟踪的路径（git ls-files -z），用于跳过它们：比较时不区分大小写和 Unicode 规范化形式
- * （见 pathKey）；某一级父路径被跟踪（例如子模块）也算被跟踪。
- * 不是 git 仓库时为空；是 git 仓库但读取失败时报错，不在不知道哪些文件被跟踪的情况下写入。
- */
-export async function listTrackedPaths(ctx: CliContext, root: string): Promise<(relPath: string) => boolean> {
-  const inspection = await inspectRepo(root, ctx.env);
-  if (!inspection.isGit) return () => false;
-  const result = await runGit(["ls-files", "-z"], { cwd: root, env: ctx.env, buffer: true });
-  if (!result.ok) {
-    throw new CliError(EXIT.UNEXPECTED, `读取被 git 跟踪的文件列表失败：${result.stderr.trim()}`);
-  }
-  const tracked = new Set(
-    result.stdout
-      .toString("utf8")
-      .split("\0")
-      .filter((p) => p !== "")
-      .map(pathKey),
-  );
-  return (relPath) => {
-    const segs = pathKey(relPath).split("/");
-    for (let i = 1; i <= segs.length; i++) {
-      if (tracked.has(segs.slice(0, i).join("/"))) return true;
-    }
-    return false;
-  };
-}
-
 /** kh 自己管理的路径与临时文件：无论对方快照里有没有，都不往本地写 */
 export function isReservedPath(relPath: string): boolean {
   const first = relPath.split("/")[0]!.toLowerCase();
@@ -203,11 +167,30 @@ class PullRun {
     this.state.seen.set(relPath, rememberSeen(this.state.seen.get(relPath) ?? [], ...shas));
   }
 
-  /** 把基准改成 sha；内容另存一份 blob 供之后三方合并用。已经是这份基准时不重复写 */
-  private async adoptBase(relPath: string, sha: string, bytes: Uint8Array): Promise<void> {
+  /**
+   * 把基准改成 sha；内容另存一份 blob 供之后三方合并用。已经是这份基准时不重复写。
+   * 基准被更新为对方的当前内容（新建、覆盖、两边相同、自动合并）时，这个路径的推送历史随之清空：
+   * 之后以新基准为共同起点。采纳对方给的旧版本（stale）不算前进，传 keepPushed 保留推送历史
+   */
+  private async adoptBase(relPath: string, sha: string, bytes: Uint8Array, opts: { keepPushed?: boolean } = {}): Promise<void> {
     if (this.state.base.get(relPath) === sha) return;
     await this.state.putBlob(sha, bytes);
     this.state.base.set(relPath, sha);
+    if (!opts.keepPushed) this.state.pushed.delete(relPath);
+  }
+
+  /**
+   * 对方推送时的基准是不是本机推送过、而且缓存里还留有内容的版本。只是本机缓存：探测出错时
+   * 按“没有内容”处理（退回本机基准或登记冲突），不让整次拉取失败
+   */
+  private async remoteBaseStored(relPath: string, remoteBase: string | null, seen: readonly string[]): Promise<boolean> {
+    if (remoteBase === null || !seen.includes(remoteBase)) return false;
+    if (!(this.state.pushed.get(relPath) ?? []).includes(remoteBase)) return false;
+    try {
+      return await this.state.hasBlob(remoteBase);
+    } catch {
+      return false;
+    }
   }
 
   /**
@@ -287,6 +270,9 @@ class PullRun {
         ? await this.state.hashOf({ path: relPath, size: local.size, mtimeMs: local.mtimeMs, absPath: local.absPath })
         : null;
     const base = this.state.base.get(relPath) ?? null;
+    const seen = this.state.seen.get(relPath) ?? [];
+    const pushed = this.state.pushed.get(relPath) ?? [];
+    const remoteBaseStored = await this.remoteBaseStored(relPath, file.base, seen);
 
     const decision = decidePull({
       tracked,
@@ -294,8 +280,10 @@ class PullRun {
       unsafe: local.kind === "unsafe",
       local: localSha,
       base,
-      seen: this.state.seen.get(relPath) ?? [],
+      seen,
       remote: { sha: file.sha256, base: file.base },
+      pushed,
+      remoteBaseStored,
     });
 
     switch (decision.kind) {
@@ -325,10 +313,10 @@ class PullRun {
         return;
       }
       case "merge":
-        if (local.kind !== "file" || localSha === null || base === null) return;
-        return this.merge(file, local, localSha, base);
+        if (local.kind !== "file" || localSha === null) return;
+        return this.merge(file, local, localSha, decision.base);
       case "conflict": {
-        // 两边都改了、本机没有基准：没有可用的共同基准，直接登记冲突。dry-run 只列出，不下载
+        // 两边都改了、没有可用的共同基准，直接登记冲突。dry-run 只列出，不下载
         if (this.dryRun) return this.registerConflict(file, null, null);
         const bytes = await this.fetchRemote(file);
         if (bytes === null) return;
@@ -366,7 +354,7 @@ class PullRun {
         if (!this.dryRun && isNewBase(nextBase)) {
           const bytes = await this.fetchRemote(file);
           if (bytes === null) return;
-          await this.adoptBase(relPath, nextBase, bytes);
+          await this.adoptBase(relPath, nextBase, bytes, { keepPushed: true });
         }
         if (this.state.staleReported.get(relPath) !== file.sha256) {
           this.result.stale.push(relPath);
@@ -380,11 +368,12 @@ class PullRun {
     }
   }
 
+  /** 两边都改了：用 mergeBase（本机基准，或对方推送时基于的、本机推送过的某个版本）做三方合并 */
   private async merge(
     file: RemoteFile,
     local: Extract<LocalEntry, { kind: "file" }>,
     localSha: string,
-    base: string,
+    mergeBase: string,
   ): Promise<void> {
     const relPath = file.path;
     const localBytes = await this.readLocal(local, localSha);
@@ -395,14 +384,14 @@ class PullRun {
     }
     const remoteBytes = await this.fetchRemote(file);
     if (remoteBytes === null) return;
-    const baseBytes = await this.state.readBlob(base);
+    const baseBytes = await this.state.readBlob(mergeBase);
     if (baseBytes === null) return this.registerConflict(file, remoteBytes, null);
     if (looksBinary(localBytes) || looksBinary(remoteBytes) || looksBinary(baseBytes)) {
-      return this.registerConflict(file, remoteBytes, base);
+      return this.registerConflict(file, remoteBytes, mergeBase);
     }
 
     const merged = await mergeText(this.ctx, localBytes, baseBytes, remoteBytes);
-    if (!merged.clean) return this.registerConflict(file, remoteBytes, base);
+    if (!merged.clean) return this.registerConflict(file, remoteBytes, mergeBase);
 
     if (!this.dryRun) {
       if (!(await this.write(relPath, merged.merged, local))) return;

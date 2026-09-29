@@ -4,7 +4,7 @@
     "development": "开发期",
     "iteration": "迭代期",
     "maintenance": "维护期",
-    "archived": "已归档"
+    "archived": "归档"
   },
   "health": {
     "on_track": "正常",

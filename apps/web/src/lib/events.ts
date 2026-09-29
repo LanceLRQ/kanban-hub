@@ -10,6 +10,7 @@
  */
 import type { Board, ChecklistItem, Event, EventType, HumanFlag, ManualStatus, TaskStatus } from "@kanban-hub/core/schema";
 import { readDocsCounts } from "@kanban-hub/core/sync";
+import { readImportCounts } from "@kanban-hub/core/transfer";
 import { containerRefLabel, taskShortRef } from "./refs";
 
 // ---------- 分组（用于类型筛选） ----------
@@ -195,6 +196,21 @@ function describeDocsPulled(event: Event): EventDescription {
   return { key: "docs.pulled.withCounts", values: { list } };
 }
 
+function describeImportApplied(event: Event): EventDescription {
+  const counts = readImportCounts(event);
+  if (!counts) return { key: "import.applied.plain", values: {} };
+  const list = countList([
+    ["项目字段", counts.projectFields.length],
+    ["新建容器", counts.containersCreated],
+    ["更新容器", counts.containersUpdated],
+    ["新建任务", counts.tasksCreated],
+    ["更新任务", counts.tasksUpdated],
+    ["历史日志", counts.logsAdded],
+  ]);
+  if (list === "") return { key: "import.applied.plain", values: {} };
+  return { key: "import.applied.withCounts", values: { list } };
+}
+
 /**
  * 事件的结构化描述：{ key, values }，key 是 events 命名空间里的消息键。
  * 任务或容器在看板里已经找不到时，用事件本身的 ID 前缀兜底，不抛错（见 taskLabel / containerLabel）。
@@ -224,6 +240,6 @@ export function describeEvent(event: Event, ctx: EventDescribeCtx): EventDescrip
     case "docs.pulled":
       return describeDocsPulled(event);
     case "import.applied":
-      return { key: "import.applied", values: {} };
+      return describeImportApplied(event);
   }
 }

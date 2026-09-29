@@ -44,6 +44,7 @@ import {
   sha256HexSchema,
   snapshotManifestSchema,
 } from "@kanban-hub/core/sync";
+import { type ImportSummary, type TransferDoc, importLogKey, planImport, transferDocSchema } from "@kanban-hub/core/transfer";
 import { AUTH_DIR, AuthRepo } from "./auth";
 import { type CommitActor, Committer } from "./committer";
 import { EventLog, monthOf, recentMonths } from "./events";
@@ -121,12 +122,21 @@ export interface MutationOptions {
   expectedVersion?: number;
 }
 
-interface Outcome<T> {
+/** 一次写入要落盘的内容：可选的新项目、新看板，以及要追加的事件 */
+interface WriteChange {
   projectId: string;
   project?: Project;
   board?: Board;
   events: Event[];
+}
+
+interface Outcome<T> extends WriteChange {
   value: T;
+}
+
+export interface ImportOptions {
+  /** 只计算、不写入 */
+  dryRun: boolean;
 }
 
 export class Store {
@@ -267,18 +277,34 @@ export class Store {
     // 不作为最终读取依据——拿到队列独占权之后会重新列一遍，见下方
     const projectIds = query.projectId !== undefined ? [query.projectId] : [...this.projects.keys()];
     if (!(await this.hasMonthsBeforeWindow(projectIds))) return result;
-    // 读旧文件时可能顺带修复残行，放进写入队列，避免和追加事件交错。进队列后重新列一遍月份
-    // 而不是直接复用上面的判断结果：两次调用之间没有互斥，理论上可能有新的旧月份文件出现
-    // （例如导入历史事件），队列外的判断只用来避免内存已经够用时无谓地排队等待
+    // 读旧文件时可能顺带修复残行，放进写入队列，避免和追加事件交错。进队列后重新取一遍内存里的
+    // 事件、重新列一遍月份，而不是直接复用上面的结果：排队期间可能有写入（例如导入历史事件）
+    // 追加了新的事件或新的旧月份文件，队列外的判断只用来避免内存已经够用时无谓地排队等待
     return this.queue.run(async () => {
+      const merged = this.recentEvents.filter(matches).sort(newestFirst);
       const byMonth = await this.monthsBeforeWindow(projectIds);
       for (const month of [...byMonth.keys()].sort().reverse()) {
+        if (merged.length >= query.limit) break;
         const batch: Event[] = [];
-        for (const id of byMonth.get(month)!) batch.push(...(await this.eventLog.readMonth(id, month)).filter(matches));
-        result.push(...batch.sort(newestFirst));
-        if (result.length >= query.limit) break;
+        for (const id of byMonth.get(month)!) {
+          for (const event of await this.readMonthLocked(id, month)) if (matches(event)) batch.push(event);
+        }
+        for (const event of batch.sort(newestFirst)) merged.push(event);
       }
-      return result.slice(0, query.limit);
+      return merged.slice(0, query.limit);
+    });
+  }
+
+  /**
+   * 项目全部月份的 log 事件，按 (ts, id) 升序，供导出使用。读文件时可能顺带修复残行（会写文件），
+   * 所以和 listEvents 读旧文件时一样进写入队列。
+   */
+  async readProjectLogs(projectId: string): Promise<Event[]> {
+    // 先确认项目存在，再拼文件路径（与 listEvents 相同的路径穿越防护）
+    this.requireProject(projectId);
+    return this.queue.run(async () => {
+      const events = await this.readProjectEventsLocked(projectId);
+      return events.filter((e) => e.type === "log").sort(compareEvents);
     });
   }
 
@@ -475,6 +501,34 @@ export class Store {
     });
   }
 
+  /**
+   * 按导入文件更新项目（规格 10.4）：整个过程是写入队列里的一个任务。读出项目已有的全部 log 事件
+   * 算去重键，交给 planImport 算出新的项目、看板和要追加的事件；dryRun 时只返回摘要。
+   * 没有变化时不写文件、不记事件、不提交。写入与普通写操作走同一段落盘逻辑，
+   * 只把 import.applied 推给订阅者（历史日志可能有几千条，网页收到通知后会重新拉取）。
+   */
+  applyImport(projectId: string, doc: TransferDoc, actor: Actor, opts: ImportOptions): Promise<ImportSummary> {
+    if (this.closing) return Promise.reject(new KhError("unavailable", "服务正在关闭，请稍后重试"));
+    return this.queue.run(async () => {
+      const state = this.requireProject(projectId);
+      const validActor = parseInput(actorSchema, actor);
+      const data = parseInput(transferDocSchema, doc);
+      // 已经持有队列：只能用不排队的内部读取，调用 listEvents / readProjectLogs 会互相等待
+      const events = await this.readProjectEventsLocked(projectId);
+      const logKeys = new Set(events.filter((e) => e.type === "log").map((e) => importLogKey(e.ts, e.text ?? "")));
+      const ctx: ops.MutationContext = { now: this.now().toISOString(), actor: validActor, newId: this.newId };
+      const plan = planImport(state, data, logKeys, ctx);
+      const summary: ImportSummary = { dryRun: opts.dryRun, ...plan.summary };
+      if (opts.dryRun || plan.events.length === 0) return summary;
+      await this.writeChange(
+        validActor,
+        { projectId, project: plan.project ?? undefined, board: plan.board ?? undefined, events: plan.events },
+        (appended) => appended.filter((e) => e.type === "import.applied"),
+      );
+      return summary;
+    });
+  }
+
   /** 记一次拉取的结果：追加一条 docs.pulled */
   async recordPull(projectId: string, input: PullReportInput, actor: Actor): Promise<void> {
     await this.mutate(actor, (ctx) => {
@@ -580,51 +634,63 @@ export class Store {
       const out = compute(ctx);
       // 没有变化：不写文件、不记事件、不通知
       if (out.events.length === 0) return out.value;
-
-      // 只校验、不替换写入的对象；校验失败时在写文件之前就抛出，什么都不写、内存不变
-      if (out.project) parseInput(projectSchema, out.project);
-      if (out.board) parseInput(boardSchema, out.board);
-      for (const event of out.events) parseInput(eventSchema, event);
-
-      const commitActor = this.commitActor(validActor);
-      const files = [
-        ...(out.board ? [boardPath(out.projectId)] : []),
-        ...(out.project ? [projectPath(out.projectId)] : []),
-        ...new Set(out.events.map((e) => this.eventLog.relPath(e.projectId, monthOf(e.ts)))),
-      ];
-      // 必须在写文件之前：这些文件有别的操作者的待提交改动时，先提交掉，
-      // 否则那一组提交会把这次写入的内容一起暂存进去
-      await this.committer.beforeWrite(commitActor, files);
-      // 先写 board.yaml 再写 project.yaml：新建项目时两次写入之间崩溃，只会留下没有 project.yaml 的目录，加载时跳过
-      if (out.board) await writeYamlFile(this.abs(boardPath(out.projectId)), out.board, { tmpDir: this.tmpDir });
-      if (out.project) await writeYamlFile(this.abs(projectPath(out.projectId)), out.project, { tmpDir: this.tmpDir });
-      // 文件都写成功后再替换内存，写失败时内存与磁盘保持一致
-      const prev = this.projects.get(out.projectId);
-      const project = out.project ?? prev?.project;
-      const board = out.board ?? prev?.board;
-      if (project && board) this.projects.set(out.projectId, { project, board });
-
-      // 到这里 project.yaml / board.yaml（如果有）已经写入成功：修改就算生效（与规格第 15 节对 git
-      // 失败的处理一致，“数据文件不受影响”）。事件追加失败只记日志、不向调用方抛错，避免调用方以为
-      // 修改失败而重试——重试会在已经生效的基础上再建一遍，产生重复的项目/任务。remember 只记成功写入
-      // 的事件；track 和 emit 无论追加是否失败都执行，emit 带上成功写入的事件，一条都没写进去时也照常
-      // 通知，订阅者据此知道这个项目变了。
-      const appended: Event[] = [];
-      for (const event of out.events) {
-        try {
-          await this.eventLog.append(event);
-          appended.push(event);
-        } catch (e) {
-          const missing = out.events.length - appended.length;
-          this.log(`项目 ${out.projectId} 的修改已保存，但时间线缺少 ${missing} 条事件：${(e as Error).message}`);
-          break;
-        }
-      }
-      for (const event of appended) this.remember(event);
-      await this.committer.track(commitActor, files, out.events.map((e) => e.type));
-      this.emit({ projectId: out.projectId, events: appended });
+      await this.writeChange(validActor, out);
       return out.value;
     });
+  }
+
+  /**
+   * 普通写操作与导入共用的落盘步骤：校验 → 提交前处理 → 写看板、项目 → 替换内存 → 追加事件 →
+   * 登记提交 → 通知。只能在已经持有写入队列的任务里调用；actor 必须是校验过的。
+   * notify 从成功追加的事件里挑出要推给订阅者的那些，默认全部推送。
+   */
+  private async writeChange(
+    validActor: Actor,
+    out: WriteChange,
+    notify: (appended: Event[]) => Event[] = (appended) => appended,
+  ): Promise<void> {
+    // 只校验、不替换写入的对象；校验失败时在写文件之前就抛出，什么都不写、内存不变
+    if (out.project) parseInput(projectSchema, out.project);
+    if (out.board) parseInput(boardSchema, out.board);
+    for (const event of out.events) parseInput(eventSchema, event);
+
+    const commitActor = this.commitActor(validActor);
+    const files = [
+      ...(out.board ? [boardPath(out.projectId)] : []),
+      ...(out.project ? [projectPath(out.projectId)] : []),
+      ...new Set(out.events.map((e) => this.eventLog.relPath(e.projectId, monthOf(e.ts)))),
+    ];
+    // 必须在写文件之前：这些文件有别的操作者的待提交改动时，先提交掉，
+    // 否则那一组提交会把这次写入的内容一起暂存进去
+    await this.committer.beforeWrite(commitActor, files);
+    // 先写 board.yaml 再写 project.yaml：新建项目时两次写入之间崩溃，只会留下没有 project.yaml 的目录，加载时跳过
+    if (out.board) await writeYamlFile(this.abs(boardPath(out.projectId)), out.board, { tmpDir: this.tmpDir });
+    if (out.project) await writeYamlFile(this.abs(projectPath(out.projectId)), out.project, { tmpDir: this.tmpDir });
+    // 文件都写成功后再替换内存，写失败时内存与磁盘保持一致
+    const prev = this.projects.get(out.projectId);
+    const project = out.project ?? prev?.project;
+    const board = out.board ?? prev?.board;
+    if (project && board) this.projects.set(out.projectId, { project, board });
+
+    // 到这里 project.yaml / board.yaml（如果有）已经写入成功：修改就算生效（与规格第 15 节对 git
+    // 失败的处理一致，“数据文件不受影响”）。事件追加失败只记日志、不向调用方抛错，避免调用方以为
+    // 修改失败而重试——重试会在已经生效的基础上再建一遍，产生重复的项目/任务。remember 只记成功写入
+    // 的事件；track 和 emit 无论追加是否失败都执行，emit 带上成功写入的事件，一条都没写进去时也照常
+    // 通知，订阅者据此知道这个项目变了。
+    const appended: Event[] = [];
+    for (const event of out.events) {
+      try {
+        await this.eventLog.append(event);
+        appended.push(event);
+      } catch (e) {
+        const missing = out.events.length - appended.length;
+        this.log(`项目 ${out.projectId} 的修改已保存，但时间线缺少 ${missing} 条事件：${(e as Error).message}`);
+        break;
+      }
+    }
+    for (const event of appended) this.remember(event);
+    await this.committer.track(commitActor, files, out.events.map((e) => e.type));
+    this.emit({ projectId: out.projectId, events: notify(appended) });
   }
 
   /**
@@ -885,9 +951,26 @@ export class Store {
     if ((await readTextOrNull(this.abs(rel))) !== content) await writeFileAtomic(this.abs(rel), content, { tmpDir: this.tmpDir });
   }
 
+  /** 读取某个月的事件并顺带修复残行（会写文件）：只能在已经持有写入队列的任务里调用 */
+  private readMonthLocked(projectId: string, month: string): Promise<Event[]> {
+    return this.eventLog.readMonth(projectId, month);
+  }
+
+  /**
+   * 项目全部月份的事件，按月份从早到晚、文件内按追加顺序：只能在已经持有写入队列的任务里调用。
+   * 逐条追加而不是 push(...month)：单月事件条数不受限，展开成参数会栈溢出
+   */
+  private async readProjectEventsLocked(projectId: string): Promise<Event[]> {
+    const events: Event[] = [];
+    for (const month of await this.eventLog.listMonths(projectId)) {
+      for (const event of await this.readMonthLocked(projectId, month)) events.push(event);
+    }
+    return events;
+  }
+
   private remember(event: Event): void {
     this.touchLastEvent(event);
-    // 早于内存窗口的事件（例如 M6 导入的历史事件）只在文件里，查询时按月读取
+    // 早于内存窗口的事件（例如导入的历史事件）只在文件里，查询时按月读取
     if (monthOf(event.ts) >= this.windowStart) this.recentEvents.push(event);
   }
 

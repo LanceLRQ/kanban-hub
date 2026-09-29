@@ -56,6 +56,16 @@ afterEach(() => {
 });
 
 describe("Committer", () => {
+  it("一次登记极多条事件类型（例如大批导入的历史日志）不抛错，提交说明照常汇总", async () => {
+    const { git, commits } = fakeGit();
+    const committer = make(git);
+    const types = new Array<"log">(300_000).fill("log");
+    await committer.track(mac, [EVENTS], ["import.applied", ...types]);
+    await committer.flushNow();
+    expect(commits).toHaveLength(1);
+    expect(commits[0]!.message).toBe("cli(mac): 300000 项日志、1 项导入");
+  });
+
   it("最后一次写入 30 秒后才提交，期间的新写入会重新计时", async () => {
     const { git, commits } = fakeGit();
     const c = make(git);

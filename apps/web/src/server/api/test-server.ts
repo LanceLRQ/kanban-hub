@@ -23,6 +23,8 @@ import { POST as pairingCodesPost } from "@/app/api/v1/pairing-codes/route";
 import { PATCH as containerPatch } from "@/app/api/v1/projects/[id]/containers/[cid]/route";
 import { POST as containersPost } from "@/app/api/v1/projects/[id]/containers/route";
 import { GET as docsGet } from "@/app/api/v1/projects/[id]/docs/route";
+import { GET as exportGet } from "@/app/api/v1/projects/[id]/export/route";
+import { POST as importPost } from "@/app/api/v1/projects/[id]/import/route";
 import { PUT as locationPut } from "@/app/api/v1/projects/[id]/locations/[machineId]/route";
 import { POST as logPost } from "@/app/api/v1/projects/[id]/log/route";
 import { POST as rawTokensPost } from "@/app/api/v1/projects/[id]/raw-tokens/route";
@@ -88,6 +90,8 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/projects/:id/containers", handlers: { POST: asRouteHandler(containersPost) } },
   { pattern: "/api/v1/projects/:id/containers/:cid", handlers: { PATCH: asRouteHandler(containerPatch) } },
   { pattern: "/api/v1/projects/:id/docs", handlers: { GET: asRouteHandler(docsGet) } },
+  { pattern: "/api/v1/projects/:id/export", handlers: { GET: asRouteHandler(exportGet) } },
+  { pattern: "/api/v1/projects/:id/import", handlers: { POST: asRouteHandler(importPost) } },
   { pattern: "/api/v1/projects/:id/locations/:machineId", handlers: { PUT: asRouteHandler(locationPut) } },
   { pattern: "/api/v1/projects/:id/log", handlers: { POST: asRouteHandler(logPost) } },
   { pattern: "/api/v1/projects/:id/raw-tokens", handlers: { POST: asRouteHandler(rawTokensPost) } },

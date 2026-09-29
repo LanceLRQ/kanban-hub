@@ -19,5 +19,6 @@
   "actions": {
     "title": "操作"
   },
-  "export": "导出"
+  "exportYaml": "导出 YAML",
+  "exportMarkdown": "导出 Markdown"
 }

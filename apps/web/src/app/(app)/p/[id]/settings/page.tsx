@@ -4,7 +4,7 @@ import { authedPageServices } from "@/server/web/services";
 import { buildProjectSettingsView } from "@/server/views/project-settings";
 import { SectionCard } from "@/components/settings/section-card";
 import { LocationCard } from "@/components/project-settings/location-card";
-import { ExportButton } from "@/components/project-settings/export-button";
+import { ExportLinks } from "@/components/project-settings/export-links";
 
 export default async function ProjectSettingsPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -25,7 +25,7 @@ export default async function ProjectSettingsPage({ params }: { params: Promise<
 
       <SectionCard title={t("actions.title")} subtitle="actions">
         <div className="flex items-center gap-3 px-5 py-3.5">
-          <ExportButton />
+          <ExportLinks projectId={id} />
         </div>
       </SectionCard>
     </div>

@@ -2,6 +2,7 @@ import { createTranslator } from "next-intl";
 import { describe, expect, it } from "vitest";
 import { fixtureId, makeBoard, makeContainer, makeEvent, makeTask } from "@kanban-hub/core/test-fixtures";
 import { docsPulledChange, docsSyncedChange } from "@kanban-hub/core/sync";
+import { importAppliedChange } from "@kanban-hub/core/transfer";
 import enumsMessages from "../../messages/zh-CN/enums.json";
 import eventsMessages from "../../messages/zh-CN/events.json";
 import { describeEvent, EVENT_GROUPS, eventGroupOf, sortEventsForDisplay, type EnumLabelGroup } from "./events";
@@ -152,6 +153,33 @@ describe("describeEvent：12 种事件类型各一个用例", () => {
 
   it("import.applied", () => {
     const event = makeEvent({ type: "import.applied", target: null, change: null, text: null });
+    expect(describeAndRender(event, ctx)).toBe("应用了一次导入");
+  });
+
+  it("import.applied：带计数时，按固定顺序只列不为 0 的项", () => {
+    const event = makeEvent({
+      type: "import.applied",
+      target: null,
+      change: importAppliedChange({
+        projectFields: ["cycle", "focus"],
+        containersCreated: 1,
+        containersUpdated: 0,
+        tasksCreated: 3,
+        tasksUpdated: 2,
+        logsAdded: 5,
+      }),
+      text: null,
+    });
+    expect(describeAndRender(event, ctx)).toBe("应用了一次导入：项目字段 2、新建容器 1、新建任务 3、更新任务 2、历史日志 5");
+  });
+
+  it("import.applied：计数格式不对时退回普通描述", () => {
+    const event = makeEvent({
+      type: "import.applied",
+      target: null,
+      change: { tasksCreated: { to: "3" }, logsAdded: { to: 1 } },
+      text: null,
+    });
     expect(describeAndRender(event, ctx)).toBe("应用了一次导入");
   });
 });

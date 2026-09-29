@@ -51,6 +51,9 @@
     }
   },
   "import": {
-    "applied": "应用了一次导入"
+    "applied": {
+      "plain": "应用了一次导入",
+      "withCounts": "应用了一次导入：{list}"
+    }
   }
 }

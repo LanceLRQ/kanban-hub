@@ -79,7 +79,8 @@ export class Committer {
       this.groups.push(group);
     }
     for (const p of own) group.paths.add(p);
-    group.types.push(...types);
+    // 逐条追加，不用 push(...types)：一次导入可能有十几万条历史日志，展开成参数会栈溢出
+    for (const type of types) group.types.push(type);
     // 处于失败退避时，重试定时器已经排上了，不改回去抖时间
     if (this.failures === 0) this.schedule(this.debounceMs);
   }

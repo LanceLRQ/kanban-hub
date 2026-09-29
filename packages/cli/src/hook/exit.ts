@@ -22,6 +22,8 @@ export const HOOK_LIMITS = {
   detailTimeoutMs: 3000,
   /** 硬性兜底：hook 开始后这么久，不管做到哪一步都放弃等待，退出码 0 */
   hardLimitMs: 13_500,
+  /** 兜底计时器到点时，流程若已进入输出提醒前的最后一步（改写会话标记），再多等这么久让提醒输出 */
+  exitGraceMs: 300,
   /**
    * 后台同步（kh hook sync）的上限：它已经脱离 agent 会话，不受 hook 超时约束，只防挂死；
    * 套用前台的 13.5 秒会让大批文档或慢网络下每一轮都在同一处被截断
@@ -143,4 +145,41 @@ export interface HookRun {
   agentFlag: string | undefined;
   /** hook 开始的时间（毫秒，取自 ctx.now） */
   startedAt: number;
+  /**
+   * 准备以 HookExit 结束（Stop 的提醒）之前调用：兜底计时器已经到点时返回 false，这时的 HookExit 不会再被输出，
+   * 流程应当放弃；返回 true 时外壳会等这次输出（计时器到点后最多再等 exitGraceMs）
+   */
+  beginExit(): boolean;
+}
+
+/** installHookSafetyNet 要监听的进程对象（真实运行时是 process，测试里是一个 EventEmitter） */
+export interface HookProcessEvents {
+  on(event: "unhandledRejection" | "uncaughtException", listener: (reason: unknown) => void): unknown;
+}
+
+/**
+ * hook 模式的兜底：游离的 promise 被拒绝、回调里抛出的异常，默认会让进程打印堆栈并以退出码 1 结束，
+ * 破坏“hook 静默、退出码 0”的约定。这里接住它们：只写一行 hook.log，然后按 exitCode()（命令还没得出
+ * 退出码时是 0）结束进程；日志最多等 1 秒。前台 hook 与后台 kh hook sync 都走这条路径。
+ */
+export function installHookSafetyNet(
+  proc: HookProcessEvents,
+  ctx: CliContext,
+  opts: { exitCode: () => number; exit: (code: number) => void },
+): void {
+  let handled = false;
+  const onFatal = (kind: string) => (reason: unknown) => {
+    if (handled) return;
+    handled = true;
+    const log = createHookLogger(ctx, "hook");
+    log.write(`${kind}：${describeHookError(reason)}`);
+    const finish = () => opts.exit(opts.exitCode());
+    const timer = setTimeout(finish, 1000);
+    void log.flush().then(() => {
+      clearTimeout(timer);
+      finish();
+    });
+  };
+  proc.on("unhandledRejection", onFatal("未处理的 promise 拒绝"));
+  proc.on("uncaughtException", onFatal("未捕获的异常"));
 }

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { KhError } from "./errors";
 import type { MutationContext } from "./mutations";
+import type { TaskStatus } from "./schema";
 import {
   T0,
   cliActor,
@@ -332,6 +333,57 @@ describe("planImport：更新", () => {
   });
 });
 
+describe("planImport：只改状态", () => {
+  const cases: [TaskStatus, TaskStatus][] = [
+    ["in_progress", "review"],
+    ["todo", "cancelled"],
+    ["in_progress", "todo"],
+  ];
+  for (const [from, to] of cases) {
+    it(`${from} → ${to}：写入看板、生成新版本、import.applied 计入更新的任务`, () => {
+      const container = makeContainer({ id: fixtureId("c", 1), code: "P0", title: "阶段" });
+      const task = makeTask({
+        id: fixtureId("t", 1),
+        containerId: container.id,
+        code: "0.1",
+        title: "任务",
+        status: from,
+        startedAt: from === "in_progress" ? T0 : null,
+      });
+      const board = makeBoard([container], [task]);
+      const project = makeProject();
+      const doc: TransferDoc = { format: TRANSFER_FORMAT, containers: [{ kind: "phase", code: "P0", tasks: [{ code: "0.1", status: to }] }] };
+      const plan = planImport({ project, board }, doc, new Set(), ctxAt("2026-09-10T00:00:00.000Z"));
+      expect(plan.summary.tasks.statusChanges).toEqual([{ container: "P0", title: "任务", from, to }]);
+      expect(plan.board).not.toBeNull();
+      const next = plan.board!.tasks.find((t) => t.id === task.id)!;
+      expect(next.status).toBe(to);
+      expect(next.version).toBe(task.version + 1);
+      expect(plan.project).toBeNull();
+      expect(plan.events).toHaveLength(1);
+      expect(readImportCounts(plan.events[0]!)!.tasksUpdated).toBe(1);
+
+      // 导入之后再导入同一份文件：没有变化
+      const again = planImport({ project, board: plan.board! }, doc, new Set(), ctxAt("2026-09-11T00:00:00.000Z"));
+      expect(again.board).toBeNull();
+      expect(again.events).toEqual([]);
+      expect(again.summary.tasks.statusChanges).toEqual([]);
+    });
+  }
+
+  it("同一任务既改状态又改其他字段时，import.applied 只计一次", () => {
+    const container = makeContainer({ id: fixtureId("c", 1), code: "P0", title: "阶段" });
+    const task = makeTask({ id: fixtureId("t", 1), containerId: container.id, code: "0.1", title: "任务", status: "in_progress", startedAt: T0 });
+    const board = makeBoard([container], [task]);
+    const doc: TransferDoc = {
+      format: TRANSFER_FORMAT,
+      containers: [{ kind: "phase", code: "P0", tasks: [{ code: "0.1", status: "review", note: "新备注" }] }],
+    };
+    const plan = planImport({ project: makeProject(), board }, doc, new Set(), ctxAt("2026-09-10T00:00:00.000Z"));
+    expect(readImportCounts(plan.events[0]!)!.tasksUpdated).toBe(1);
+  });
+});
+
 describe("planImport：历史日志与 import.applied", () => {
   it("新的历史日志会去重（与已有日志、文件内、不同时区写法）", () => {
     const board = makeBoard([], []);
@@ -467,8 +519,38 @@ describe("renderBoardMarkdown", () => {
     expect(md).toContain("开发期");
     expect(md).toContain("正常");
     expect(md).toContain("完成 M6");
+    expect(md).toContain("进度：0/0");
     expect(md).toContain("P0");
     expect(md).toContain("~~");
+  });
+
+  it("项目进度与 kh status 算法相同：已取消的不计，杂项容器不计", () => {
+    const project = makeProject({ name: "示例项目" });
+    const phase = makeContainer({ id: fixtureId("c", 1), code: "P0", title: "阶段一" });
+    const misc = makeMisc();
+    const tasks = [
+      makeTask({ id: fixtureId("t", 1), containerId: phase.id, title: "完成的", status: "done", completedAt: T0 }),
+      makeTask({ id: fixtureId("t", 2), containerId: phase.id, title: "进行中", status: "in_progress", startedAt: T0 }),
+      makeTask({ id: fixtureId("t", 3), containerId: phase.id, title: "取消的", status: "cancelled" }),
+      makeTask({ id: fixtureId("t", 4), containerId: misc.id, title: "杂项完成", status: "done", completedAt: T0 }),
+    ];
+    const md = renderBoardMarkdown(project, makeBoard([phase], tasks), { now: new Date("2026-10-01T00:00:00.000Z"), timeZone: "UTC" });
+    expect(md.split("\n")[2]).toContain("进度：1/2");
+  });
+
+  it("备注与待你处理说明里的换行替换成空格，不把列表拆开", () => {
+    const container = makeContainer({ id: fixtureId("c", 1), code: "P0", title: "阶段一" });
+    const task = makeTask({
+      id: fixtureId("t", 1),
+      containerId: container.id,
+      title: "任务",
+      note: "第一行\n第二行",
+      human: { kind: "decision", note: "请确认\r\n再继续" },
+    });
+    const md = renderBoardMarkdown(makeProject(), makeBoard([container], [task]), { now: new Date("2026-10-01T00:00:00.000Z"), timeZone: "UTC" });
+    const line = md.split("\n").find((l) => l.startsWith("- "))!;
+    expect(line).toContain("第一行 第二行");
+    expect(line).toContain("请确认 再继续");
   });
 });
 

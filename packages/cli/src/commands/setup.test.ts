@@ -196,6 +196,27 @@ describe("交互确认", () => {
     await expect(fs.stat(path.join(home, ".agents", "skills", "kanban-hub", "SKILL.md"))).resolves.toBeDefined();
   });
 
+  it("等待确认期间 settings.json 被别人改了：确认后别人的改动保留，并提示已按最新内容重新合并", async () => {
+    const home = await tempHome();
+    const settings = path.join(home, ".claude", "settings.json");
+    await fs.mkdir(path.dirname(settings), { recursive: true });
+    await fs.writeFile(settings, JSON.stringify({ theme: "dark" }));
+    const stdin = new PassThrough();
+    const { ctx, stdout } = fakeContext(home, { isTTY: true, stdin });
+
+    const resultPromise = main(["setup"], ctx);
+    while (!stdout().includes("(y/N)")) await new Promise((r) => setTimeout(r, 5));
+    await fs.writeFile(settings, JSON.stringify({ theme: "dark", model: "opus" }));
+    stdin.end("y\n");
+    const code = await resultPromise;
+
+    expect(code).toBe(EXIT.OK);
+    const written = JSON.parse(await fs.readFile(settings, "utf8"));
+    expect(written.model).toBe("opus");
+    expect(written.hooks.Stop).toBeDefined();
+    expect(stdout()).toContain("重新合并");
+  });
+
   it("输入 n：取消，不写入任何内容", async () => {
     const home = await tempHome();
     const stdin = new PassThrough();

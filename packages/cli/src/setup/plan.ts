@@ -124,9 +124,26 @@ async function planClaudeSettings(claudeDir: string, uninstall: boolean, now: Da
   try {
     const lst = await fs.lstat(linkPath);
     isSymlink = lst.isSymbolicLink();
-    if (isSymlink) realPath = await fs.realpath(linkPath);
   } catch (err) {
     if (!isNoEntError(err)) throw err;
+  }
+  if (isSymlink) {
+    try {
+      realPath = await fs.realpath(linkPath);
+    } catch (err) {
+      if (!isNoEntError(err)) throw err;
+      // 悬空链接（例如 dotfiles 仓库还没 clone）：原子写会用普通文件把链接换掉，所以安装时拒绝；
+      // 卸载时没有可移除的 hook，当作文件不存在、跳过即可
+      if (!uninstall) {
+        const target = path.resolve(claudeDir, await fs.readlink(linkPath));
+        throw new CliError(
+          EXIT.DATA,
+          `settings.json 是软链接，但指向的文件不存在：${linkPath} → ${target}`,
+          "先恢复链接指向的文件（或删掉这个链接）后重新执行 kh setup",
+        );
+      }
+      return { linkPath, realPath, isSymlink, action: "skip", added: [], removed: [], nextContent: null, originalRaw: null, originalMode: null, backupPath: null };
+    }
   }
 
   let originalMode: number | null = null;
@@ -225,11 +242,30 @@ async function applyClaudeSettingsPlan(settings: ClaudeSettingsPlan): Promise<vo
   await writeFileAtomic(settings.realPath, settings.nextContent!, writeOpts);
 }
 
-/** 按计划执行：写 skill、合并并写回 settings.json（含备份）。计划里已经决定好的 skip 项不做任何 IO */
-export async function applySetup(ctx: CliContext, plan: SetupPlan): Promise<void> {
-  await applySkillPlan(plan.agentSkill);
-  if (plan.claudeSkill !== null) await applySkillPlan(plan.claudeSkill);
-  if (plan.claudeSettings !== null) await applyClaudeSettingsPlan(plan.claudeSettings);
+/** 计划里 settings.json 的内容与现在磁盘上的是否已经不同（例如等待确认期间 Claude Code 改写了它） */
+async function settingsChangedSincePlan(settings: ClaudeSettingsPlan): Promise<boolean> {
+  return (await readFileIfExists(settings.realPath)) !== settings.originalRaw;
+}
+
+/**
+ * 按计划执行：写 skill、合并并写回 settings.json（含备份）。计划里已经决定好的 skip 项不做任何 IO。
+ * 写之前先重读 settings.json：与计划时读到的不同，就基于最新内容重新合并（用户确认的是“加上或去掉本工具的两个
+ * hook”，不是某一份旧内容），备份也存最新内容，不会把别人在这期间做的改动回滚掉。重新合并在写任何文件之前完成，
+ * 最新内容结构不对时整个执行什么都不写。返回实际执行的计划。
+ */
+export async function applySetup(ctx: CliContext, plan: SetupPlan): Promise<SetupPlan> {
+  let effective = plan;
+  if (plan.claudeSettings !== null && (await settingsChangedSincePlan(plan.claudeSettings))) {
+    const claudeDir = path.dirname(plan.claudeSettings.linkPath);
+    const claudeSettings = await planClaudeSettings(claudeDir, plan.uninstall, ctx.now());
+    effective = { ...plan, claudeSettings };
+    ctx.stdout.write("settings.json 在确认期间有变化，已按最新内容重新合并。\n");
+  }
+
+  await applySkillPlan(effective.agentSkill);
+  if (effective.claudeSkill !== null) await applySkillPlan(effective.claudeSkill);
+  if (effective.claudeSettings !== null) await applyClaudeSettingsPlan(effective.claudeSettings);
+  return effective;
 }
 
 function skillActionLabel(action: SkillAction): string {

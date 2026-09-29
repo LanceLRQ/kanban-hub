@@ -5,6 +5,7 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
+import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@kanban-hub/core/schema";
 import { SYNC_DEFAULT_MAX_FILE_SIZE } from "@kanban-hub/core/sync";
@@ -420,6 +421,29 @@ describe("kh hook：单台机器", () => {
 
       const again = await hook("stop", { session_id: "s-remind", cwd: repo.dir }, base());
       expect(again).toMatchObject({ code: 0, stderr: "" });
+    });
+
+    it("兜底时限已到、流程才走到提醒：不把会话标为已提醒，下一轮照常提醒", async () => {
+      await hook("session-start", { session_id: "s-late", cwd: repo.dir }, base());
+      await commit(repo.dir, "src/a.ts", "a\n");
+
+      // stdin 在兜底时限之后才给出输入：外壳已经放弃等待，流程还在后台接着跑
+      const { ctx, output } = makeKhContext(base());
+      const stdin = new PassThrough();
+      ctx.stdin = stdin;
+      await runHookCommand(ctx, "stop", undefined, { hardLimitMs: 50 });
+      stdin.end(JSON.stringify({ session_id: "s-late", cwd: repo.dir }));
+      expect(output()).toEqual({ stdout: "", stderr: "" });
+
+      const deadline = Date.now() + 5_000;
+      while (!/本轮不提醒|已提醒/.test(await readHookLog(home.dir)) && Date.now() < deadline) {
+        await new Promise((r) => setTimeout(r, 20));
+      }
+      expect((await readMarkerFile(home.dir, "s-late")).reminded).toBe(false);
+
+      const next = await hook("stop", { session_id: "s-late", cwd: repo.dir }, base());
+      expect(next.code).toBe(2);
+      expect(next.stderr).toBe(STOP_REMINDER);
     });
 
     it("只改了未提交的文件也算改动", async () => {

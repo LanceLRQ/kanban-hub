@@ -337,6 +337,28 @@ describe("kh 打包产物", () => {
       expect(stderr).toBe("");
     }, 20_000);
 
+    it("hook 运行中出现未处理的 promise 拒绝、未捕获的异常：退出码 0，stderr 没有堆栈，原因写进 hook.log", async () => {
+      for (const [name, inject] of [
+        ["rejection", "setTimeout(() => Promise.reject(new Error('注入的拒绝')), 200)"],
+        ["exception", "setTimeout(() => { throw new Error('注入的异常'); }, 200)"],
+      ] as const) {
+        const { home, khHome } = await freshHome(`fatal-${name}`, false);
+        const child = spawn(process.execPath, ["--import", `data:text/javascript,${encodeURIComponent(inject)}`, outfile, "hook", "stop"], {
+          env: { ...process.env, HOME: home, KH_HOME: khHome },
+          cwd: repo,
+          stdio: ["pipe", "pipe", "pipe"],
+        });
+        let out = "";
+        child.stdout.on("data", (d: Buffer) => (out += d.toString()));
+        child.stderr.on("data", (d: Buffer) => (out += d.toString()));
+        const code = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
+        child.stdin.destroy();
+        expect(code).toBe(0);
+        expect(out).toBe("");
+        expect(await fs.readFile(path.join(khHome, "logs", "hook.log"), "utf8")).toContain(name === "rejection" ? "注入的拒绝" : "注入的异常");
+      }
+    }, 20_000);
+
     it("kh hook session-start 的 stdin 为空：退出码 0，stdout 为空", async () => {
       const { home, khHome } = await freshHome("empty", true);
       const result = await runBundled(["hook", "session-start"], { ...process.env, HOME: home, KH_HOME: khHome }, "");

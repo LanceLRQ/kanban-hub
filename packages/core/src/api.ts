@@ -329,7 +329,7 @@ export type SyncMissingDetails = z.infer<typeof syncMissingDetails>;
 
 /**
  * POST /projects/:id/import 的请求体与响应：直接转出 transfer.ts 的 schema，保持依赖方向
- * 只能是 api.ts → transfer.ts（反过来会在模块求值时触发 TDZ 错误，M5 遇到过一次）。
+ * 只能是 api.ts → transfer.ts：反过来会形成循环依赖，模块求值时读到还没初始化的 schema，触发 TDZ 错误。
  */
 export const importInput = transferDocSchema;
 export type ImportInput = z.input<typeof importInput>;

@@ -103,6 +103,49 @@ describe("kh import", () => {
     expect(events.filter((e) => e.type === "import.applied").length).toBe(2);
   });
 
+  it("只改状态的任务（进行中→复核中、待办→取消、进行中→待办）真正写入，export 读回新状态，再导一次没有变化", async () => {
+    const base = `format: kanban-hub/v1
+containers:
+  - kind: phase
+    code: "P1"
+    title: 状态阶段
+    tasks:
+      - { code: "a", title: 进行中改复核, status: in_progress, startedAt: 2026-09-01T00:00:00Z }
+      - { code: "b", title: 待办改取消, status: todo }
+      - { code: "c", title: 进行中退回待办, status: in_progress, startedAt: 2026-09-01T00:00:00Z }
+`;
+    await write("base.yaml", base);
+    expect((await kh(["import", "base.yaml"])).code).toBe(0);
+
+    const statusOnly = `format: kanban-hub/v1
+containers:
+  - kind: phase
+    code: "P1"
+    tasks:
+      - { code: "a", status: review }
+      - { code: "b", status: cancelled }
+      - { code: "c", status: todo }
+`;
+    await write("status.yaml", statusOnly);
+    const preview = await kh(["import", "status.yaml", "--dry-run"]);
+    expect(preview.code).toBe(0);
+    expect(preview.stdout).toContain("状态变化");
+
+    const r = await kh(["import", "status.yaml"]);
+    expect(r.code).toBe(0);
+    expect(r.stdout).toContain("状态变化");
+    const statuses = Object.fromEntries(server.api.store.getBoard(projectId)!.tasks.map((t) => [t.code, t.status]));
+    expect(statuses).toMatchObject({ a: "review", b: "cancelled", c: "todo" });
+
+    const exported = await kh(["export"]);
+    await write("back.yaml", exported.stdout);
+    expect((await kh(["import", "back.yaml", "--dry-run"])).stdout).toContain("没有需要导入的变化");
+    expect(exported.stdout).toMatch(/code: a\n\s+title: 进行中改复核\n\s+status: review/);
+
+    const again = await kh(["import", "status.yaml"]);
+    expect(again.stdout).toContain("没有需要导入的变化");
+  });
+
   it("文件不存在：退出码 2", async () => {
     const r = await kh(["import", "nope.yaml"]);
     expect(r.code).toBe(EXIT.USAGE);

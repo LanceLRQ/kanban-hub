@@ -35,8 +35,8 @@ async function runSetup(ctx: CliContext, opts: SetupOptions): Promise<void> {
   const proceed = await confirmPlan(ctx, opts);
   if (!proceed) return;
 
-  await applySetup(ctx, plan);
-  printOutcome(ctx, plan);
+  const applied = await applySetup(ctx, plan);
+  printOutcome(ctx, applied);
 }
 
 /** kh setup：装好（或卸掉）通用 skill 与 Claude Code 的 skill、hook（规格 12.1） */

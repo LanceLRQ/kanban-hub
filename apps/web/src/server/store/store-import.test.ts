@@ -301,6 +301,74 @@ describe("applyImport", () => {
   });
 });
 
+describe("applyImport：只改状态", () => {
+  const BASE: TransferDoc = {
+    format: "kanban-hub/v1",
+    containers: [
+      {
+        kind: "phase",
+        code: "P0",
+        title: "阶段",
+        tasks: [
+          { code: "a", title: "进行中改复核", status: "in_progress", startedAt: "2026-08-01T00:00:00Z" },
+          { code: "b", title: "待办改取消", status: "todo" },
+          { code: "c", title: "进行中退回待办", status: "in_progress", startedAt: "2026-08-01T00:00:00Z" },
+        ],
+      },
+    ],
+  };
+  const STATUS_ONLY: TransferDoc = {
+    format: "kanban-hub/v1",
+    containers: [
+      {
+        kind: "phase",
+        code: "P0",
+        tasks: [
+          { code: "a", status: "review" },
+          { code: "b", status: "cancelled" },
+          { code: "c", status: "todo" },
+        ],
+      },
+    ],
+  };
+
+  it("写入 board.yaml、记 import.applied；dryRun 与真实导入的摘要一致；再导一次没有变化", async () => {
+    const first = await open();
+    const actor = await cliActor(first);
+    const { project } = await first.createProject({ name: "看板" }, actor);
+    await first.applyImport(project.id, BASE, actor, { dryRun: false });
+    await first.close();
+
+    const store = await open("2026-09-24T10:00:00.000Z");
+    const before = await hashTree(dir);
+    const preview = await store.applyImport(project.id, STATUS_ONLY, actor, { dryRun: true });
+    expect(await hashTree(dir)).toEqual(before);
+
+    const changes: StoreChange[] = [];
+    store.subscribe((c) => changes.push(c));
+    const summary = await store.applyImport(project.id, STATUS_ONLY, actor, { dryRun: false });
+    expect(summary.tasks.statusChanges.map((c) => [c.from, c.to])).toEqual([
+      ["in_progress", "review"],
+      ["todo", "cancelled"],
+      ["in_progress", "todo"],
+    ]);
+    expect({ ...preview, dryRun: false }).toEqual(summary);
+
+    const statuses = Object.fromEntries(store.getBoard(project.id)!.tasks.map((t) => [t.code, t.status]));
+    expect(statuses).toEqual({ a: "review", b: "cancelled", c: "todo" });
+    expect(changes).toHaveLength(1);
+    expect(readImportCounts(changes[0]!.events[0]!)!.tasksUpdated).toBe(3);
+    await store.close();
+
+    const reopened = await open("2026-09-25T10:00:00.000Z");
+    const reloaded = Object.fromEntries(reopened.getBoard(project.id)!.tasks.map((t) => [t.code, t.status]));
+    expect(reloaded).toEqual({ a: "review", b: "cancelled", c: "todo" });
+    const again = await reopened.applyImport(project.id, STATUS_ONLY, actor, { dryRun: false });
+    expect(again.tasks).toEqual({ created: [], updated: [], statusChanges: [] });
+    expect(reopened.pendingCommitCount()).toBe(0);
+  });
+});
+
 describe("readProjectLogs", () => {
   it("按时间升序返回项目全部月份的 log 事件，只含 log", async () => {
     const store = await open();

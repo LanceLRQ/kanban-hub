@@ -96,6 +96,11 @@ export async function runStopHook(run: HookRun): Promise<void> {
   });
   if (!remind) return;
 
+  // 兜底时限已到时提醒不会再输出：这时不改标记，留给下一轮提醒
+  if (!run.beginExit()) {
+    log.write("已超过兜底时限，本轮不提醒");
+    return;
+  }
   // 先把标记改为已提醒再提醒：改不了就不提醒（否则每一轮都会重复提醒）
   await markReminded(home, input.sessionId);
   log.write("本次会话改动了仓库但还没有上报进度，已提醒");

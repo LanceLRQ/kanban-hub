@@ -43,6 +43,7 @@ export async function runHookCommand(
 ): Promise<void> {
   const log = createHookLogger(ctx, name);
   let open = true;
+  let exiting = false;
   const run: HookRun = {
     ctx: quietContext(ctx, log),
     log,
@@ -51,13 +52,28 @@ export async function runHookCommand(
     },
     agentFlag,
     startedAt: ctx.now().getTime(),
+    beginExit: () => {
+      if (open) exiting = true;
+      return open;
+    },
   };
 
   const hardLimitMs = timeLimitOf(name, opts);
   let timer: ReturnType<typeof setTimeout> | undefined;
   // 计时器不 unref：流程卡在一个不占事件循环的 promise 上时，也要靠它让命令按时结束
   const deadline = new Promise<"timeout">((resolve) => {
-    timer = setTimeout(() => resolve("timeout"), hardLimitMs);
+    timer = setTimeout(() => {
+      if (!exiting) {
+        open = false;
+        resolve("timeout");
+        return;
+      }
+      // 流程已经在输出提醒前的最后一步：再给它一小段时间，免得会话被标为已提醒、提醒却没输出
+      timer = setTimeout(() => {
+        open = false;
+        resolve("timeout");
+      }, HOOK_LIMITS.exitGraceMs);
+    }, hardLimitMs);
   });
 
   let exit: unknown = null;

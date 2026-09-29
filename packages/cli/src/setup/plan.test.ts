@@ -236,6 +236,109 @@ describe("planSetup / applySetup：有 ~/.claude/，全新安装", () => {
   });
 });
 
+describe("计划与执行之间 settings.json 被别人改了", () => {
+  async function prepare(home: string, content: string | null): Promise<void> {
+    await fs.mkdir(path.join(home, ".claude"), { recursive: true });
+    if (content !== null) await fs.writeFile(settingsPath(home), content);
+  }
+
+  it("基于最新内容重新合并：别人加的键保留，备份存的是写入前的实际内容", async () => {
+    const home = await tempHome();
+    await prepare(home, JSON.stringify({ theme: "dark" }));
+    const ctx = fakeContext(home);
+    const plan = await planSetup(ctx, { uninstall: false });
+
+    const changed = JSON.stringify({ theme: "dark", model: "opus" });
+    await fs.writeFile(settingsPath(home), changed);
+    const applied = await applySetup(ctx, plan);
+
+    const written = JSON.parse(await fs.readFile(settingsPath(home), "utf8"));
+    expect(written.model).toBe("opus");
+    expect(written.hooks.SessionStart[0].hooks[0].command).toBe(HOOK_COMMANDS.SessionStart);
+    expect(applied.claudeSettings!.originalRaw).toBe(changed);
+    expect(await fs.readFile(applied.claudeSettings!.backupPath!, "utf8")).toBe(changed);
+  });
+
+  it("计划时文件还不存在、执行前被别人建好：合并进去而不是覆盖，并先备份", async () => {
+    const home = await tempHome();
+    await prepare(home, null);
+    const ctx = fakeContext(home);
+    const plan = await planSetup(ctx, { uninstall: false });
+    expect(plan.claudeSettings!.action).toBe("create");
+
+    await fs.writeFile(settingsPath(home), JSON.stringify({ model: "opus" }));
+    const applied = await applySetup(ctx, plan);
+
+    expect(JSON.parse(await fs.readFile(settingsPath(home), "utf8")).model).toBe("opus");
+    expect(applied.claudeSettings!.action).toBe("update");
+    expect(await fs.readFile(applied.claudeSettings!.backupPath!, "utf8")).toBe(JSON.stringify({ model: "opus" }));
+  });
+
+  it("最新内容已经装好了 hook：跳过，不写也不备份", async () => {
+    const home = await tempHome();
+    await prepare(home, JSON.stringify({ theme: "dark" }));
+    const ctx = fakeContext(home);
+    const plan = await planSetup(ctx, { uninstall: false });
+
+    // 另一个 kh setup 抢先装好了
+    const other = await planSetup(ctx, { uninstall: false });
+    await applySetup(ctx, other);
+    const installed = await fs.readFile(settingsPath(home), "utf8");
+    const filesBefore = await fs.readdir(path.join(home, ".claude"));
+
+    const applied = await applySetup(ctx, plan);
+    expect(applied.claudeSettings!.action).toBe("skip");
+    expect(await fs.readFile(settingsPath(home), "utf8")).toBe(installed);
+    expect(await fs.readdir(path.join(home, ".claude"))).toEqual(filesBefore);
+  });
+
+  it("最新内容不再是合法 JSON：以退出码 5 拒绝，settings.json 与两处 skill 都不写", async () => {
+    const home = await tempHome();
+    await prepare(home, JSON.stringify({ theme: "dark" }));
+    const ctx = fakeContext(home);
+    const plan = await planSetup(ctx, { uninstall: false });
+
+    await fs.writeFile(settingsPath(home), "{ broken");
+    const err = await captureError(() => applySetup(ctx, plan));
+    expect(err.exitCode).toBe(EXIT.DATA);
+    expect(await fs.readFile(settingsPath(home), "utf8")).toBe("{ broken");
+    await expect(fs.stat(agentSkillPath(home))).rejects.toThrow();
+    await expect(fs.stat(claudeSkillPath(home))).rejects.toThrow();
+  });
+});
+
+describe("悬空软链接的 settings.json", () => {
+  async function danglingLink(home: string): Promise<string> {
+    await fs.mkdir(path.join(home, ".claude"), { recursive: true });
+    const target = path.join(home, "dotfiles", "claude", "settings.json");
+    await fs.symlink(target, settingsPath(home));
+    return target;
+  }
+
+  it("安装：以退出码 5 拒绝并指出链接目标，链接不被替换，什么都不写", async () => {
+    const home = await tempHome();
+    const target = await danglingLink(home);
+    const ctx = fakeContext(home);
+
+    const err = await captureError(() => planSetup(ctx, { uninstall: false }));
+    expect(err.exitCode).toBe(EXIT.DATA);
+    expect(err.message).toContain(target);
+    expect((await fs.lstat(settingsPath(home))).isSymbolicLink()).toBe(true);
+    await expect(fs.stat(agentSkillPath(home))).rejects.toThrow();
+  });
+
+  it("卸载：没有可移除的 hook，跳过 settings.json，链接保持原样", async () => {
+    const home = await tempHome();
+    await danglingLink(home);
+    const ctx = fakeContext(home);
+
+    const plan = await planSetup(ctx, { uninstall: true });
+    expect(plan.claudeSettings!.action).toBe("skip");
+    await applySetup(ctx, plan);
+    expect((await fs.lstat(settingsPath(home))).isSymbolicLink()).toBe(true);
+  });
+});
+
 describe("幂等：连续执行两次", () => {
   it("第二次全部跳过，不产生备份", async () => {
     const home = await tempHome();

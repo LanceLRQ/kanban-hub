@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CONTAINER_KIND_LABELS, CONTAINER_STATUS_LABELS, CYCLE_LABELS, HEALTH_LABELS, TASK_STATUS_LABELS } from "./labels";
-import { containerStatus } from "./derive";
+import { containerStatus, projectProgress } from "./derive";
 import { KhError, parseInput } from "./errors";
 import { createContainer, createTask, transitionTask, type MutationContext } from "./mutations";
 import {
@@ -407,6 +407,8 @@ export function planImport(
   const tasksCreated: { container: string; title: string }[] = [];
   const tasksUpdated: { container: string; title: string; fields: string[] }[] = [];
   const statusChanges: { container: string; title: string; from: string; to: string }[] = [];
+  // 生成了新版本的已有任务数（含只改状态的），用于 import.applied 的“更新的任务”计数
+  let tasksVersioned = 0;
 
   doc.containers.forEach((fc, fcIndex) => {
     let container: Container;
@@ -550,6 +552,7 @@ export function planImport(
 
       const next = parseInput(taskSchema, { ...merged, version: task.version + 1, updatedAt: ctx.now });
       board = { ...board, tasks: board.tasks.map((t) => (t.id === next.id ? next : t)) };
+      tasksVersioned += 1;
 
       if (statusChanged) {
         statusChanges.push({ container: containerLabel, title: next.title, from: task.status, to: next.status });
@@ -595,7 +598,8 @@ export function planImport(
 
   // ---------- 汇总与 import.applied ----------
   const hasProjectChange = projectFieldChanges.length > 0;
-  const hasBoardChange = containersCreated.length > 0 || containersUpdated.length > 0 || tasksCreated.length > 0 || tasksUpdated.length > 0;
+  // 只改状态的任务不进 tasksUpdated（它的变化在 statusChanges 里），但同样生成了新版本，看板要写入
+  const hasBoardChange = containersCreated.length > 0 || containersUpdated.length > 0 || tasksCreated.length > 0 || tasksVersioned > 0;
   const hasAnyChange = hasProjectChange || hasBoardChange || logsAdded > 0;
 
   const summary: Omit<ImportSummary, "dryRun"> = {
@@ -627,7 +631,7 @@ export function planImport(
       containersCreated: containersCreated.length,
       containersUpdated: containersUpdated.length,
       tasksCreated: tasksCreated.length,
-      tasksUpdated: tasksUpdated.length,
+      tasksUpdated: tasksVersioned,
       logsAdded,
     }),
     text: null,
@@ -687,9 +691,14 @@ export function buildExportDoc(project: Project, board: Board, logs: readonly Ev
   };
 }
 
-/** 中文的 Markdown 转义：只处理导出内容里可能出现的删除线标记冲突字符，保持简单 */
+/** Markdown 转义：只转义 `|`（避免被当成表格分隔），保持简单 */
 function escapeMd(s: string): string {
   return s.replace(/\|/g, "\\|");
+}
+
+/** 列表项里的多行文本压成一行：换行替换成空格，否则会把列表拆开 */
+function singleLine(s: string): string {
+  return s.replace(/\s*[\r\n]+\s*/g, " ");
 }
 
 function formatDate(iso: string, timeZone: string): string {
@@ -701,8 +710,9 @@ export function renderBoardMarkdown(project: Project, board: Board, opts: { now:
   const lines: string[] = [];
   lines.push(`# ${project.name}`);
   lines.push("");
+  const progress = projectProgress(board);
   lines.push(
-    `周期：${CYCLE_LABELS[project.cycle]} ・ 健康度：${HEALTH_LABELS[project.health]} ・ 导出时间：${formatDate(
+    `周期：${CYCLE_LABELS[project.cycle]} ・ 健康度：${HEALTH_LABELS[project.health]} ・ 进度：${progress.done}/${progress.total} ・ 导出时间：${formatDate(
       opts.now.toISOString(),
       opts.timeZone,
     )}`,
@@ -726,8 +736,8 @@ export function renderBoardMarkdown(project: Project, board: Board, opts: { now:
       const title = cancelled ? `~~${escapeMd(task.title)}~~` : escapeMd(task.title);
       const parts = [`- ${task.code ? `[${task.code}] ` : ""}${title}`, `（${TASK_STATUS_LABELS[task.status]}）`];
       if (task.group) parts.push(`#${task.group}`);
-      if (task.human) parts.push(`待你处理：${task.human.note}`);
-      if (task.note) parts.push(task.note);
+      if (task.human) parts.push(`待你处理：${singleLine(task.human.note)}`);
+      if (task.note) parts.push(singleLine(task.note));
       if (task.dueDate) parts.push(`截止：${task.dueDate}`);
       if (task.checklist.length > 0) {
         const doneCount = task.checklist.filter((i) => i.done).length;

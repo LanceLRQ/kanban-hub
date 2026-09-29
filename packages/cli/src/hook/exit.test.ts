@@ -1,10 +1,11 @@
 import fs from "node:fs/promises";
 import os from "node:os";
+import { EventEmitter } from "node:events";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import { CliError, EXIT } from "../errors";
 import { fakeContext } from "../repo/test-helpers";
-import { createHookLogger, describeHookError, HOOK_LIMITS, HookExit, isHookExit, quietContext } from "./exit";
+import { createHookLogger, describeHookError, HOOK_LIMITS, HookExit, installHookSafetyNet, isHookExit, quietContext } from "./exit";
 
 const dirs: string[] = [];
 
@@ -100,5 +101,58 @@ describe("createHookLogger", () => {
     expect(logger.path).toBeNull();
     logger.write("x");
     await expect(logger.flush()).resolves.toBeUndefined();
+  });
+});
+
+describe("installHookSafetyNet", () => {
+  async function setup(currentCode = () => 0) {
+    const home = await tempHome();
+    let out = "";
+    const ctx = fakeContext({
+      env: { KH_HOME: home },
+      now: () => new Date("2026-09-29T00:00:00.000Z"),
+      stdout: { write: (s) => void (out += String(s)) },
+      stderr: { write: (s) => void (out += String(s)) },
+    });
+    const proc = new EventEmitter();
+    const exits: number[] = [];
+    let exited!: () => void;
+    const exitedOnce = new Promise<void>((r) => (exited = r));
+    installHookSafetyNet(proc, ctx, {
+      exitCode: currentCode,
+      exit: (code) => {
+        exits.push(code);
+        exited();
+      },
+    });
+    return { home, proc, exits, exitedOnce, output: () => out };
+  }
+
+  it("未处理的 rejection：只写 hook.log，不输出，以退出码 0 结束", async () => {
+    const { home, proc, exits, exitedOnce, output } = await setup();
+    proc.emit("unhandledRejection", new Error("游离的 promise"), Promise.resolve());
+    await exitedOnce;
+    expect(exits).toEqual([0]);
+    expect(output()).toBe("");
+    const log = await fs.readFile(path.join(home, "logs", "hook.log"), "utf8");
+    expect(log).toContain("游离的 promise");
+    expect(log).not.toContain("    at ");
+  });
+
+  it("未捕获的异常：同样只写日志、退出码 0；接连出现多个也只结束一次", async () => {
+    const { home, proc, exits, exitedOnce, output } = await setup();
+    proc.emit("uncaughtException", new TypeError("回调里抛出"));
+    proc.emit("uncaughtException", new TypeError("第二个"));
+    await exitedOnce;
+    expect(exits).toEqual([0]);
+    expect(output()).toBe("");
+    expect(await fs.readFile(path.join(home, "logs", "hook.log"), "utf8")).toContain("回调里抛出");
+  });
+
+  it("命令已经得出退出码（例如 Stop 的提醒是 2）之后才出错：沿用那个退出码", async () => {
+    const { proc, exits, exitedOnce } = await setup(() => 2);
+    proc.emit("unhandledRejection", "字符串原因", Promise.resolve());
+    await exitedOnce;
+    expect(exits).toEqual([2]);
   });
 });

@@ -13,6 +13,7 @@ import { registerSetup } from "./commands/setup";
 import { registerStatus } from "./commands/status";
 import { registerSync } from "./commands/sync";
 import { registerTask } from "./commands/task";
+import { registerTransfer } from "./commands/transfer";
 import type { CliContext } from "./context";
 
 /** 构建 kh 的命令定义：根命令加全局 --agent，再把各命令模块接进来 */
@@ -36,6 +37,7 @@ export function buildProgram(ctx: CliContext): Command {
   registerContainer(program, ctx);
   registerTask(program, ctx);
   registerLog(program, ctx);
+  registerTransfer(program, ctx);
   registerSync(program, ctx);
   registerDocs(program, ctx);
   registerPull(program, ctx);

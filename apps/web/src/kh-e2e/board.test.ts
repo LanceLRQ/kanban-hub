@@ -479,6 +479,7 @@ describe("kh project / container / log", () => {
         ["container", "set", "P1", "--title", "阶段一（修订）"],
       ],
       ["log", [], ["log", "记一笔"]],
+      ["import", [], ["import", "import.yaml"]],
     ])("%s 成功后更新上报时间", async (_name, prepareCommands, args) => {
       const repo = await makeTempRepo();
       const home = await makeTempKhHome();
@@ -489,6 +490,12 @@ describe("kh project / container / log", () => {
           if (prepared.code !== 0) throw new Error(`准备阶段失败：${prepare.join(" ")}：${prepared.stderr}`);
         }
 
+        // kh import 用到的文件；其余命令用不到
+        await fs.writeFile(
+          path.join(repo.dir, "import.yaml"),
+          'format: kanban-hub/v1\ncontainers:\n  - kind: phase\n    code: "P9"\n    title: 导入的阶段\n',
+        );
+
         const before = Date.now();
         const result = await runKh(args, { cwd: repo.dir, khHome: home.dir });
         expect(result.code).toBe(0);
@@ -496,6 +503,29 @@ describe("kh project / container / log", () => {
         const report = await readLastReport(home.dir, projectId);
         expect(report).not.toBeNull();
         expect(report!.getTime()).toBeGreaterThanOrEqual(before);
+      } finally {
+        await cleanupAll(repo, home);
+      }
+    });
+  });
+
+  describe("上报时间：只读的导入导出不更新", () => {
+    it("kh export、kh import --dry-run 之后上报时间不变", async () => {
+      const repo = await makeTempRepo();
+      const home = await makeTempKhHome();
+      try {
+        const { projectId } = await setupProject(server, repo, home);
+        await fs.writeFile(
+          path.join(repo.dir, "import.yaml"),
+          'format: kanban-hub/v1\ncontainers:\n  - kind: phase\n    code: "P9"\n    title: 导入的阶段\n',
+        );
+        expect(await readLastReport(home.dir, projectId)).toBeNull();
+
+        const exported = await runKh(["export"], { cwd: repo.dir, khHome: home.dir });
+        expect(exported.code).toBe(0);
+        const dry = await runKh(["import", "import.yaml", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+        expect(dry.code).toBe(0);
+        expect(await readLastReport(home.dir, projectId)).toBeNull();
       } finally {
         await cleanupAll(repo, home);
       }

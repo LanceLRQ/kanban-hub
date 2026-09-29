@@ -114,6 +114,14 @@ describe("kh 打包产物", () => {
     expect(show.stdout).toContain("show");
   });
 
+  it("kh import --help、kh export --help：退出码 0", async () => {
+    const imp = await execFileAsync(process.execPath, [outfile, "import", "--help"]);
+    expect(imp.stdout).toContain("--dry-run");
+
+    const exp = await execFileAsync(process.execPath, [outfile, "export", "--help"]);
+    expect(exp.stdout).toContain("--md");
+  });
+
   it("kh setup --help：退出码 0", async () => {
     const { stdout } = await execFileAsync(process.execPath, [outfile, "setup", "--help"]);
     expect(stdout).toContain("setup");

@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import type { GitState, Location } from "@kanban-hub/core/schema";
 import { makeProject } from "@kanban-hub/core/test-fixtures";
-import { formatLocationLine, locationSummary, primaryLocation, type LocationSummary } from "./location";
+import { formatLocationLine, formatLocationParts, locationSummary, primaryLocation, type LocationSummary } from "./location";
 
 const gitState: GitState = {
   branch: "main",
@@ -97,5 +97,18 @@ describe("formatLocationLine", () => {
   it("缺失的字段跳过，不留多余分隔符", () => {
     const summary = makeSummary();
     expect(formatLocationLine(summary, (value) => `同步于 ${value}`)).toBe("我的 Mac:/repo");
+  });
+});
+
+describe("formatLocationParts", () => {
+  it("拆成“机器:路径”和其余状态两段，拼回去与 formatLocationLine 一致", () => {
+    const summary = makeSummary({ branch: "main", ahead: 1, behind: 3, dirtyCount: 2, syncedAt: "1 小时前" });
+    const parts = formatLocationParts(summary, (value) => `同步于 ${value}`);
+    expect(parts).toEqual({ where: "我的 Mac:/repo", status: "main · ↑1 ↓3 · dirty 2 · 同步于 1 小时前" });
+    expect(`${parts.where} · ${parts.status}`).toBe(formatLocationLine(summary, (value) => `同步于 ${value}`));
+  });
+
+  it("没有任何状态字段时 status 为 null", () => {
+    expect(formatLocationParts(makeSummary(), (value) => value)).toEqual({ where: "我的 Mac:/repo", status: null });
   });
 });

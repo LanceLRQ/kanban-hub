@@ -48,10 +48,22 @@ export function locationSummary(location: Location, machineName: string, now: Da
  * 缺失的字段跳过。`formatSyncedAt` 由调用方传入，负责套上本地化的“同步于 {value}”文案。
  */
 export function formatLocationLine(location: LocationSummary, formatSyncedAt: (value: string) => string): string {
-  const parts = [`${location.machineName}:${location.path}`];
-  if (location.branch !== null) parts.push(location.branch);
-  if (location.ahead !== null && location.behind !== null) parts.push(`↑${location.ahead} ↓${location.behind}`);
-  if (location.dirtyCount !== null) parts.push(`dirty ${location.dirtyCount}`);
-  if (location.syncedAt !== null) parts.push(formatSyncedAt(location.syncedAt));
-  return parts.join(" · ");
+  const { where, status } = formatLocationParts(location, formatSyncedAt);
+  return status === null ? where : `${where} · ${status}`;
+}
+
+/**
+ * 同一行拆成两段：`where` 是“机器名:路径”，`status` 是其余的“分支 · ↑a ↓b · dirty n · 同步于 X”
+ * （一个字段都没有时为 null）。项目卡片分两行显示、各自省略，长路径不会把同步状态挤掉。
+ */
+export function formatLocationParts(
+  location: LocationSummary,
+  formatSyncedAt: (value: string) => string,
+): { where: string; status: string | null } {
+  const status: string[] = [];
+  if (location.branch !== null) status.push(location.branch);
+  if (location.ahead !== null && location.behind !== null) status.push(`↑${location.ahead} ↓${location.behind}`);
+  if (location.dirtyCount !== null) status.push(`dirty ${location.dirtyCount}`);
+  if (location.syncedAt !== null) status.push(formatSyncedAt(location.syncedAt));
+  return { where: `${location.machineName}:${location.path}`, status: status.length > 0 ? status.join(" · ") : null };
 }

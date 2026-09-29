@@ -8,6 +8,7 @@ import { registerLog } from "./commands/log";
 import { registerProject } from "./commands/project";
 import { registerPull } from "./commands/pull";
 import { registerRegister } from "./commands/register";
+import { registerSetup } from "./commands/setup";
 import { registerStatus } from "./commands/status";
 import { registerSync } from "./commands/sync";
 import { registerTask } from "./commands/task";
@@ -38,6 +39,7 @@ export function buildProgram(ctx: CliContext): Command {
   registerDocs(program, ctx);
   registerPull(program, ctx);
   registerConflicts(program, ctx);
+  registerSetup(program, ctx);
 
   return program;
 }

@@ -6,6 +6,7 @@ import path from "node:path";
 import { promisify } from "node:util";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { buildCli } from "../scripts/build.mjs";
+import { SKILL_MD } from "./setup/skill";
 
 const execFileAsync = promisify(execFile);
 
@@ -106,5 +107,35 @@ describe("kh 打包产物", () => {
 
     const show = await execFileAsync(process.execPath, [outfile, "conflicts", "show", "--help"]);
     expect(show.stdout).toContain("show");
+  });
+
+  it("kh setup --help：退出码 0", async () => {
+    const { stdout } = await execFileAsync(process.execPath, [outfile, "setup", "--help"]);
+    expect(stdout).toContain("setup");
+  });
+
+  it("kh setup --dry-run、kh setup --yes：在临时 HOME 下写出与源码逐字相同的 SKILL.md", async () => {
+    const home = await fs.mkdtemp(path.join(os.tmpdir(), "kh-bundle-home-setup-"));
+    try {
+      await fs.mkdir(path.join(home, ".claude"), { recursive: true });
+
+      const { stdout: dryRunOut } = await execFileAsync(process.execPath, [outfile, "setup", "--dry-run"], {
+        env: { ...process.env, HOME: home },
+      });
+      const agentSkillPath = path.join(home, ".agents", "skills", "kanban-hub", "SKILL.md");
+      const claudeSkillPath = path.join(home, ".claude", "skills", "kanban-hub", "SKILL.md");
+      expect(dryRunOut).toContain(agentSkillPath);
+      expect(dryRunOut).toContain(claudeSkillPath);
+      // --dry-run 不写入任何内容
+      await expect(fs.stat(agentSkillPath)).rejects.toThrow();
+
+      await execFileAsync(process.execPath, [outfile, "setup", "--yes"], {
+        env: { ...process.env, HOME: home },
+      });
+      expect(await fs.readFile(agentSkillPath, "utf8")).toBe(SKILL_MD);
+      expect(await fs.readFile(claudeSkillPath, "utf8")).toBe(SKILL_MD);
+    } finally {
+      await fs.rm(home, { recursive: true, force: true });
+    }
   });
 });

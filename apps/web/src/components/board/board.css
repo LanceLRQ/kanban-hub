@@ -73,6 +73,19 @@
     background: var(--bg-card);
   }
 
+  /* ---------- 左栏容器导航：与文档页、时间线左栏同样的纸色和不对称圆角 ---------- */
+  [data-theme="collage"] .kh-board-nav {
+    border-radius: var(--radius-b);
+    background: var(--paper-cream);
+  }
+  /* 编号小标签：与容器表头的编号一样是深底浅字 */
+  [data-theme="collage"] .kh-board-nav-code {
+    border: 0;
+    border-radius: 2px 4px 2px 4px;
+    background: var(--fg);
+    color: var(--bg-card);
+  }
+
   /* ---------- 任务行：虚线分隔，悬停只加浅影，不换底色 ---------- */
   [data-theme="collage"] .kh-task-row {
     border-bottom-style: dashed;

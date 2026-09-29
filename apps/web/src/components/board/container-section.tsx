@@ -3,6 +3,7 @@
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
 import type { BoardSectionView } from "@/server/views/board";
+import { containerAnchorId } from "./board-nav";
 import { ContainerEditDialog } from "./container-edit-dialog";
 import { StatusChip } from "./marks";
 import { NewTaskInput } from "./new-task-input";
@@ -33,9 +34,10 @@ export function ContainerSection({ projectId, section, index, expanded, onToggle
 
   return (
     <section
+      id={containerAnchorId(container.id)}
       data-paper={index % 4}
       aria-label={container.title}
-      className={cn("kh-board-section overflow-hidden border bg-card shadow-[var(--shadow-raised)]", RADIUS_CLASSES[index % 4])}
+      className={cn("kh-board-section scroll-mt-4 overflow-hidden border bg-card shadow-[var(--shadow-raised)]", RADIUS_CLASSES[index % 4])}
     >
       <div
         className={cn(

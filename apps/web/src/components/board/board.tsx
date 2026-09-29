@@ -5,11 +5,12 @@ import { useMemo, useOptimistic, useState, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
 import type { BoardView } from "@/server/views/board";
+import { BoardNav } from "./board-nav";
 import { ContainerSection } from "./container-section";
 import { TaskSheet } from "./task-sheet";
 
 /**
- * 项目看板：容器分区 + 任务侧栏。
+ * 项目看板：左栏容器导航（宽屏吸顶）+ 容器分区 + 任务侧栏。
  *
  * 侧栏由 URL 的 `?task=` 驱动：打开、关闭、切换任务都只用 `router.replace` 改 URL，不留历史记录，
  * 刷新页面后仍停在同一个任务上；`?task=` 指向不存在的任务时忽略。URL 更新要等一次服务端往返，
@@ -42,18 +43,30 @@ export function Board({ view }: { view: BoardView }) {
   if (view.sections.length === 0) return <p className="text-muted-foreground">{t("empty")}</p>;
 
   return (
-    <div className="flex flex-col gap-6">
-      {view.sections.map((section, index) => (
-        <ContainerSection
-          key={section.container.id}
-          projectId={view.projectId}
-          section={section}
-          index={index}
-          expanded={toggled[section.container.id] ?? false}
-          onToggle={() => setToggled((prev) => ({ ...prev, [section.container.id]: !(prev[section.container.id] ?? false) }))}
-          onOpenTask={(taskId) => navigate(taskId)}
-        />
-      ))}
+    <div className="kh-board-layout grid gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
+      <BoardNav
+        className="hidden md:sticky md:top-4 md:flex md:max-h-[calc(100dvh-2rem)] md:self-start"
+        ariaLabel={t("nav.ariaLabel")}
+        entries={view.sections.map((s) => ({
+          id: s.container.id,
+          code: s.container.kind === "misc" ? null : s.container.code,
+          title: s.container.title,
+          taskCount: s.taskCount,
+        }))}
+      />
+      <div className="flex min-w-0 flex-col gap-6">
+        {view.sections.map((section, index) => (
+          <ContainerSection
+            key={section.container.id}
+            projectId={view.projectId}
+            section={section}
+            index={index}
+            expanded={toggled[section.container.id] ?? false}
+            onToggle={() => setToggled((prev) => ({ ...prev, [section.container.id]: !(prev[section.container.id] ?? false) }))}
+            onOpenTask={(taskId) => navigate(taskId)}
+          />
+        ))}
+      </div>
       <TaskSheet projectId={view.projectId} task={selected} containerOptions={view.containerOptions} onClose={() => navigate(null)} />
     </div>
   );

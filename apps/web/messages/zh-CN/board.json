@@ -1,5 +1,8 @@
 {
   "empty": "这个项目还没有容器。",
+  "nav": {
+    "ariaLabel": "容器导航"
+  },
   "section": {
     "taskCount": "{count} 个任务",
     "openCount": "{count} 个未完成",

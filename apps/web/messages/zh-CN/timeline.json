@@ -14,6 +14,10 @@
     "filtered": "没有符合条件的事件",
     "clear": "清除筛选"
   },
+  "nav": {
+    "ariaLabel": "按日期跳转",
+    "day": "{year}年{month}月{day}日"
+  },
   "loadMore": "加载更多",
   "loading": "加载中…",
   "loadMoreFailed": "加载失败"

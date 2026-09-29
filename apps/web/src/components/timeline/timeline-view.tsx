@@ -12,6 +12,7 @@ import { hasActiveFilters } from "./active-filters";
 import { loadMoreTimelineAction } from "./actions";
 import { mergeTimelineDays, reconcileRefresh, type TimelineRefreshState } from "./merge";
 import "./timeline.css";
+import { dayAnchorId, dayNavParts, TimelineDayNav } from "./timeline-day-nav";
 import { TimelineFilterBar } from "./timeline-filter-bar";
 import { TimelineItemRow } from "./timeline-item-row";
 
@@ -19,7 +20,8 @@ import { TimelineItemRow } from "./timeline-item-row";
 const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
 
 /**
- * 时间线页面的客户端外壳：筛选栏 + 按天分组的列表 + 加载更多。
+ * 时间线页面的客户端外壳：筛选栏 + 左栏日期导航 + 按天分组的列表 + 加载更多。
+ * 左栏只在宽屏显示并吸顶；它的“加载更多”先滚到页面底部，再加载下一页。
  *
  * `page`（服务端按当前筛选渲染的第一页）变化时分两种情况：
  * - 筛选条件变了：父组件（页面）用 `key` 让这个组件整体重新挂载，状态从头开始，不走这里的合并；
@@ -42,6 +44,7 @@ export function TimelineView({
   const [state, setState] = useState<TimelineRefreshState>({ days: page.days, cursor: page.nextCursor, loadedMore: false });
   const [pending, startTransition] = useTransition();
   const knownPage = useRef(page);
+  const loadMoreRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     if (knownPage.current === page) return;
@@ -64,6 +67,11 @@ export function TimelineView({
         loadedMore: true,
       }));
     });
+  }
+
+  function handleNavLoadMore() {
+    loadMoreRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+    handleLoadMore();
   }
 
   const { days, cursor } = state;
@@ -96,30 +104,44 @@ export function TimelineView({
       {days.length === 0 ? (
         <EmptyState hasFilters={hasFilters} onClear={() => router.replace(pathname)} />
       ) : (
-        <div className="flex flex-col gap-6">
-          {days.map((day) => (
-            <section key={day.key} className="flex flex-col gap-2">
-              <h2 className="kh-timeline-day-heading kh-num text-xs font-bold tracking-wide text-muted-foreground">{day.heading}</h2>
-              <div className="flex flex-col gap-2">
-                {day.items.map((item) => (
-                  <TimelineItemRow
-                    key={item.id}
-                    item={item}
-                    showProject={showProject}
-                    radiusClass={radiusClassById.get(item.id)!}
-                  />
-                ))}
-              </div>
-            </section>
-          ))}
-        </div>
-      )}
+        <div className="kh-timeline-layout grid gap-5 md:grid-cols-[200px_minmax(0,1fr)]">
+          <TimelineDayNav
+            className="hidden md:sticky md:top-4 md:flex md:max-h-[calc(100dvh-2rem)] md:self-start"
+            entries={days.map((day) => ({ key: day.key, label: t("nav.day", dayNavParts(day.key)), count: day.items.length }))}
+            ariaLabel={t("nav.ariaLabel")}
+            hasMore={cursor !== null}
+            loading={pending}
+            loadMoreLabel={t("loadMore")}
+            loadingLabel={t("loading")}
+            onLoadMore={handleNavLoadMore}
+          />
+          <div className="flex min-w-0 flex-col gap-5">
+            <div className="flex flex-col gap-6">
+              {days.map((day) => (
+                <section key={day.key} id={dayAnchorId(day.key)} className="flex scroll-mt-4 flex-col gap-2">
+                  <h2 className="kh-timeline-day-heading kh-num text-xs font-bold tracking-wide text-muted-foreground">{day.heading}</h2>
+                  <div className="flex flex-col gap-2">
+                    {day.items.map((item) => (
+                      <TimelineItemRow
+                        key={item.id}
+                        item={item}
+                        showProject={showProject}
+                        radiusClass={radiusClassById.get(item.id)!}
+                      />
+                    ))}
+                  </div>
+                </section>
+              ))}
+            </div>
 
-      {cursor && (
-        <div className="flex justify-center">
-          <Button type="button" variant="outline" onClick={handleLoadMore} disabled={pending}>
-            {pending ? t("loading") : t("loadMore")}
-          </Button>
+            {cursor && (
+              <div ref={loadMoreRef} className="flex justify-center">
+                <Button type="button" variant="outline" onClick={handleLoadMore} disabled={pending}>
+                  {pending ? t("loading") : t("loadMore")}
+                </Button>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

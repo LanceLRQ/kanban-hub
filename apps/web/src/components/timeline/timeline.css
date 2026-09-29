@@ -1,5 +1,5 @@
 /*
- * 时间线专属的样式钩子：类型徽标按事件分组上色（淡染）、日期分组标题右侧的延伸分隔线、筛选按钮的
+ * 时间线专属的样式钩子：类型徽标按事件分组上色（淡染）、左栏日期导航、日期分组标题右侧的延伸分隔线、筛选按钮的
  * 当前项、行卡片的不对称圆角、项目标签。颜色只引用 tokens.css / themes/collage.css 里已有的
  * 变量，这里不新定义任何色值。两套主题共用组件，差异都落在 `[data-theme="collage"]` 选择器上。
  *
@@ -76,6 +76,15 @@
 @layer kh-theme {
   [data-theme="collage"] .kh-timeline-badge[data-group="project"] {
     --tl-tone: var(--ink-brick);
+  }
+
+  /* 左栏日期导航：与文档页左栏同样的纸色和不对称圆角，“加载更多”是虚线纸片 */
+  [data-theme="collage"] .kh-timeline-nav {
+    border-radius: var(--radius-b);
+    background: var(--paper-cream);
+  }
+  [data-theme="collage"] .kh-timeline-nav-more {
+    border-radius: 2px 6px 3px 6px;
   }
 
   [data-theme="collage"] .kh-timeline-day-heading::after {

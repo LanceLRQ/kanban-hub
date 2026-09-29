@@ -26,6 +26,9 @@
     "includeHistory": "含历史",
     "createButton": "创建加密备份"
   },
+  "machines": {
+    "title": "已接入的机器"
+  },
   "connect": {
     "title": "接入",
     "label": "新仓库",

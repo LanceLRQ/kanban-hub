@@ -15,12 +15,14 @@ export interface SetupView {
  */
 export function buildSetupView(services: Services, userId: string, requestOrigin: RequestOrigin): SetupView {
   const publicUrl = resolvePublicUrl(services.publicUrl, requestOrigin) ?? "";
+  return { publicUrl, machines: listUserMachines(services, userId) };
+}
 
-  const machines = services.store.auth
+/** 某个用户的机器列表，按接入（创建）时间从早到晚排序；接入页和设置页共用 */
+export function listUserMachines(services: Services, userId: string): MachineView[] {
+  return services.store.auth
     .listMachines()
     .filter((machine) => machine.userId === userId)
     .map(toMachineView)
     .sort((a, b) => (a.createdAt < b.createdAt ? -1 : a.createdAt > b.createdAt ? 1 : 0));
-
-  return { publicUrl, machines };
 }

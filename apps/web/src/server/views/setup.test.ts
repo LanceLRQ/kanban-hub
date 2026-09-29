@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { setupTestApi, type TestApi } from "@/server/api/testing";
 import type { RequestOrigin } from "@/server/web/public-url";
-import { buildSetupView } from "./setup";
+import { buildSetupView, listUserMachines } from "./setup";
 
 let api: TestApi;
 
@@ -141,5 +141,18 @@ describe("buildSetupView", () => {
     const view = buildSetupView(api.services, admin, NO_ORIGIN);
 
     expect(view.machines.map((m) => m.name)).toEqual(["第二台", "第一台"]);
+  });
+});
+
+describe("listUserMachines", () => {
+  it("设置页用同一份列表：只含这个用户的机器，不含令牌摘要", async () => {
+    api = await setupTestApi();
+    const other = await api.store.auth.createUser({ name: "Bob", role: "member", passwordHash: "x" });
+    await api.pairMachine("我的机器");
+    await api.store.auth.createMachine({ name: "别人的机器", userId: other.id, os: "linux", tokenHash: "a".repeat(64) });
+
+    const machines = listUserMachines(api.services, adminId(api));
+    expect(machines.map((m) => m.name)).toEqual(["我的机器"]);
+    expect(machines[0]).not.toHaveProperty("tokenHash");
   });
 });

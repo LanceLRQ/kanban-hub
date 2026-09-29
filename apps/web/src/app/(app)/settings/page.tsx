@@ -1,14 +1,16 @@
 import { getTranslations } from "next-intl/server";
 import { authedPageServices } from "@/server/web/services";
 import { buildSettingsView } from "@/server/views/settings";
+import { listUserMachines } from "@/server/views/setup";
 import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/section-card";
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { BackupSection } from "@/components/settings/backup-section";
 import { ConnectSection } from "@/components/settings/connect-section";
+import { MachineList } from "@/components/setup/machine-list";
 
 export default async function SettingsPage() {
   const t = await getTranslations("settings");
-  const { services } = await authedPageServices();
+  const { services, user } = await authedPageServices();
   const view = buildSettingsView(services);
 
   const pendingCommitsText =
@@ -41,6 +43,10 @@ export default async function SettingsPage() {
 
       <SectionCard title={t("backup.title")} subtitle="backup">
         <BackupSection />
+      </SectionCard>
+
+      <SectionCard title={t("machines.title")} subtitle="machines">
+        <MachineList machines={listUserMachines(services, user.id)} now={services.now()} />
       </SectionCard>
 
       <SectionCard title={t("connect.title")} subtitle="connect">

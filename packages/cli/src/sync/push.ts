@@ -33,6 +33,17 @@ export interface PushResult {
   unchanged: number;
   skipped: { path: string; size: number }[];
   ignoredLinks: string[];
+  /** 清单与上一次成功推送相同、且还在跳过窗口之内，这次没有联网 */
+  skippedUnchanged: boolean;
+}
+
+export interface PushOptions {
+  quiet: boolean;
+  /**
+   * 本机上一次成功推送之后清单没有任何变化，而且距离那次推送不到这么多毫秒时，直接跳过，
+   * 不发任何请求。只给 hook 的后台同步用；kh sync、register 的首次同步不传，每次都推送。
+   */
+  skipIfUnchangedWithinMs?: number;
 }
 
 /** PUT /sync/blobs/:sha256 的响应形状；服务端只回 { ok: true }，没有单独定义在 core 的 api schema 里 */
@@ -69,9 +80,25 @@ function extractMissingBlobs(err: unknown): string[] | null {
   return parsed.data.missingBlobs;
 }
 
-interface AttemptResult {
-  counts: Pick<SyncCommitResponse, "added" | "modified" | "removed" | "unchanged">;
-  scan: ScanResult;
+type AttemptResult =
+  | { skippedUnchanged: false; counts: Pick<SyncCommitResponse, "added" | "modified" | "removed" | "unchanged">; scan: ScanResult }
+  | { skippedUnchanged: true; scan: ScanResult };
+
+/** 按固定的键顺序序列化（对象的键排序，数组保持原顺序），同样的内容总是得到同样的字符串 */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${stableStringify(v)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+/** 推送清单的摘要：文件列表（含基准）、git 状态、跳过的文件、同步范围任何一项变了，摘要就变 */
+function manifestDigest(body: SyncManifestInput): string {
+  return createHash("sha256").update(stableStringify(body)).digest("hex");
 }
 
 /** 一次完整的尝试：扫描 → 计算 hash → 采集 git 状态 → manifest → 补传缺少的内容 → commit */
@@ -80,6 +107,7 @@ async function runAttempt(
   repo: RegisteredRepo,
   client: ApiClient,
   projectId: string,
+  skipWindowMs: number | undefined,
 ): Promise<AttemptResult> {
   const scope = toSyncScope(repo.config);
   const scan = await scanSyncFiles(repo.root, scope);
@@ -104,6 +132,12 @@ async function runAttempt(
   const git = await collectGitState(ctx, repo.root);
 
   const manifestBody: SyncManifestInput = { files, git, skipped: scan.skipped, scope };
+  const digest = manifestDigest(manifestBody);
+  if (skipWindowMs !== undefined && state.lastPush !== null && state.lastPush.digest === digest) {
+    const elapsed = ctx.now().getTime() - Date.parse(state.lastPush.at);
+    // 跳过时不发请求，也不保存状态文件（hash 缓存的更新留给下一次真正的推送）
+    if (elapsed >= 0 && elapsed < skipWindowMs) return { skippedUnchanged: true, scan };
+  }
   const manifest = await client.post(`/api/v1/projects/${projectId}/sync/manifest`, manifestBody, syncManifestResponse);
 
   async function uploadOne(sha: string): Promise<void> {
@@ -149,10 +183,12 @@ async function runAttempt(
   for (const [filePath, sha] of shaByPath) {
     state.seen.set(filePath, rememberSeen(state.seen.get(filePath) ?? [], sha));
   }
+  state.lastPush = { at: ctx.now().toISOString(), digest };
   await state.gcBlobs();
   await state.save();
 
   return {
+    skippedUnchanged: false,
     counts: {
       added: commitResp.added,
       modified: commitResp.modified,
@@ -164,6 +200,7 @@ async function runAttempt(
 }
 
 function renderSummary(result: PushResult): string {
+  if (result.skippedUnchanged) return "没有变化，跳过同步\n";
   const total = result.added + result.modified + result.removed + result.unchanged;
   const lines: string[] = [];
   if (result.added + result.modified + result.removed === 0) {
@@ -183,7 +220,7 @@ function renderSummary(result: PushResult): string {
 }
 
 /**
- * 把本机同步范围内的文档推送到服务端：kh sync、register 的首次同步、M6 的 Stop hook 共用。
+ * 把本机同步范围内的文档推送到服务端：kh sync、register 的首次同步、hook 的后台同步共用。
  * 全程在项目级的同步锁里执行；失败一次会自动从头重新来一次，第二次还失败就把错误
  * 抛给调用方。成功后按 quiet 决定要不要把结果摘要写到 ctx.stdout；同步本身不算一次上报，不会更新最近上报时间。
  */
@@ -191,21 +228,25 @@ export async function pushDocs(
   ctx: CliContext,
   repo: RegisteredRepo,
   client: ApiClient,
-  opts: { quiet: boolean },
+  opts: PushOptions,
 ): Promise<PushResult> {
   assertValidScope(repo.config);
   const projectId = repo.config.projectId;
 
   const result = await withSyncLock(ctx, projectId, async (): Promise<PushResult> => {
     let lastErr: unknown;
-    for (let attempt = 1; attempt <= 2; attempt++) {
+    for (let round = 1; round <= 2; round++) {
       try {
-        const { counts, scan } = await runAttempt(ctx, repo, client, projectId);
-        return { ...counts, skipped: scan.skipped, ignoredLinks: scan.ignoredLinks };
+        const attempt = await runAttempt(ctx, repo, client, projectId, opts.skipIfUnchangedWithinMs);
+        const { scan } = attempt;
+        const counts = attempt.skippedUnchanged
+          ? { added: 0, modified: 0, removed: 0, unchanged: scan.files.length }
+          : attempt.counts;
+        return { ...counts, skipped: scan.skipped, ignoredLinks: scan.ignoredLinks, skippedUnchanged: attempt.skippedUnchanged };
       } catch (err) {
         if (err instanceof NoRetryError) throw err.cliError;
         lastErr = err;
-        if (attempt === 2) throw err;
+        if (round === 2) throw err;
       }
     }
     throw lastErr;

@@ -411,3 +411,30 @@ describe("ApiClient 二进制请求", () => {
     expect(stub.requests[0]?.headers.authorization).toBe("Bearer the-token");
   });
 });
+
+describe("ApiClient.withTimeout", () => {
+  it("返回只改了超时的新客户端：沿用令牌与请求头，原客户端的超时不变", async () => {
+    const stub = await serve((req, res) => {
+      setTimeout(() => {
+        res.writeHead(200, { "content-type": "application/json" });
+        res.end("{}");
+      }, 600);
+    });
+    const original = new ApiClient({ server: stub.url, token: "the-token", fetch: globalThis.fetch.bind(globalThis), timeoutMs: 60_000 });
+    const derived = original.withTimeout(100);
+    expect(derived).not.toBe(original);
+
+    const started = Date.now();
+    const err = await captureError(derived.get("/x", z.unknown()));
+    expect(Date.now() - started).toBeLessThan(5000);
+    expect(err.exitCode).toBe(EXIT.UNREACHABLE);
+    expect(err.message).toContain("100ms");
+    expect(stub.requests[0]?.headers.authorization).toBe("Bearer the-token");
+
+    // 原客户端仍按 60 秒超时：100 毫秒后请求还挂着
+    const pending = original.get("/y", z.unknown());
+    const raced = await Promise.race([pending.then(() => "settled", () => "settled"), new Promise((r) => setTimeout(() => r("pending"), 300))]);
+    expect(raced).toBe("pending");
+    await expect(pending).resolves.toEqual({});
+  });
+});

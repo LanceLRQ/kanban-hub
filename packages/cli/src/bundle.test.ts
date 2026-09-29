@@ -1,12 +1,17 @@
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { execFile } from "node:child_process";
+import { execFile, execFileSync, spawn } from "node:child_process";
 import fs from "node:fs/promises";
+import net from "node:net";
 import os from "node:os";
 import path from "node:path";
 import { promisify } from "node:util";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import { buildCli } from "../scripts/build.mjs";
 import { SKILL_MD } from "./setup/skill";
+import { writeMachineConfig, writeToken } from "./config/home";
+import { createMarkerIfAbsent } from "./hook/marker";
+import { STOP_REMINDER } from "./hook/stop";
+import { writeRepoConfig } from "./repo/config";
 
 const execFileAsync = promisify(execFile);
 
@@ -137,5 +142,199 @@ describe("kh 打包产物", () => {
     } finally {
       await fs.rm(home, { recursive: true, force: true });
     }
+  });
+
+  describe("kh hook（真实进程）", () => {
+    const PROJECT_ID = "p000000001";
+    const GIT_ENV = { ...process.env, GIT_CONFIG_GLOBAL: "/dev/null", GIT_CONFIG_NOSYSTEM: "1" };
+    const git = (args: string[], cwd: string) =>
+      execFileSync("git", ["-c", "user.name=kh", "-c", "user.email=kh@example.com", "-c", "commit.gpgsign=false", ...args], {
+        cwd,
+        env: GIT_ENV,
+        encoding: "utf8",
+      });
+
+    let root: string;
+    let repo: string;
+    let tcp: net.Server;
+    let sockets: net.Socket[];
+    let tcpUrl: string;
+    const spawnedPids: number[] = [];
+
+    beforeAll(async () => {
+      root = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "kh-bundle-hook-")));
+      repo = path.join(root, "repo");
+      await fs.mkdir(repo);
+      git(["init", "-q"], repo);
+      git(["commit", "--allow-empty", "-q", "-m", "init"], repo);
+      await writeRepoConfig(repo, {
+        projectId: PROJECT_ID,
+        sync: { include: [], exclude: [], maxFileSize: 5 * 1024 * 1024 },
+        pull: { auto: true },
+      });
+
+      // 只接受连接、从不响应：让后台同步挂在请求上
+      sockets = [];
+      tcp = net.createServer((socket) => {
+        sockets.push(socket);
+        socket.on("error", () => {});
+      });
+      await new Promise<void>((resolve) => tcp.listen(0, "127.0.0.1", resolve));
+      tcpUrl = `http://127.0.0.1:${(tcp.address() as net.AddressInfo).port}`;
+    });
+
+    afterAll(async () => {
+      for (const pid of spawnedPids) {
+        try {
+          process.kill(pid, "SIGKILL");
+        } catch {
+          // 已经退出
+        }
+      }
+      for (const socket of sockets) socket.destroy();
+      await new Promise<void>((resolve) => tcp.close(() => resolve()));
+      await fs.rm(root, { recursive: true, force: true });
+    });
+
+    async function freshHome(name: string, loggedIn: boolean): Promise<{ home: string; khHome: string }> {
+      const home = path.join(root, `${name}-home`);
+      const khHome = path.join(root, `${name}-kh`);
+      await fs.mkdir(home, { recursive: true });
+      await fs.mkdir(khHome, { recursive: true });
+      if (loggedIn) {
+        await writeMachineConfig(khHome, { server: tcpUrl, machineId: "m000000001", machineName: "冒烟机" });
+        await writeToken(khHome, `kh_${"a".repeat(43)}`);
+      }
+      return { home, khHome };
+    }
+
+    interface Finished {
+      code: number | null;
+      stdout: string;
+      stderr: string;
+      elapsedMs: number;
+    }
+
+    /** 执行打包产物，stdin 写完就关闭；回调在 stdout、stderr 管道都关闭之后才触发 */
+    function runBundled(args: string[], env: NodeJS.ProcessEnv, stdin: string): Promise<Finished> {
+      const started = Date.now();
+      return new Promise((resolve) => {
+        const child = execFile(process.execPath, [outfile, ...args], { env, cwd: repo, timeout: 20_000 }, (err, stdout, stderr) => {
+          const code = err ? ((err as { code?: number | null }).code ?? null) : 0;
+          resolve({ code, stdout: String(stdout), stderr: String(stderr), elapsedMs: Date.now() - started });
+        });
+        child.stdin?.end(stdin);
+      });
+    }
+
+    async function waitForLockPid(khHome: string, timeoutMs: number): Promise<number | null> {
+      const lock = path.join(khHome, "cache", PROJECT_ID, "lock");
+      const until = Date.now() + timeoutMs;
+      while (Date.now() < until) {
+        try {
+          const content = JSON.parse(await fs.readFile(lock, "utf8")) as { pid?: number };
+          if (typeof content.pid === "number") return content.pid;
+        } catch {
+          // 还没创建或正在写
+        }
+        await new Promise((r) => setTimeout(r, 50));
+      }
+      return null;
+    }
+
+    function pgidOf(pid: number): number {
+      return Number.parseInt(execFileSync("ps", ["-o", "pgid=", "-p", String(pid)], { encoding: "utf8" }).trim(), 10);
+    }
+
+    it("kh hook stop：3 秒内结束、退出码 0（后台进程没有继承输出管道）；后台的 hook sync 仍在运行，进程组与 hook 不同", async () => {
+      const { home, khHome } = await freshHome("bg", true);
+      const env = { ...process.env, HOME: home, KH_HOME: khHome };
+      const result = await runBundled(["hook", "stop"], env, JSON.stringify({ session_id: "smoke-bg", cwd: repo }));
+      expect(result.code).toBe(0);
+      expect(result.elapsedMs).toBeLessThan(3000);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+
+      const pid = await waitForLockPid(khHome, 5000);
+      expect(pid).not.toBeNull();
+      spawnedPids.push(pid!);
+      expect(() => process.kill(pid!, 0)).not.toThrow();
+      // hook 进程没有 detached，与本测试进程同组；后台进程自成一组
+      expect(pgidOf(pid!)).toBe(pid);
+      expect(pgidOf(pid!)).not.toBe(pgidOf(process.pid));
+      expect(await fs.readFile(path.join(khHome, "logs", "hook.log"), "utf8")).toContain("已在后台启动同步");
+    }, 20_000);
+
+    it("kh hook stop 走提醒路径：退出码 2，stderr 与提醒原文完全一致", async () => {
+      const { home, khHome } = await freshHome("remind", false);
+      await createMarkerIfAbsent(khHome, {
+        sessionId: "smoke-remind",
+        projectId: PROJECT_ID,
+        root: repo,
+        worktree: repo,
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        head: "0".repeat(40),
+        dirty: null,
+        reminded: false,
+      });
+      const env = { ...process.env, HOME: home, KH_HOME: khHome };
+      const result = await runBundled(["hook", "stop"], env, JSON.stringify({ session_id: "smoke-remind", cwd: repo }));
+      expect(result.code).toBe(2);
+      expect(result.stderr).toBe(STOP_REMINDER);
+      expect(result.stdout).toBe("");
+    }, 20_000);
+
+    it("stderr 的读端提前关闭（EPIPE）：提醒路径仍按 hook 的退出码 2 结束，不崩溃成退出码 1", async () => {
+      const { home, khHome } = await freshHome("epipe", false);
+      await createMarkerIfAbsent(khHome, {
+        sessionId: "smoke-epipe",
+        projectId: PROJECT_ID,
+        root: repo,
+        worktree: repo,
+        startedAt: new Date(Date.now() - 60_000).toISOString(),
+        head: "0".repeat(40),
+        dirty: null,
+        reminded: false,
+      });
+      const child = spawn(process.execPath, [outfile, "hook", "stop"], {
+        env: { ...process.env, HOME: home, KH_HOME: khHome },
+        cwd: repo,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      // 读端在写入之前就关掉：子进程写提醒时会遇到 EPIPE
+      child.stderr.destroy();
+      child.stdout.destroy();
+      child.stdin.end(JSON.stringify({ session_id: "smoke-epipe", cwd: repo }));
+      const code = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
+      expect(code).toBe(2);
+      // 标记确实走到了提醒这一步
+      const marker = JSON.parse(await fs.readFile(path.join(khHome, "cache", "sessions", "smoke-epipe.json"), "utf8")) as { reminded: boolean };
+      expect(marker.reminded).toBe(true);
+    }, 20_000);
+
+    it("stdin 管道一直不关闭：kh hook stop 3 秒内退出，退出码 0", async () => {
+      const { home, khHome } = await freshHome("stdin", false);
+      const started = Date.now();
+      const child = spawn(process.execPath, [outfile, "hook", "stop"], {
+        env: { ...process.env, HOME: home, KH_HOME: khHome },
+        cwd: repo,
+        stdio: ["pipe", "pipe", "pipe"],
+      });
+      let stderr = "";
+      child.stderr.on("data", (d: Buffer) => (stderr += d.toString()));
+      const code = await new Promise<number | null>((resolve) => child.on("close", (c) => resolve(c)));
+      child.stdin.destroy();
+      expect(Date.now() - started).toBeLessThan(3000);
+      expect(code).toBe(0);
+      expect(stderr).toBe("");
+    }, 20_000);
+
+    it("kh hook session-start 的 stdin 为空：退出码 0，stdout 为空", async () => {
+      const { home, khHome } = await freshHome("empty", true);
+      const result = await runBundled(["hook", "session-start"], { ...process.env, HOME: home, KH_HOME: khHome }, "");
+      expect(result.code).toBe(0);
+      expect(result.stdout).toBe("");
+      expect(result.stderr).toBe("");
+    }, 20_000);
   });
 });

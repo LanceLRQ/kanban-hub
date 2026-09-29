@@ -134,6 +134,11 @@ type FetchBody = NonNullable<Parameters<typeof fetch>[1]>["body"];
 export class ApiClient {
   constructor(private readonly opts: ApiClientOptions) {}
 
+  /** 返回一个只改了超时的新客户端（令牌、agent、fetch 都沿用），hook 用它给不同请求设不同的时限 */
+  withTimeout(ms: number): ApiClient {
+    return new ApiClient({ ...this.opts, timeoutMs: ms });
+  }
+
   get<S extends z.ZodType>(path: string, schema: S): Promise<z.output<S>> {
     return this.request("GET", path, undefined, schema);
   }

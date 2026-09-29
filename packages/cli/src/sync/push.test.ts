@@ -270,3 +270,72 @@ describe("pushDocs：commit 失败之后的重试分支", () => {
     await expectNoLocalState(repo.home, repo.registered.config.projectId);
   });
 });
+
+describe("pushDocs：skipIfUnchangedWithinMs", () => {
+  const WINDOW = 600_000;
+  const T0 = Date.parse("2026-09-29T00:00:00.000Z");
+
+  function okClient(): FakeClient {
+    return new FakeClient((url) => {
+      if (isManifestUrl(url)) return { syncId: "s1", missing: [], expiresAt: "2026-09-30T00:00:00.000Z" };
+      if (isCommitUrl(url)) return { added: 1, modified: 0, removed: 0, unchanged: 0, lastSyncAt: "2026-09-29T00:00:00.000Z" };
+      throw new Error(`未预期的请求：${url}`);
+    });
+  }
+
+  function ctxAt(home: string, ms: number) {
+    return fakeContext({ env: { ...process.env, KH_HOME: home }, now: () => new Date(ms) });
+  }
+
+  it("推送成功后记下 lastPush；窗口内清单没有变化：跳过，不发任何请求，不改状态文件", async () => {
+    const repo = await setupRepo();
+    const first = okClient();
+    const r1 = await pushDocs(ctxAt(repo.home, T0), repo.registered, asApiClient(first), { quiet: true, skipIfUnchangedWithinMs: WINDOW });
+    expect(r1.skippedUnchanged).toBe(false);
+    expect(first.postCalls).toHaveLength(2);
+
+    const statePath = stateJsonPath(repo.home, repo.registered.config.projectId);
+    const saved = JSON.parse(await fs.readFile(statePath, "utf8")) as { lastPush?: { at: string; digest: string } };
+    expect(saved.lastPush?.at).toBe("2026-09-29T00:00:00.000Z");
+    expect(saved.lastPush?.digest).toMatch(/^[0-9a-f]{64}$/);
+    const before = await fs.readFile(statePath);
+
+    const second = okClient();
+    const r2 = await pushDocs(ctxAt(repo.home, T0 + WINDOW - 1), repo.registered, asApiClient(second), {
+      quiet: true,
+      skipIfUnchangedWithinMs: WINDOW,
+    });
+    expect(r2.skippedUnchanged).toBe(true);
+    expect(second.postCalls).toHaveLength(0);
+    expect(second.putCalls).toHaveLength(0);
+    expect(await fs.readFile(statePath)).toEqual(before);
+  });
+
+  it("改了文件：照常推送", async () => {
+    const repo = await setupRepo();
+    await pushDocs(ctxAt(repo.home, T0), repo.registered, asApiClient(okClient()), { quiet: true, skipIfUnchangedWithinMs: WINDOW });
+    await fs.writeFile(path.join(repo.root, "docs", "a.md"), "hello again");
+    const client = okClient();
+    const r = await pushDocs(ctxAt(repo.home, T0 + 1000), repo.registered, asApiClient(client), { quiet: true, skipIfUnchangedWithinMs: WINDOW });
+    expect(r.skippedUnchanged).toBe(false);
+    expect(client.postCalls).toHaveLength(2);
+  });
+
+  it("超过窗口没有变化：照常推送", async () => {
+    const repo = await setupRepo();
+    await pushDocs(ctxAt(repo.home, T0), repo.registered, asApiClient(okClient()), { quiet: true, skipIfUnchangedWithinMs: WINDOW });
+    const client = okClient();
+    const r = await pushDocs(ctxAt(repo.home, T0 + WINDOW), repo.registered, asApiClient(client), { quiet: true, skipIfUnchangedWithinMs: WINDOW });
+    expect(r.skippedUnchanged).toBe(false);
+    expect(client.postCalls).toHaveLength(2);
+  });
+
+  it("不传这个选项（kh sync、register 的首次同步）：不受窗口影响，每次都推送", async () => {
+    const repo = await setupRepo();
+    await pushDocs(ctxAt(repo.home, T0), repo.registered, asApiClient(okClient()), { quiet: true });
+    const client = okClient();
+    const r = await pushDocs(ctxAt(repo.home, T0 + 1000), repo.registered, asApiClient(client), { quiet: true });
+    expect(r.skippedUnchanged).toBe(false);
+    expect(client.postCalls).toHaveLength(2);
+  });
+});

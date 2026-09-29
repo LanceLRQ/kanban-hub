@@ -4,6 +4,7 @@ import { registerAuth } from "./commands/auth";
 import { registerConflicts } from "./commands/conflicts";
 import { registerContainer } from "./commands/container";
 import { registerDocs } from "./commands/docs";
+import { registerHook } from "./commands/hook";
 import { registerLog } from "./commands/log";
 import { registerProject } from "./commands/project";
 import { registerPull } from "./commands/pull";
@@ -40,6 +41,7 @@ export function buildProgram(ctx: CliContext): Command {
   registerPull(program, ctx);
   registerConflicts(program, ctx);
   registerSetup(program, ctx);
+  registerHook(program, ctx);
 
   return program;
 }

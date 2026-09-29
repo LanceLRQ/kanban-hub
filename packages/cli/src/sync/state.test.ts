@@ -194,3 +194,27 @@ describe("openSyncState", () => {
     expect((err as { hint?: string }).hint).toContain(dir);
   });
 });
+
+describe("openSyncState：lastPush", () => {
+  it("没有 lastPush 的旧状态文件照常读取，lastPush 为 null", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    const dir = path.join(home, "cache", "p000000001");
+    await fs.mkdir(dir, { recursive: true });
+    await fs.writeFile(path.join(dir, "state.json"), JSON.stringify({ root: repo, base: { "a.md": SHA_A } }));
+    const state = await openSyncState(fakeContext({ env: { KH_HOME: home } }), "p000000001", repo);
+    expect(state.lastPush).toBeNull();
+    expect(state.base.get("a.md")).toBe(SHA_A);
+  });
+
+  it("设置后保存，重新打开仍在", async () => {
+    const home = await tempDir("kh-state-home-");
+    const repo = await tempDir("kh-state-repo-");
+    const ctx = fakeContext({ env: { KH_HOME: home } });
+    const state = await openSyncState(ctx, "p000000001", repo);
+    state.lastPush = { at: "2026-09-29T00:00:00.000Z", digest: SHA_B };
+    await state.save();
+    const reopened = await openSyncState(ctx, "p000000001", repo);
+    expect(reopened.lastPush).toEqual({ at: "2026-09-29T00:00:00.000Z", digest: SHA_B });
+  });
+});

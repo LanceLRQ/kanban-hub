@@ -3,7 +3,11 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { KH_VERSION } from "@kanban-hub/core/version";
 import type { CliContext } from "./context";
 import { CliError, EXIT } from "./errors";
-import { main, runProgram } from "./main";
+import fs from "node:fs/promises";
+import os from "node:os";
+import path from "node:path";
+import { HookExit } from "./hook/exit";
+import { isHookArgv, main, runProgram } from "./main";
 
 function fakeContext(): { ctx: CliContext; stdout: () => string; stderr: () => string } {
   let stdout = "";
@@ -235,5 +239,91 @@ describe("runProgram 对子命令、孙命令同样生效", () => {
       EXIT.OK,
     );
     expect(a.stdout()).toContain("Usage:");
+  });
+});
+
+describe("hook 子树的出口", () => {
+  let home: string;
+
+  afterEach(async () => {
+    if (home) await fs.rm(home, { recursive: true, force: true });
+  });
+
+  async function hookContext() {
+    home = await fs.mkdtemp(path.join(os.tmpdir(), "kh-main-hook-"));
+    const a = fakeContext();
+    a.ctx.env = { KH_HOME: home };
+    return a;
+  }
+
+  async function hookLog(): Promise<string> {
+    try {
+      return await fs.readFile(path.join(home, "logs", "hook.log"), "utf8");
+    } catch {
+      return "";
+    }
+  }
+
+  it("isHookArgv：按第一个非选项参数判断，跳过根命令的选项及其值", () => {
+    expect(isHookArgv(["hook", "stop"])).toBe(true);
+    expect(isHookArgv(["sync"])).toBe(false);
+    expect(isHookArgv([])).toBe(false);
+    expect(isHookArgv(["--agent", "x", "hook", "stop"])).toBe(true);
+    expect(isHookArgv(["--agent=x", "hook", "stop"])).toBe(true);
+    expect(isHookArgv(["--agent", "hook", "sync"])).toBe(false);
+    expect(isHookArgv(["-v"])).toBe(false);
+  });
+
+  it("根选项写在前面：kh --agent x hook stop --no-such-option 仍然退出码 0，真实的流为空", async () => {
+    for (const argv of [
+      ["--agent", "x", "hook", "stop", "--no-such-option"],
+      ["--agent=x", "hook", "stop", "--no-such-option"],
+    ]) {
+      const a = await hookContext();
+      expect(await main(argv, a.ctx)).toBe(0);
+      expect(a.stdout()).toBe("");
+      expect(a.stderr()).toBe("");
+    }
+  });
+
+  it("kh hook stop --no-such-option：退出码 0，stdout、stderr 都为空，解析错误写进 hook.log", async () => {
+    const a = await hookContext();
+    expect(await main(["hook", "stop", "--no-such-option"], a.ctx)).toBe(0);
+    expect(a.stdout()).toBe("");
+    expect(a.stderr()).toBe("");
+    expect(await hookLog()).toContain("--no-such-option");
+  });
+
+  it("kh hook unknown、kh hook、kh hook --help：退出码 0，不写到真实的流", async () => {
+    for (const argv of [["hook", "unknown"], ["hook"], ["hook", "--help"]]) {
+      const a = await hookContext();
+      expect(await main(argv, a.ctx)).toBe(0);
+      expect(a.stdout()).toBe("");
+      expect(a.stderr()).toBe("");
+    }
+  });
+
+  it("kh hook 的帮助里不列出内部命令 sync", async () => {
+    const a = await hookContext();
+    await main(["hook", "--help"], a.ctx);
+    const log = await hookLog();
+    expect(log).toContain("session-start");
+    expect(log).not.toMatch(/\bsync\b/);
+  });
+
+  it("其他命令的行为不变：kh sync --no-such-option 仍然是 2", async () => {
+    const a = fakeContext();
+    expect(await main(["sync", "--no-such-option"], a.ctx)).toBe(EXIT.USAGE);
+    expect(a.stderr().startsWith("错误：")).toBe(true);
+  });
+
+  it("runProgram 识别 HookExit：原样写出 stderr（不加“错误：”），返回它的退出码", async () => {
+    const program = new Command().name("t");
+    program.command("remind").action(() => {
+      throw new HookExit(2, "请上报进度\n");
+    });
+    const a = fakeContext();
+    expect(await runProgram(program, ["remind"], a.ctx)).toBe(2);
+    expect(a.stderr()).toBe("请上报进度\n");
   });
 });

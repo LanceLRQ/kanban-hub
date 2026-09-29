@@ -31,6 +31,12 @@ export interface ConflictRecord {
   detectedAt: string;
 }
 
+export interface LastPush {
+  at: string;
+  /** 推送清单（文件列表含基准、git 状态、跳过的文件、同步范围）的 sha256 */
+  digest: string;
+}
+
 export interface SyncState {
   /** 命中 size+mtime 都不变的缓存就直接返回，不重新读文件；否则流式读取计算并写入缓存 */
   hashOf(file: SyncFileRef): Promise<string>;
@@ -44,6 +50,8 @@ export interface SyncState {
   conflicts: Map<string, ConflictRecord>;
   /** 路径 → 已经报告过的“对方给的是旧版本”的那个 hash，避免重复提醒 */
   staleReported: Map<string, string>;
+  /** 本机上一次成功推送的时间与清单摘要；hook 的后台同步据此跳过没有变化的推送。从没推送过时为 null */
+  lastPush: LastPush | null;
   putBlob(sha: string, bytes: Uint8Array): Promise<void>;
   readBlob(sha: string): Promise<Uint8Array | null>;
   /** 原子写回 state.json */
@@ -74,6 +82,8 @@ const stateFileSchema = z.object({
   seen: z.record(z.string(), z.array(shaSchema)).default({}),
   conflicts: z.record(z.string(), conflictRecordSchema).default({}),
   staleReported: z.record(z.string(), shaSchema).default({}),
+  /** 旧版本写的状态文件没有这个字段，照常读取 */
+  lastPush: z.object({ at: timestampSchema, digest: shaSchema }).optional(),
 });
 
 function cacheDir(home: string, projectId: string): string {
@@ -125,6 +135,7 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
   let seen = new Map<string, string[]>();
   let conflicts = new Map<string, ConflictRecord>();
   let staleReported = new Map<string, string>();
+  let lastPush: LastPush | null = null;
 
   if (raw !== null) {
     let parsedJson: unknown;
@@ -142,16 +153,18 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
     seen = new Map(Object.entries(data.seen));
     conflicts = new Map(Object.entries(data.conflicts));
     staleReported = new Map(Object.entries(data.staleReported));
+    lastPush = data.lastPush ?? null;
     if (data.root === root) {
       hashCache = new Map(Object.entries(data.hashCache));
     }
   }
 
-  return {
+  const state: SyncState = {
     base,
     seen,
     conflicts,
     staleReported,
+    lastPush,
 
     async hashOf(target) {
       const cached = hashCache.get(target.path);
@@ -188,6 +201,7 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
         seen: Object.fromEntries(seen),
         conflicts: Object.fromEntries(conflicts),
         staleReported: Object.fromEntries(staleReported),
+        ...(state.lastPush !== null ? { lastPush: state.lastPush } : {}),
       });
       await writeFileAtomic(file, JSON.stringify(payload, null, 2), { mkdir: true });
     },
@@ -211,4 +225,5 @@ export async function openSyncState(ctx: CliContext, projectId: string, root: st
       );
     },
   };
+  return state;
 }

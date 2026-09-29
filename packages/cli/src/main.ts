@@ -1,6 +1,7 @@
 import { Command, CommanderError } from "commander";
 import type { CliContext } from "./context";
 import { CliError, EXIT } from "./errors";
+import { createHookLogger, describeHookError, isHookExit, quietContext } from "./hook/exit";
 import { buildProgram } from "./program";
 
 const COMMANDER_ERROR_PREFIX = "error: ";
@@ -90,6 +91,10 @@ export async function runProgram(program: Command, argv: string[], ctx: CliConte
     await program.parseAsync(argv, { from: "user" });
     return EXIT.OK;
   } catch (err) {
+    if (isHookExit(err)) {
+      if (err.stderr) ctx.stderr.write(err.stderr);
+      return err.exitCode;
+    }
     if (err instanceof CommanderError) {
       // --help / --version 走的是 commander 自己的正常退出（exitCode 0），已经在上面写好输出
       return err.exitCode === 0 ? EXIT.OK : EXIT.USAGE;
@@ -103,7 +108,52 @@ export async function runProgram(program: Command, argv: string[], ctx: CliConte
   }
 }
 
-/** kh 的入口：装配命令并执行，返回进程退出码；bin.ts 据此设置 process.exitCode */
+/** 根命令上带值的选项：判断子命令时要连同它的值一起跳过 */
+const ROOT_OPTIONS_WITH_VALUE = new Set(["--agent"]);
+
+/**
+ * 第一个非选项参数是 hook：这次调用来自 agent 的 hook，出口按 hook 的规则处理。
+ * 跳过根命令的选项（--agent <值>、--agent=<值>、-v 等），`kh --agent x hook stop` 同样算 hook。
+ */
+export function isHookArgv(argv: readonly string[]): boolean {
+  for (let i = 0; i < argv.length; i++) {
+    const arg = argv[i]!;
+    if (ROOT_OPTIONS_WITH_VALUE.has(arg)) {
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("-")) continue;
+    return arg === "hook";
+  }
+  return false;
+}
+
+/**
+ * hook 子树的出口：kh 的退出码 2 本来表示用法错误，但 Stop hook 会把 2 当成“阻止结束”，
+ * 而且每一轮都会复现。所以这里 commander 的输出（帮助、解析错误）只写进 hook.log，
+ * 解析错误和其他任何异常一律返回 0；只有 HookExit 能返回 2，它的 stderr 原样写到真实的流。
+ */
+async function runHookProgram(program: Command, argv: string[], ctx: CliContext): Promise<number> {
+  const log = createHookLogger(ctx, "hook");
+  attachOutput(program, quietContext(ctx, log));
+  try {
+    await program.parseAsync(argv, { from: "user" });
+    return EXIT.OK;
+  } catch (err) {
+    if (isHookExit(err)) {
+      if (err.stderr) ctx.stderr.write(err.stderr);
+      return err.exitCode;
+    }
+    // commander 的错误已经经 outputError 写进日志，不再重复
+    if (!(err instanceof CommanderError)) log.write(`失败：${describeHookError(err)}`);
+    return EXIT.OK;
+  } finally {
+    await log.flush();
+  }
+}
+
+/** kh 的入口：装配命令并执行，返回进程退出码；bin.ts 据此设置 process.exitCode（hook 命令直接结束进程） */
 export async function main(argv: string[], ctx: CliContext): Promise<number> {
-  return runProgram(buildProgram(ctx), argv, ctx);
+  const program = buildProgram(ctx);
+  return isHookArgv(argv) ? runHookProgram(program, argv, ctx) : runProgram(program, argv, ctx);
 }

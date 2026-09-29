@@ -33,7 +33,7 @@ kanban-hub 是一个自托管的多项目进度看板服务：AI 编码助手通
 
 - [x] 调研：同类项目评估完成，确定自建
 - [x] 设计定稿：见上方规格
-- [ ] 实施：进行中（M0 工程骨架、M1 核心模型与存储、M2 鉴权与看板 API、M3 kh 基础命令、M4 网页看板、M5 文档同步与浏览已完成）
+- [ ] 实施：进行中（M0 工程骨架、M1 核心模型与存储、M2 鉴权与看板 API、M3 kh 基础命令、M4 网页看板、M5 文档同步与浏览、M6 AI 接入与迁移已完成）
 
 ## 仓库结构
 
@@ -46,14 +46,16 @@ kanban-hub/
 ├── LICENSE                # MIT
 ├── apps/web/              # Next.js：API 处理函数 + 网页；src/server/store/ 是唯一读写数据目录的存储模块
 │   ├── src/server/{auth,api,views,web}/         # 鉴权原语、apiRoute 外壳与服务容器、/api/v1 路由实现、页面用的视图构建函数、页面会话与取数的公共函数
+│   ├── src/server/setup-guides/                 # 接入引导文件 agent.md、migrate.md 的正文生成（填入服务地址）
 │   ├── src/app/api/v1/、src/app/(app)/、src/app/login/、src/app/raw/  # API 路由；需要登录的页面（布局统一校验会话）；登录页；文档原始文件，令牌鉴权、不经过登录会话
 │   ├── src/components/docs/                     # 文档页组件：文件树、文件面板、Markdown 渲染、mermaid
 │   ├── src/{components,lib,i18n,styles}/        # 页面组件（按区域分目录）；纯函数（时间、偏好、客户端请求等）；next-intl 配置；主题 token 与字体样式
 │   ├── messages/zh-CN/                          # next-intl 文案，按命名空间分文件；枚举中文名在 enums.json
-│   └── src/app/setup/kh.tgz/、src/kh-e2e/       # 下发 kh 安装包的路由；kh 端到端测试（进程内测试服务端）
+│   └── src/app/setup/{kh.tgz,agent.md,migrate.md}/、src/kh-e2e/  # 下发 kh 安装包与两个接入引导文件的路由（公开）；kh 端到端测试（进程内测试服务端）
 ├── packages/core/         # zod schema 与纯逻辑，不做 IO，按模块子路径导入（如 @kanban-hub/core/schema）；版本号的唯一来源
 ├── packages/cli/          # kh 命令行（esbuild 打包成单文件）
-│   └── src/{commands,repo,http,config,status,sync}/  # 各子命令、仓库本地操作、HTTP 客户端、本机配置、status 视图渲染、文档同步与拉取（扫描、推送、拉取、合并、本机状态、锁）
+│   ├── src/{commands,repo,http,config,status,sync}/  # 各子命令、仓库本地操作、HTTP 客户端、本机配置、status 视图渲染、文档同步与拉取（扫描、推送、拉取、合并、本机状态、锁）
+│   └── src/{hook,setup}/  # Claude Code hook（session-start、stop、后台同步）；kh setup（skill 正文、settings.json 合并）
 ├── Dockerfile             # deps / build / dev / runtime 四阶段
 ├── docker/                # 容器入口脚本
 ├── docker-compose.dev.yml # 开发：挂载源码，热更新

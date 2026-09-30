@@ -3,6 +3,8 @@
 > a multi-project kanban for vibe coding
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)
+[![Docker Publish](https://github.com/LanceLRQ/kanban-hub/actions/workflows/docker-publish.yml/badge.svg)](https://github.com/LanceLRQ/kanban-hub/actions/workflows/docker-publish.yml)
+[![Docker Pulls](https://img.shields.io/docker/pulls/lancelrq/kanban-hub)](https://hub.docker.com/r/lancelrq/kanban-hub)
 
 kanban-hub 是一个面向 AI 编程（vibe coding）的自托管多项目进度看板，由 AI 编码助手上报进度。
 

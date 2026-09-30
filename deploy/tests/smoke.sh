@@ -143,9 +143,11 @@ r=$(kh_run "$WITH_HOME cmd_doctor >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
 assert_eq "doctor 对完好安装通过" "rc=0" "$r"
 
 # --- 6. 已安装目录再次运行脚本 → 管理菜单（固定数字菜单与管道 stdin，任何环境行为一致）---
-r=$(printf '\n8\n' | env KH_TTY=- KH_PLAIN=1 NO_COLOR=1 bash "$KH_TEST_SCRIPT" --dir "$HOME_DIR" install 2>&1)
+r=$(printf '\n10\n' | env KH_TTY=- KH_PLAIN=1 NO_COLOR=1 bash "$KH_TEST_SCRIPT" --dir "$HOME_DIR" install 2>&1)
 assert_contains "已安装目录直接进入管理菜单" "部署管理" "$r"
 assert_contains "管理菜单列出退出项" "退出" "$r"
+assert_contains "管理菜单列出升级项" "升级" "$r"
+assert_contains "管理菜单列出恢复项" "从备份恢复" "$r"
 
 # --- 7. doctor：.env 缺必填项要报错 ---
 grep -v '^KH_ADMIN_PASSWORD=' "$ENVP" >"$ROOT/env.bak" && mv "$ROOT/env.bak" "$ENVP"
@@ -193,11 +195,77 @@ r=$(bash "$KH_TEST_SCRIPT" version)
 assert_eq "version 输出脚本版本" "$KH_SCRIPT_VERSION" "$(printf '%s' "$r" | tr -d '\n')"
 r=$(bash "$KH_TEST_SCRIPT" help 2>&1)
 assert_contains "help 输出用法" "用法：" "$r"
+assert_contains "help 列出 upgrade" "  upgrade" "$r"
+assert_contains "help 列出 restore" "  restore" "$r"
+assert_contains "help 说明 --to 选项" "--to" "$r"
+assert_contains "help 说明 --repo 选项" "--repo" "$r"
 bash "$KH_TEST_SCRIPT" --bogus >/dev/null 2>&1
 assert_rc "未知选项退出码 2" 2 "$?"
 r=$(bash "$KH_TEST_SCRIPT" status 2>&1)
 assert_contains "未安装时提示先安装" "尚未安装" "$r"
 bash "$KH_TEST_SCRIPT" bogus >/dev/null 2>&1
 assert_rc "未知命令退出码 2" 2 "$?"
+r=$(bash "$KH_TEST_SCRIPT" upgrade 2>&1)
+assert_contains "未安装时 upgrade 同样提示先安装" "尚未安装" "$r"
+r=$(bash "$KH_TEST_SCRIPT" restore x.zip 2>&1)
+assert_contains "未安装时 restore 同样提示先安装" "尚未安装" "$r"
+
+# --- 12. restore：改名 / 新建 / compose run 参数 / 失败提示（假 docker 桩）---
+KH2="$ROOT/restored"
+WITH2="KH_HOME=$KH2;"
+r=$(kh_run "KH_HOME=$KH2; wizard_defaults; W_PASSWORD=secret-pass-1; W_TZ=Asia/Shanghai; apply_install >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "restore 用例的安装目录就绪" "rc=0" "$r"
+cp "$KH_TEST_SCRIPT" "$KH2/kanban-hub.sh"
+printf 'old-board-data\n' >"$KH2/data/old.txt"
+printf 'backup-payload\n' >"$KH2/backups/kanban-hub-20260929-120000.zip"
+
+r=$(kh_run "$WITH2 cmd_restore sub/dir.zip >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "restore 拒绝路径参数" "rc=2" "$r"
+r=$(kh_run "$WITH2 cmd_restore other.zip >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "restore 拒绝不符命名的文件名" "rc=2" "$r"
+r=$(kh_run "$WITH2 cmd_restore kanban-hub-20260929-120001.zip 2>&1; printf 'rc=%s' \"\$?\"")
+assert_contains "restore 提示备份不存在" "没有" "$r"
+assert_cond "备份不存在时 data/ 未被改名" test -f "$KH2/data/old.txt"
+
+: >"$LOG"
+r=$(printf 'y\nn\n' | kh_run "$WITH2 cmd_restore kanban-hub-20260929-120000.zip >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "restore 成功" "rc=0" "$r"
+assert_contains "restore 先停止容器" "docker compose stop" "$(cat "$LOG")"
+assert_contains "restore 经容器执行恢复并指向 /backups" \
+  "docker compose run --rm kanban-hub restore /backups/kanban-hub-20260929-120000.zip" "$(cat "$LOG")"
+assert_cond "原数据改名保留（data.bak-时间戳）" test -f "$KH2"/data.bak-*/old.txt
+assert_eq "新建的 data/ 为空" "" "$(ls -A "$KH2/data")"
+assert_not_contains "询问启动回答否则不启动服务" "compose up" "$(cat "$LOG")"
+
+printf 'later\n' >"$KH2/data/new.txt"
+: >"$LOG"
+r=$(printf 'y\n' | PATH=$(path_with "$BIN") STUB_RUN_EXIT=1 kh_run "$WITH2 cmd_restore kanban-hub-20260929-120000.zip 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "恢复失败返回 1" "rc=1" "$(printf '%s\n' "$r" | tail -n 1)"
+assert_contains "失败提示原数据保留位置" "data.bak-" "$r"
+assert_contains "失败提示可改回原名回退" "改名" "$r"
+n=$(count_entries "$KH2" "data.bak-")
+assert_eq "失败后原数据目录仍在（两次各留一份）" "2" "$n"
+
+# 停止容器失败：在改名之前中止，不再产生新的备份目录
+r=$(printf 'y\n' | PATH=$(path_with "$BIN") STUB_COMPOSE_EXIT=1 kh_run "$WITH2 cmd_restore kanban-hub-20260929-120000.zip >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "停止容器失败则中止恢复" "rc=1" "$r"
+assert_eq "中止在改名之前（备份目录数量不变）" "2" "$(count_entries "$KH2" "data.bak-")"
+
+# --- 13. upgrade：自更新两阶段 exec → 版本落盘 → pull → 重建 ---
+KH3="$ROOT/upgraded"
+r=$(kh_run "KH_HOME=$KH3; wizard_defaults; W_PASSWORD=secret-pass-1; W_TZ=Asia/Shanghai; apply_install >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+assert_eq "upgrade 用例的安装目录就绪" "rc=0" "$r"
+cp "$KH_TEST_SCRIPT" "$KH3/kanban-hub.sh"
+NEW3="$ROOT/kh-new.sh"
+sed "s/^KH_SCRIPT_VERSION=.*/KH_SCRIPT_VERSION=\"0.2.0\"/" "$KH_TEST_SCRIPT" >"$NEW3"
+: >"$LOG"
+r=$(printf 'y\n' | PATH=$(path_with "$BIN") STUB_CURL_FILE="$NEW3" kh_run "KH_HOME=$KH3; unset KH_SOURCE_ONLY; OPT_TO=0.2.0; cmd_upgrade >/dev/null 2>&1")
+assert_rc "upgrade 两阶段完成（旧脚本 exec 新脚本续跑）" 0 "$?"
+assert_eq ".env 版本已更新到目标版本" "0.2.0" "$(env_get "$KH3/.env" KH_VERSION)"
+assert_contains "替换后安装目录里的脚本是新版本" 'KH_SCRIPT_VERSION="0.2.0"' "$(cat "$KH3/kanban-hub.sh")"
+assert_eq "自更新前的旧脚本备份了一份" "1" "$(count_entries "$KH3/backups" "kanban-hub.sh.")"
+assert_contains "旧脚本备份内容是原版本" "KH_SCRIPT_VERSION=\"$KH_SCRIPT_VERSION\"" "$(cat "$KH3"/backups/kanban-hub.sh.*)"
+assert_contains "第二阶段拉取了镜像" "docker compose pull" "$(cat "$LOG")"
+assert_contains "第二阶段重建容器" "docker compose up -d --force-recreate" "$(cat "$LOG")"
 
 finish

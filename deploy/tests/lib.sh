@@ -78,6 +78,18 @@ stub_bin() {
   printf '%s' "$bin"
 }
 
+# 统计目录下（可见）条目数；给前缀时只数名字以其开头的条目（glob 展开，不经过 ls）
+count_entries() {
+  local dir="$1" prefix="${2:-}" n=0 e
+  for e in "$dir"/*; do
+    [ -e "$e" ] || continue
+    case "${e##*/}" in
+      "$prefix"*) n=$((n + 1)) ;;
+    esac
+  done
+  printf '%s' "$n"
+}
+
 # path_with 桩目录：把桩目录拼到 PATH 最前面并输出
 path_with() {
   printf '%s:%s' "$1" "${PATH:-}"

@@ -11,6 +11,7 @@ case "${1:-}" in
     case "${2:-}" in
       version) echo "Docker Compose version v2.29.0"; exit "${STUB_COMPOSE_VERSION_EXIT:-0}" ;;
       pull) exit "${STUB_PULL_EXIT:-0}" ;;
+      run) exit "${STUB_RUN_EXIT:-0}" ;;
       *) exit "${STUB_COMPOSE_EXIT:-0}" ;;
     esac
     ;;

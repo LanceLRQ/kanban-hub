@@ -63,6 +63,10 @@ KH_SELF="${BASH_SOURCE[0]:-}"
 # 变量名与环境变量同名是有意的：读取发生在任何赋值之前
 OPT_DIR=""
 OPT_FOLLOW=0
+# upgrade 的目标版本与本地重建的仓库路径（--to / --repo）；restore 的备份文件名（位置参数）
+OPT_TO=""
+OPT_REPO=""
+OPT_RESTORE_NAME=""
 CMD=""
 
 # ===== 2. 输出 =====
@@ -306,6 +310,12 @@ fetch_latest_version() {
   rm -f "$tmp"
   [ -n "$v" ] || return 1
   printf '%s\n' "$v"
+}
+
+# 目标版本格式：X.Y.Z 或 X.Y.Z-预发布（预发布段为字母数字加点），upgrade --to 的入参校验。
+# 不校验的话畸形值会被 ver_cmp 当 0.0.0 比较，最后走到 raw 下载 404 才报错，报因失真
+valid_version() {
+  printf '%s' "$1" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.]+)?$'
 }
 
 # ===== 5. 端口探测 =====
@@ -1459,15 +1469,19 @@ main_menu() {
     [ -n "$url" ] && info "  $url"
     printf '\n' >&2
     if service_running; then start_label="重启"; else start_label="启动"; fi
-    ui_menu "" "$start_label" "停止" "查看状态" "查看日志（最近 200 行）" "修改配置" "环境自检" "卸载" "退出" || return 0
+    ui_menu "" "$start_label" "停止" "查看状态" "查看日志（最近 200 行）" "修改配置" "升级" "从备份恢复" "环境自检" "卸载" "退出" || return 0
     case "$UI_CHOICE" in
       0) if service_running; then cmd_restart; else cmd_start; fi ;;
       1) cmd_stop ;;
       2) cmd_status ;;
       3) OPT_FOLLOW=0; cmd_logs ;;
       4) cmd_config ;;
-      5) cmd_doctor ;;
-      6) cmd_uninstall && [ ! -d "$KH_HOME" ] && return 0 ;;
+      5) cmd_upgrade ;;
+      6)
+        ui_input "备份文件名（backups/ 下，形如 kanban-hub-20260929-120000.zip）" "" && cmd_restore "$UI_VALUE"
+        ;;
+      7) cmd_doctor ;;
+      8) cmd_uninstall && [ ! -d "$KH_HOME" ] && return 0 ;;
       *) return 0 ;;
     esac
     ui_pause
@@ -1620,7 +1634,463 @@ cmd_uninstall() {
   safe_remove_home
 }
 
-# ===== 12. 入口 =====
+# ===== 12. 升级与恢复 =====
+
+# 备份文件名（与服务端生成规则一致）：kanban-hub-YYYYMMDD-HHmmss.zip，同秒冲突时在 .zip 前加 -N。
+# restore 只认这个形状的名字，路径固定取安装目录 backups/ 下，不接受路径参数
+KH_BACKUP_NAME_RE='^kanban-hub-[0-9]{8}-[0-9]{6}(-[0-9]+)?\.zip$'
+
+# self_update 失败原因（SELF_UPDATE_REASON）→ 展示文案
+self_update_reason_text() {
+  case "$1" in
+    self_download_failed) printf '下载失败（可设置 KH_RAW_BASE 指向可访问的镜像地址）' ;;
+    self_syntax_failed) printf '下载的内容未通过语法检查' ;;
+    self_version_mismatch) printf '下载的内容与目标版本不符' ;;
+    *) printf '未知原因' ;;
+  esac
+}
+
+# _self_update_run 目标版本 临时文件：下载 → bash -n → 版本行精确匹配 → 备份旧脚本 → 原子替换。
+# 失败原因记在 SELF_UPDATE_REASON，由调用方按上下文分级展示（镜像已是目标版本时自更新失败
+# 不算升级失败）；成功与否之外的中间状态不留盘
+_self_update_run() {
+  local target="$1" tmp="$2" want_line
+  if ! download_to "$(raw_url "v$target")" "$tmp"; then
+    rm -f "$tmp"
+    SELF_UPDATE_REASON=self_download_failed
+    return 1
+  fi
+  if ! bash -n "$tmp" 2>/dev/null; then
+    rm -f "$tmp"
+    SELF_UPDATE_REASON=self_syntax_failed
+    return 1
+  fi
+  # 语法合法不代表内容就是目标版本（可能拿到别的 ref 或旧缓存）；精确匹配整个版本行
+  #（脚本头部的 KH_SCRIPT_VERSION="…" 行）比 grep 版本号更不容易被误判。
+  # 这一行的格式是跨版本接口，不得加尾注释或改动写法
+  want_line="KH_SCRIPT_VERSION=\"$target\""
+  if ! grep -qxF "$want_line" "$tmp"; then
+    rm -f "$tmp"
+    SELF_UPDATE_REASON=self_version_mismatch
+    return 1
+  fi
+  if ! mkdir -p "$KH_HOME/backups"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  chmod 700 "$KH_HOME/backups" 2>/dev/null
+  if ! cp -p "$KH_HOME/kanban-hub.sh" "$KH_HOME/backups/kanban-hub.sh.$(date +%Y%m%d-%H%M%S)"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  if ! { chmod 755 "$tmp" && mv "$tmp" "$KH_HOME/kanban-hub.sh"; }; then
+    rm -f "$tmp"
+    return 1
+  fi
+}
+
+# self_update 目标版本：包装 _self_update_run，下载/校验途中被 Ctrl-C 或 kill 时清掉半截
+# 临时文件（trap 体读全局变量，不把路径拼进 trap 字符串）；结束后恢复 main 设置的默认 trap
+self_update() {
+  local target="$1" tmp="$KH_HOME/.kanban-hub.sh.upgrade" rc
+  SELF_UPDATE_REASON=""
+  KH_UPGRADE_TMP="$tmp"
+  trap 'rm -f "$KH_UPGRADE_TMP"; ui_restore; exit 130' INT TERM
+  _self_update_run "$target" "$tmp"
+  rc=$?
+  trap 'ui_restore; exit 130' INT TERM
+  return "$rc"
+}
+
+# 本次 template_sync 的回滚信息：替换过的文件记「state 键<TAB>替换前校验和<TAB>备份路径」；
+# 是否推进过模板版本与推进前的旧值。都只供 template_sync_rollback 使用
+TEMPLATE_SYNC_LOG=""
+TEMPLATE_SYNC_BUMPED=0
+TEMPLATE_SYNC_OLD_TVER=""
+
+# 内嵌模板版本比已安装的新时才处理：没变就跳过已存在的文件（不比对、不弹 diff，避免同一
+# 版本反复纠缠用户）；文件缺失一律直接写入。版本变大时：未被手改（校验和等于 state 记录）
+# 静默替换；手改过则展示 diff 由用户决定（默认保留），替换前一律备份
+template_sync() {
+  local tmp cur recorded="" ts old_tver need_check=0
+  ts=$(date +%Y%m%d-%H%M%S)
+  TEMPLATE_SYNC_LOG=""
+  TEMPLATE_SYNC_BUMPED=0
+  old_tver=$(state_get template_version 2>/dev/null)
+  case "$old_tver" in "" | *[!0-9]*) old_tver=0 ;; esac
+  TEMPLATE_SYNC_OLD_TVER="$old_tver"
+  [ "$old_tver" -lt "$KH_TEMPLATE_VERSION" ] && need_check=1
+  if [ -f "$KH_HOME/docker-compose.yml" ] && [ "$need_check" != 1 ]; then
+    return 0
+  fi
+  tmp="$KH_HOME/.docker-compose.yml.new"
+  if ! tpl_compose >"$tmp"; then
+    rm -f "$tmp"
+    return 1
+  fi
+  cur=""
+  [ -f "$KH_HOME/docker-compose.yml" ] && cur=$(sha256_file "$KH_HOME/docker-compose.yml")
+  if [ "$cur" = "$(sha256_file "$tmp")" ]; then
+    rm -f "$tmp"
+    state_set compose_sha256 "$cur"
+  else
+    if [ -n "$cur" ]; then
+      recorded=$(state_get compose_sha256)
+      if [ "$cur" != "$recorded" ]; then
+        warn "docker-compose.yml 被手动修改过，与新模板的差异如下："
+        diff -u "$KH_HOME/docker-compose.yml" "$tmp" >&2
+        if ! ui_confirm "仍要替换为新模板吗？（选否保留你的修改）" n; then
+          rm -f "$tmp"
+          warn "已保留手动修改过的 docker-compose.yml（新模板未应用）"
+          if [ "$need_check" = 1 ]; then
+            state_set template_version "$KH_TEMPLATE_VERSION"
+            TEMPLATE_SYNC_BUMPED=1
+          fi
+          return 0
+        fi
+      fi
+    fi
+    if ! mkdir -p "$KH_HOME/backups"; then
+      rm -f "$tmp"
+      err "创建 $KH_HOME/backups 失败，无法备份旧模板"
+      return 1
+    fi
+    chmod 700 "$KH_HOME/backups" 2>/dev/null
+    if [ -f "$KH_HOME/docker-compose.yml" ]; then
+      if ! cp -p "$KH_HOME/docker-compose.yml" "$KH_HOME/backups/docker-compose.yml.$ts"; then
+        rm -f "$tmp"
+        err "备份 docker-compose.yml 失败，已放弃替换"
+        return 1
+      fi
+      # 记录 state 里替换前的值（不是磁盘上手改文件的 sha）：回滚要撤销的是这次调用对
+      # state 做的改动，state 在这次调用前的值就是 recorded
+      TEMPLATE_SYNC_LOG="compose_sha256"$'\t'"${recorded}"$'\t'"$KH_HOME/backups/docker-compose.yml.$ts"$'\n'
+    fi
+    if ! { mv "$tmp" "$KH_HOME/docker-compose.yml" &&
+      state_set compose_sha256 "$(sha256_file "$KH_HOME/docker-compose.yml")"; }; then
+      rm -f "$tmp"
+      return 1
+    fi
+    info "docker-compose.yml 已更新（模板 v${KH_TEMPLATE_VERSION}）"
+  fi
+  if [ "$need_check" = 1 ]; then
+    state_set template_version "$KH_TEMPLATE_VERSION"
+    TEMPLATE_SYNC_BUMPED=1
+  fi
+  return 0
+}
+
+# 回滚本次 template_sync 实际做出的改动（升级流程自身失败时调用）：把备份 cp 回去、state
+# 复原；备份缺失只 warn 给出备份路径，不中止流程——调用方本就在处理另一个失败，不应该在
+# 回滚上再报错卡住
+template_sync_rollback() {
+  local key oldsha backup
+  while IFS=$'\t' read -r key oldsha backup; do
+    [ -n "$key" ] || continue
+    if [ -f "$backup" ] && cp -p "$backup" "$KH_HOME/docker-compose.yml"; then
+      state_set "$key" "$oldsha"
+    else
+      warn "未能自动恢复 docker-compose.yml 原状，备份文件还在：$backup"
+    fi
+  done <<EOF
+$TEMPLATE_SYNC_LOG
+EOF
+  if [ "$TEMPLATE_SYNC_BUMPED" = 1 ]; then
+    state_set template_version "$TEMPLATE_SYNC_OLD_TVER"
+  fi
+  return 0
+}
+
+# 回滚本次升级写入的镜像名（只有本地镜像切回 Hub 时写过，其余情况是无害 no-op）；
+# env_set 失败不吞掉——报错请用户手动检查，不能假装已经恢复
+_upgrade_rollback_image() {
+  local from_local="$1" orig="$2"
+  [ "$from_local" = 1 ] || return 0
+  if ! env_set "$KH_HOME/.env" KH_IMAGE "$orig"; then
+    err "恢复 .env 的 KH_IMAGE 失败，请手动检查（原值：${orig}）"
+  fi
+}
+
+# 把 .env 升到目标版本并重建容器。
+#   $1 = from_local（1 表示从本地镜像切回 Hub，要把 KH_IMAGE 写回空 = 模板默认）
+#   $2 = want_image（from_local=1 时要写入的镜像名，固定为空）
+#   $3 = orig_image（from_local=1 的原镜像名，失败时回滚用）
+# 结果记在全局 UPGRADE_OUTCOME 而不是返回码里：declined（拒绝确认，未做任何改动）/
+# rolled_back（已改动但整体失败，已撤销）/ applied（完整应用，含无需改动的情形）/
+# restart_failed（pull 已成功但重建容器失败——保留新版本号，与既有行为一致）
+_upgrade_apply() {
+  local from_local="${1:-0}" want_image="${2:-}" orig_image="${3:-}" envf="$KH_HOME/.env" target cur cmp def
+  [ -n "$orig_image" ] || orig_image=$(env_get "$envf" KH_IMAGE)
+  target="${OPT_TO#v}"
+  if [ -n "$target" ] && ! valid_version "$target"; then
+    err "--to 的版本格式应为 X.Y.Z 或 X.Y.Z-预发布（如 1.2.3、1.2.3-rc.1），收到：${OPT_TO}"
+    UPGRADE_OUTCOME=rolled_back
+    return 2
+  fi
+  if [ -z "$target" ]; then
+    info "正在查询最新版本…"
+    target=$(fetch_latest_version)
+    if [ -z "$target" ]; then
+      err "查询最新版本失败（可离线指定：bash kanban-hub.sh upgrade --to <版本号>）"
+      UPGRADE_OUTCOME=rolled_back
+      return 1
+    fi
+  fi
+  cur=$(env_get "$envf" KH_VERSION)
+  if [ "$from_local" = 1 ]; then cmp=1; else cmp=$(ver_cmp "$target" "$cur"); fi
+
+  if [ "$cmp" = 0 ] && image_local_exists "$(image_ref "$envf")"; then
+    info "镜像已经是 ${cur}，无需升级"
+    if [ "$target" = "$KH_SCRIPT_VERSION" ]; then
+      if ! template_sync; then
+        UPGRADE_OUTCOME=rolled_back
+        return 1
+      fi
+      UPGRADE_OUTCOME=applied
+      return 0
+    fi
+  elif [ "$cmp" = 0 ]; then
+    # .env 已是目标版本但目标镜像不在本地：上次升级在版本号落盘后、compose pull 前被打断
+    #（模板确认处 Ctrl-C、kill、断电）。这里跳过确认（目标早已选定）继续走完下面的模板
+    # 同步、拉取与重建，让半途状态重跑 upgrade 即可收敛，而不是误报"无需升级"
+    info ".env 已是 $target，但镜像尚未拉取——继续完成上次未完成的升级"
+  elif [ "${KH_UPGRADE_CONFIRMED:-}" != 1 ]; then
+    [ "$cmp" = -1 ] && warn "目标版本 $target 低于当前版本 ${cur}，这是降级操作"
+    if [ "$cmp" = 1 ]; then def=y; else def=n; fi
+    if ! ui_confirm "把镜像从 $cur 切换到 ${target}？" "$def"; then
+      UPGRADE_OUTCOME=declined
+      return 0
+    fi
+  fi
+
+  # 升级已确认（或第二阶段本就带着确认标记进来）。在真正落盘之前 .env 不会被本函数改过
+  # 一个字节——镜像名与版本号到下面那一步才一起写，确认之后、落盘之前的任何失败或中断
+  #（Ctrl-C、下载卡住被杀、exec 到的新进程半路退出）都不会留下半新半旧的 .env
+  if [ "$target" != "$KH_SCRIPT_VERSION" ] && [ "${KH_UPGRADE_STAGE:-}" != 2 ]; then
+    if self_update "$target"; then
+      # 跨版本接口：旧脚本 exec 新脚本续跑第二阶段。这些变量与参数只增不改，否则装着
+      # 旧脚本的机器升级时会向新脚本传出它读不懂的东西。原镜像名只在这时才导出，第二
+      # 阶段读到后立即 unset，避免残留污染同一 shell 里下一次 upgrade 调用
+      export KH_UPGRADE_STAGE=2 KH_UPGRADE_CONFIRMED=1
+      if [ "$from_local" = 1 ]; then
+        export KH_UPGRADE_REVERT_IMAGE="$orig_image"
+      fi
+      exec "$KH_HOME/kanban-hub.sh" upgrade --to "$target" --dir "$KH_HOME"
+    fi
+    # self_update 只返回成功与否，原因在 SELF_UPDATE_REASON；cmp=0 时镜像本就是目标版本，
+    # 自更新没做成不算升级失败，用 warn 并继续更新模板
+    if [ "$cmp" = 0 ]; then
+      warn "脚本自更新失败（$(self_update_reason_text "$SELF_UPDATE_REASON")），部署脚本仍是 v$KH_SCRIPT_VERSION"
+      if ! template_sync; then
+        UPGRADE_OUTCOME=rolled_back
+        return 1
+      fi
+      UPGRADE_OUTCOME=applied
+      return 0
+    fi
+    err "脚本自更新失败（$(self_update_reason_text "$SELF_UPDATE_REASON")），部署脚本仍是 v$KH_SCRIPT_VERSION"
+    if ! ui_confirm "是否只把镜像更新到 ${target}（脚本保持当前版本，下次再更新脚本）？" n; then
+      # .env 到这里还没被这次调用改过，无需回滚
+      UPGRADE_OUTCOME=rolled_back
+      return 1
+    fi
+    # 同意仅更新镜像：脚本版本不变，在本进程内继续完成镜像切换
+  fi
+
+  # 镜像名与版本号在这里一起写：要么都成功、要么都不改，不存在只改了一半的中间态
+  if [ "$from_local" = 1 ]; then
+    if ! env_set "$envf" KH_IMAGE "$want_image"; then
+      UPGRADE_OUTCOME=rolled_back
+      return 1
+    fi
+  fi
+  if ! env_set "$envf" KH_VERSION "$target"; then
+    _upgrade_rollback_image "$from_local" "$orig_image"
+    UPGRADE_OUTCOME=rolled_back
+    return 1
+  fi
+  if ! template_sync; then
+    [ "$target" = "$cur" ] || env_set "$envf" KH_VERSION "$cur"
+    template_sync_rollback
+    _upgrade_rollback_image "$from_local" "$orig_image"
+    UPGRADE_OUTCOME=rolled_back
+    return 1
+  fi
+  if ! compose pull; then
+    [ "$target" = "$cur" ] || env_set "$envf" KH_VERSION "$cur"
+    template_sync_rollback
+    _upgrade_rollback_image "$from_local" "$orig_image"
+    err "拉取镜像 $KH_HUB_IMAGE:$target 失败，版本号已回退为 $cur"
+    info "    → 请为 Docker 配置 registry-mirrors 或代理后重试"
+    UPGRADE_OUTCOME=rolled_back
+    return 1
+  fi
+  # pull 已成功：版本号保留新值，重建失败也不回滚（与 Hub 升级重建失败不回滚的行为一致）
+  if [ "$from_local" = 1 ]; then
+    state_set image_source hub
+  fi
+  if ! cmd_restart; then
+    err "镜像已更新到 ${target}，但重建容器失败"
+    info "    → 排查后执行 bash kanban-hub.sh start"
+    UPGRADE_OUTCOME=restart_failed
+    return 1
+  fi
+  UPGRADE_OUTCOME=applied
+  return 0
+}
+
+# 本地镜像的「升级」= 从仓库重新构建并重建容器。--repo 可指定仓库路径（默认当前目录）
+cmd_upgrade_rebuild() {
+  local repo="$1" envf="$KH_HOME/.env" orig_image
+  if ! repo_detect "$repo"; then
+    err "$repo 不是 kanban-hub 仓库（缺 Dockerfile 或 package.json 不符）"
+    info "    → 请在仓库目录运行，或用 --repo 指定仓库路径"
+    return 1
+  fi
+  info "正在从 $repo 构建镜像 $KH_DEV_IMAGE:${KH_DEV_TAG}…"
+  if ! image_build "$repo" "$KH_DEV_IMAGE:$KH_DEV_TAG"; then
+    return 1
+  fi
+  # 构建成功后才动 .env。镜像名与版本号分两步写，后者失败回滚前者（同 _upgrade_apply 的
+  # 回滚模式），不让半新 .env 留盘；重建失败保留新镜像名，提示手动 start（与 Hub 升级一致）
+  orig_image=$(env_get "$envf" KH_IMAGE)
+  if ! env_set "$envf" KH_IMAGE "$KH_DEV_IMAGE"; then
+    err "写入 .env 失败"
+    return 1
+  fi
+  if ! env_set "$envf" KH_VERSION "$KH_DEV_TAG"; then
+    if ! env_set "$envf" KH_IMAGE "$orig_image"; then
+      err "回滚 .env 的 KH_IMAGE 失败，请手动检查（原值：${orig_image}）"
+    fi
+    err "写入 .env 失败"
+    return 1
+  fi
+  state_set image_source build
+  if ! cmd_restart; then
+    err "镜像已构建为 $KH_DEV_IMAGE:${KH_DEV_TAG}，但重建容器失败"
+    info "    → 排查后执行 bash kanban-hub.sh start"
+    return 1
+  fi
+  ok "已切换到本地构建的镜像 $KH_DEV_IMAGE:$KH_DEV_TAG"
+  return 0
+}
+
+# cmd_upgrade：Hub 镜像直接走 _upgrade_apply；本地镜像先问怎么升级（重建 / 切回 Hub / 取消）。
+# 第二阶段（自更新 exec 过来）从 KH_UPGRADE_REVERT_IMAGE 拿到原镜像名，不再出菜单——
+# 这个变量只信一次：要求 KH_UPGRADE_STAGE=2 同时成立，读到后立即 unset，防止残留环境变量
+# 把同一 shell 里下一次 upgrade 调用误判成第二阶段
+cmd_upgrade() {
+  local envf="$KH_HOME/.env" opts=() acts=() from_local=0 saved_image="" want_image="" repo
+  UPGRADE_OUTCOME=""
+  if [ "${KH_UPGRADE_STAGE:-}" = 2 ] && [ -n "${KH_UPGRADE_REVERT_IMAGE:-}" ]; then
+    # 第一阶段没写 .env 的镜像名（只导出了原镜像名供回滚）；第二阶段自己认定目标是 Hub
+    from_local=1
+    saved_image="$KH_UPGRADE_REVERT_IMAGE"
+    want_image=""
+    unset KH_UPGRADE_REVERT_IMAGE
+  elif ! image_is_hub "$envf"; then
+    repo="${OPT_REPO:-$PWD}"
+    if repo_detect "$repo"; then
+      opts+=("从仓库重新构建 $KH_DEV_IMAGE:${KH_DEV_TAG}（仓库：${repo}）")
+      acts+=(rebuild)
+    fi
+    opts+=("切回 Docker Hub 正式版")
+    acts+=(hub)
+    opts+=("取消")
+    acts+=(cancel)
+    ui_menu "当前使用本地构建的镜像，请选择升级方式" "${opts[@]}" || return 0
+    case "${acts[$UI_CHOICE]:-cancel}" in
+      rebuild) cmd_upgrade_rebuild "$repo"; return $? ;;
+      hub)
+        saved_image=$(env_get "$envf" KH_IMAGE)
+        want_image=""
+        from_local=1
+        ;;
+      *) return 0 ;;
+    esac
+  fi
+  _upgrade_apply "$from_local" "$want_image" "$saved_image"
+  case "$UPGRADE_OUTCOME" in
+    rolled_back | restart_failed) return 1 ;;
+    *) return 0 ;;
+  esac
+}
+
+# cmd_restore <备份文件名>：停容器 → data/ 改名保留 → 新建空 data/ 并对齐属主 → 容器内
+# 执行恢复 → 询问是否启动。文件名只认安装目录 backups/ 下的约定形状，不接受路径参数
+#（防误指到别处的文件）；备份有密码时交互输入，或先 export KH_RESTORE_PASSWORD 跳过交互
+cmd_restore() {
+  local name="${1:-$OPT_RESTORE_NAME}" file bak ts n puid pgid
+  if [ -z "$name" ] || [ -n "${2:-}" ]; then
+    err "用法：bash kanban-hub.sh restore <备份文件名>（backups/ 下的文件名，不带路径）"
+    return 2
+  fi
+  case "$name" in
+    */*)
+      err "只接受 backups/ 下的备份文件名，不接受路径"
+      return 2
+      ;;
+  esac
+  if ! printf '%s' "$name" | grep -Eq "$KH_BACKUP_NAME_RE"; then
+    err "$name 不是本服务生成的备份文件名（应为 kanban-hub-日期-时间.zip）"
+    return 2
+  fi
+  file="$KH_HOME/backups/$name"
+  if [ ! -f "$file" ]; then
+    err "backups/ 里没有 $name"
+    info "    → 可用的备份见 $KH_HOME/backups/（或网页端设置页的备份列表）"
+    return 1
+  fi
+  if ! ui_confirm "恢复将停止服务，并用该备份覆盖当前看板数据；当前 data/ 会先改名保留，继续？" y; then
+    return 1
+  fi
+  if ! compose stop; then
+    err "停止容器失败，已中止恢复（数据未动）"
+    return 1
+  fi
+  puid=$(env_get "$KH_HOME/.env" PUID)
+  pgid=$(env_get "$KH_HOME/.env" PGID)
+  puid="${puid:-1000}"
+  pgid="${pgid:-1000}"
+  # 备份目录名带时间戳；同一秒内再次恢复时加序号，绝不能 mv 进已存在的旧备份目录里
+  ts=$(date +%Y%m%d-%H%M%S)
+  bak="data.bak-$ts"
+  n=0
+  while [ -e "$KH_HOME/$bak" ]; do
+    n=$((n + 1))
+    bak="data.bak-$ts-$n"
+  done
+  if ! { mv "$KH_HOME/data" "$KH_HOME/$bak" 2>/dev/null || as_root mv "$KH_HOME/data" "$KH_HOME/$bak"; }; then
+    err "改名 data/ 失败，已中止恢复（数据未动）"
+    return 1
+  fi
+  info "原数据已保留为 $KH_HOME/${bak}（确认恢复无误后可手动删除）"
+  if ! mkdir "$KH_HOME/data" 2>/dev/null; then
+    if ! as_root mkdir "$KH_HOME/data"; then
+      err "新建 data/ 失败；原数据在 $KH_HOME/${bak}，可改回原名后重试"
+      return 1
+    fi
+  fi
+  if ! fix_owner "$KH_HOME/data" "$puid" "$pgid"; then
+    err "对齐 data/ 属主失败；原数据在 $KH_HOME/${bak}，可改回原名后重试"
+    return 1
+  fi
+  info "正在从备份恢复（备份有密码时按提示输入，或先用环境变量 KH_RESTORE_PASSWORD 提供）…"
+  if compose run --rm kanban-hub restore "/backups/$name"; then
+    ok "恢复完成"
+    if ui_confirm "现在启动服务？" y; then
+      cmd_start
+    else
+      info "稍后运行 bash kanban-hub.sh start 启动服务"
+    fi
+    return 0
+  fi
+  err "恢复失败，看板数据未恢复；原数据完整保留在 $KH_HOME/$bak"
+  info "    → 回退方法：删除新建的空 data/，再把 $bak 改名为 data，然后排查备份密码后重试"
+  return 1
+}
+
+# ===== 13. 入口 =====
 
 cmd_help() {
   cat <<'KH_HELP_EOF'
@@ -1634,6 +2104,8 @@ cmd_help() {
   status      查看运行状态
   logs        查看服务日志（-f 持续跟随）
   config      修改配置
+  upgrade     升级脚本与镜像（--to 指定版本；本地镜像模式提供重建/切回选择）
+  restore     从备份恢复数据（restore <备份文件名>，原数据改名保留）
   doctor      环境自检
   uninstall   卸载
   version     显示脚本版本
@@ -1641,6 +2113,8 @@ cmd_help() {
 
 选项：
   --dir DIR     指定安装目录
+  --to 版本     upgrade 的目标版本（不传则查询最新正式版）
+  --repo 目录   upgrade 本地重建时的仓库路径（默认当前目录）
   -f, --follow  logs 持续跟随输出
   -h, --help    显示本帮助
 KH_HELP_EOF
@@ -1651,11 +2125,23 @@ parse_args() {
     case "$1" in
       --dir) OPT_DIR="${2:-}"; shift ;;
       --dir=*) OPT_DIR="${1#--dir=}" ;;
+      --to) OPT_TO="${2:-}"; shift ;;
+      --to=*) OPT_TO="${1#--to=}" ;;
+      --repo) OPT_REPO="${2:-}"; shift ;;
+      --repo=*) OPT_REPO="${1#--repo=}" ;;
       -f | --follow) OPT_FOLLOW=1 ;;
       -h | --help) CMD=help ;;
       -*) err "未知选项：$1"; return 2 ;;
       *)
-        if [ -z "$CMD" ]; then CMD="$1"; else err "多余的参数：$1"; return 2; fi
+        # restore 额外接受一个位置参数：备份文件名
+        if [ -z "$CMD" ]; then
+          CMD="$1"
+        elif [ "$CMD" = restore ] && [ -z "$OPT_RESTORE_NAME" ]; then
+          OPT_RESTORE_NAME="$1"
+        else
+          err "多余的参数：$1"
+          return 2
+        fi
         ;;
     esac
     shift
@@ -1691,7 +2177,7 @@ main() {
     case "$CMD" in
       "" | install) main_menu ;;
       doctor) cmd_doctor ;;
-      start | stop | restart | status | logs | config | uninstall) require_docker && "cmd_$CMD" ;;
+      start | stop | restart | status | logs | config | uninstall | upgrade | restore) require_docker && "cmd_$CMD" ;;
       *) err "未知命令：$CMD"; return 2 ;;
     esac
     return
@@ -1700,7 +2186,7 @@ main() {
   case "$CMD" in
     # 默认安装目录只取显式给出的（--dir / KH_HOME），不取脚本所在目录——在仓库里跑时那是 deploy/
     "" | install) cmd_install "${OPT_DIR:-${KH_HOME:-}}" ;;
-    start | stop | restart | status | logs | config | doctor | uninstall)
+    start | stop | restart | status | logs | config | doctor | uninstall | upgrade | restore)
       err "kanban-hub 尚未安装（或未找到安装目录），请先运行本脚本安装，或用 --dir 指定安装目录"
       return 1
       ;;

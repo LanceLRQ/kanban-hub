@@ -10,8 +10,8 @@ export type Theme = (typeof THEMES)[number];
 export const MONO_FONTS = ["jetbrains-mono", "ibm-plex-mono", "fira-code"] as const;
 export type MonoFont = (typeof MONO_FONTS)[number];
 
-/** 可选的中文字体，默认第一个 */
-export const CJK_FONTS = ["lxgw-wenkai", "noto-sans-sc", "noto-serif-sc"] as const;
+/** 可选的中文字体，默认第一个（思源黑体） */
+export const CJK_FONTS = ["noto-sans-sc", "lxgw-wenkai", "noto-serif-sc"] as const;
 export type CjkFont = (typeof CJK_FONTS)[number];
 
 /** 页面宽度：宽屏拉满浏览器宽度（默认），窄屏最宽 1240px 居中 */

@@ -86,7 +86,7 @@ export const DATA_GITIGNORE = ["# kanban-hub 数据目录", "/auth/", "/.staging
 export const DATA_GIT_ATTRIBUTES = "* -text -eol -crlf -filter -ident -working-tree-encoding\n";
 /** 启动时读进内存的事件月份数（规格 6.2） */
 export const RECENT_EVENT_MONTHS = 3;
-/** 关闭时等待写入队列和提交的上限 */
+/** 关闭时等待写入队列和提交的上限。要小于关机宽限 SHUTDOWN_GRACE_MS（8 秒），外层超时层级见该常量的注释 */
 export const CLOSE_TIMEOUT_MS = 5_000;
 
 export interface StoreOptions {

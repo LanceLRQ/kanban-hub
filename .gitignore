@@ -46,3 +46,6 @@ next-env.d.ts
 dev-data/
 deploy/data/
 deploy/backups/
+
+# superpowers 技能的会话工作区（进度账本、审查包，本地过程资料）
+.superpowers/

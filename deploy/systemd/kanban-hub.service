@@ -1,0 +1,43 @@
+# kanban-hub 的 systemd 部署示例（不用 Docker 时参考；Docker 部署见仓库 README）。
+#
+# 前置：
+#   1. 宿主机装有 Node 22 及以上和 git；
+#   2. 在仓库根执行 pnpm install && pnpm -F @kanban-hub/web build，
+#      standalone 产物在 apps/web/.next/standalone/ 下（monorepo 里入口嵌套在
+#      apps/web/.next/standalone/apps/web/server.js）；
+#   3. 复制本文件到 /etc/systemd/system/kanban-hub.service，按注释改路径；
+#   4. 管理员密码放在 EnvironmentFile 指向的文件里（权限 600，格式一行
+#      KH_ADMIN_PASSWORD=你的密码）；
+#   5. systemctl daemon-reload && systemctl enable --now kanban-hub。
+#
+# 超时层级（各层时间必须逐级放大，否则优雅关机会被上一层硬杀）：
+#   存储关闭 5 秒（CLOSE_TIMEOUT_MS）< 关机宽限 8 秒（SHUTDOWN_GRACE_MS）
+#   < docker stop 10 秒（Docker 部署时）< 本例 TimeoutStopSec=15。
+[Unit]
+Description=kanban-hub
+After=network.target
+
+[Service]
+Type=simple
+# 运行身份：数据目录与备份目录的属主，不用 root
+User=kanban
+Group=kanban
+WorkingDirectory=/opt/kanban-hub/apps/web/.next/standalone
+# NEXT_MANUAL_SIG_HANDLE：关机由应用处理（先把未提交的改动提交进 git 再退出），
+# Next 不再抢注 SIGTERM/SIGINT，否则它会等所有连接关闭才退出，SSE 长连接会卡到被杀
+Environment=NEXT_MANUAL_SIG_HANDLE=1
+Environment=NODE_ENV=production
+Environment=PORT=28970
+Environment=HOSTNAME=0.0.0.0
+# 数据目录与备份目录必须是绝对路径：standalone 的 server.js 启动时会切换工作目录
+Environment=KH_DATA_DIR=/opt/kanban-hub/data
+Environment=KH_BACKUP_DIR=/opt/kanban-hub/backups
+# 管理员密码的唯一来源（文件权限 600，勿写进本文件）
+EnvironmentFile=/opt/kanban-hub/kanban-hub.env
+ExecStart=/usr/bin/node /opt/kanban-hub/apps/web/.next/standalone/apps/web/server.js
+Restart=on-failure
+# 大于关机宽限（8 秒），给应用留足把改动提交进 git 的时间
+TimeoutStopSec=15
+
+[Install]
+WantedBy=multi-user.target

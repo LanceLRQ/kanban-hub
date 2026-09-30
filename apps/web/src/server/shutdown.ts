@@ -10,7 +10,7 @@ export interface ShutdownDeps {
   graceMs?: number;
 }
 
-/** 关机宽限期：docker stop 默认 10 秒后发 SIGKILL，这里留出余量 */
+/** 关机宽限期：docker stop 默认 10 秒后发 SIGKILL，这里留出余量。要大于存储的 CLOSE_TIMEOUT_MS（5 秒）、小于外层停止超时（docker stop 10 秒、systemd 的 TimeoutStopSec 建议 15 秒），各层逐级放大才不会把优雅关机硬杀在半路 */
 export const SHUTDOWN_GRACE_MS = 8_000;
 
 /**

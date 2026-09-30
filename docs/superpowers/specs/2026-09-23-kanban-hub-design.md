@@ -97,7 +97,7 @@ kanban-hub/
 
 ### 4.3 数据流
 
-1. **上报进度**：AI 执行 `kh task set …`，请求发到 API。服务端用 zod 校验后放进写入队列，依次完成：更新内存 → 原子写 YAML → 往事件文件追加一行 → 登记待提交 → 通过 SSE 通知网页。
+1. **上报进度**：AI 执行 `kh task set …`，请求发到 API。服务端用 zod 校验后放进写入队列，依次完成：原子写 YAML → 往事件文件追加一行 → 替换内存状态 → 登记待提交 → 通过 SSE 通知网页（先落盘再替换内存：写到一半崩溃时内存里仍是旧状态，重启后以磁盘为准）。
 2. **同步文档**：Stop hook 在后台执行内部命令 `kh hook sync`，按第 9 节的三步协议增量推送。Stop 在每一轮回复结束时都会触发，所以本机上一次推送之后没有任何变化、且距上次推送不到 10 分钟时，它不联网，直接跳过。
 3. **会话开始时先更新文档、再注入进度**：SessionStart hook 执行 `kh hook session-start`，先从其他机器拉取安全的文档更新（9.3），再输出精简的进度摘要和未解决的冲突，进入 AI 上下文。
 4. **结束前提醒上报**：Stop hook 发现“有改动但没上报”时，以退出码 2 提醒 AI 一次。
@@ -230,7 +230,7 @@ kanban-hub/
 
 ```
 /data                              ← git 仓库
-├── .gitignore                     # 排除 auth/、.staging/、.tmp/
+├── .gitignore                     # 排除 auth/、.staging/、.tmp/、*.tmp-*（原子写残留）与 /.instance.lock（单实例锁）
 ├── auth/
 │   ├── users.yaml
 │   ├── machines.yaml
@@ -264,6 +264,7 @@ kanban-hub/
 
 - 最后一次写入后 30 秒没有新的写入，就提交一次。备份前会立即提交一次。
 - 同一批改动按操作者（用户 + 机器 + 来源）分组，一组一个提交。
+- 要写的文件已带有**别的**操作者的待提交改动时，先把已有改动提交掉，保证每个提交只含一个操作者的改动。
 - 提交的 author 是对应的用户（`<用户名> <用户ID@kanban-hub.local>`），committer 固定为 `kanban-hub`。
 - 提交说明示例：`cli(mac): 3 项任务状态变更`。
 - 调用系统的 `git` 命令，不用纯 JS 实现。
@@ -278,12 +279,12 @@ kanban-hub/
 
 ### 6.6 备份与恢复
 
-- **触发**：网页 `/settings` 上的按钮，或者 `kh backup`。
+- **触发**：网页 `/settings` 上的按钮，或者 `kh backup [--no-history]`（交互式输入密码，读两遍；无终端时报用法错误——不提供密码参数，避免进 shell 历史）。接口接受网页会话与机器令牌两种鉴权；创建是同步请求（个人规模数据目录小，请求返回即文件就绪），同一时间只允许一个备份任务，进行中再触发返回 409。
 - **格式**：ZIP，用 AES-256（WinZip AE-2）加密。密码为空时不加密。**密码不保存、不写日志**，忘记就无法解密。
-- **内容**：`/data`（可以选择是否包含 `.git` 历史，默认包含）、`auth/`，以及一个 `manifest.json`（格式版本、创建时间、是否含历史）。
-- **一致性**：打包期间暂停写入队列。
-- **产物**：`/backups/kanban-hub-YYYYMMDD-HHmmss.zip`，网页上可以下载。失败时删除写了一半的文件。
-- **恢复**：停止服务后执行 `docker compose run --rm kanban-hub restore /backups/<文件>`。只允许恢复到空的数据目录，否则拒绝执行。
+- **zip 内部结构**：根下 `manifest.json`（`format: "kanban-hub-backup"`、`version`、创建时间、是否含历史、备份时的服务端版本）与 `data/` 目录（数据目录全量，含 `auth/`——凭据文件不进 git 历史但会进备份；不含历史时只排除数据目录根上的 `.git`；单实例锁文件不打包）。恢复时不认识的 `format` 或超出支持的 `version` 拒绝。
+- **一致性**：备份作为写入队列里的一项执行（打包期间写入自然暂停），开始前先把待提交的改动提交进 git。
+- **产物**：`/backups/kanban-hub-YYYYMMDD-HHmmss.zip`（本机时区；同秒冲突依次加 `-1`、`-2`），网页上可以下载。先写临时文件成功后改名，失败时删除写了一半的文件。
+- **恢复**：停止服务后执行 `docker compose run --rm kanban-hub restore /backups/<文件>`（或部署管理脚本的 `restore` 命令，它会先把原 `data/` 改名留存）。restore 先打印 manifest 摘要、确认后执行；密码优先级 `--password` 参数 > `KH_RESTORE_PASSWORD` 环境变量 > 终端交互输入（不回显，直接回车表示备份未加密；帮助文案提醒命令行密码会进 shell 历史）。只允许恢复到空的数据目录（是普通文件同样拒绝），否则拒绝执行；解压先落 `.restore-tmp/` 暂存、全部成功后再就位，失败时目标目录保持空、可重试；zip 内路径必须落在 `data/` 下且不含 `..`、绝对路径或反斜杠，否则拒绝。
 
 ## 7. 鉴权
 
@@ -697,15 +698,18 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 | `TZ` | 时区 |
 
 - 挂载 `./data:/data`、`./backups:/backups`。
+- 镜像发布在 Docker Hub（`lancelrq/kanban-hub`，amd64 与 arm64），由 `v*.*.*` tag 触发的 CI 构建推送；手动部署也可以用仓库里的 compose 从源码构建。
 - 镜像里自带 git，健康检查走 `/api/health`。
 - 入口脚本支持两个子命令：`serve`（默认）和 `restore <文件>`。
+- **一键部署**：`curl -fsSL https://raw.githubusercontent.com/LanceLRQ/kanban-hub/main/deploy/kanban-hub.sh | bash` 交互向导完成安装（确认前不写任何文件），此后在安装目录里手动运行同一个脚本管理：`start` / `stop` / `restart` / `status` / `logs` / `config` / `doctor` / `uninstall` / `upgrade [--to <版本>]` / `restore <备份文件名>`。升级支持脚本自更新与模板同步（手改过 compose 时展示差异确认）；`restore` 会先停容器、把原 `data/` 改名留存再走容器的恢复入口。脚本只支持 Linux 宿主机。
 - 网页每个可见的标签页维护一条到 `/api/v1/stream` 的 SSE 长连接，隐藏满 5 秒后断开、重新可见时再连上并刷新一次。浏览器对同一主机的并发连接数有限（HTTP/1.1 下通常是 6 条），直连 HTTP 部署时同时开着的可见窗口过多仍会占满连接数；放在支持 HTTP/2 的反向代理后面，就不受这个限制。
 
 ### 14.2 文件属主与权限
 
 - 运行阶段用 `USER node`，compose 里设置 `user: "${PUID}:${PGID}"`，不以 root 运行。
 - 挂载目录必须提前在宿主机上建好（`mkdir -p data backups`）。否则 Docker 会以 root 身份自动创建它们。
-- 启动时自检：`/data`、`/backups` 不可写就立即退出，并打印应该执行的 `chown` 命令。
+- 镜像不预建 `/data`、`/backups`：漏挂载时启动自检直接报"目录不存在，请检查挂载"并给出 compose 挂载示例，而不是在容器里悄悄新建目录。一键脚本的向导与 `start` 会自动建目录并对齐属主。
+- 启动时自检：`/data`、`/backups` 不可写就立即退出，并打印应该执行的 `chown` 命令；同一数据目录有第二个进程持有单实例锁时拒绝启动。
 - 入口脚本在启动 node 之前：执行 `umask $UMASK`；把 `HOME` 设成一个可写的目录；设置 `GIT_COMMITTER_NAME=kanban-hub`；镜像里预先配置 `safe.directory=/data`。原因是容器的 UID 在系统里可能没有对应的用户，git 会因为缺少 HOME 或提交者身份而出错。
 
 ### 14.3 开发
@@ -720,7 +724,7 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 
 ### 14.4 不用 Docker
 
-也可以执行 `pnpm build` 后，用 node 直接运行 standalone 产物里的 `server.js`（monorepo 下它嵌套在 `.next/standalone/apps/web/` 里），配合 systemd 常驻，文档里给出 unit 示例。这种方式要求宿主机装有 Node 22 及以上和 git。
+也可以执行 `pnpm build` 后，用 node 直接运行 standalone 产物里的 `server.js`（monorepo 下它嵌套在 `.next/standalone/apps/web/` 里），配合 systemd 常驻；unit 示例见仓库的 `deploy/systemd/kanban-hub.service`（要点：`NEXT_MANUAL_SIG_HANDLE=1`、`TimeoutStopSec` 大于 8 秒的关机宽限、数据目录用绝对路径——standalone 启动时会切换工作目录）。这种方式要求宿主机装有 Node 22 及以上和 git。
 
 ## 15. 错误处理
 
@@ -750,11 +754,11 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 | API 测试 | 直接调用 route handler：鉴权（令牌、会话、吊销、配对限流）、400、409、426、同步三步协议、拒绝路径穿越、`/raw` 令牌校验与响应头 |
 | `kh` 测试 | 对接进程内启动的测试服务端：命令行为与退出码；`register` 的指纹匹配；`pull` 在临时仓库里的实际写入效果（新建、覆盖、`git merge-file` 自动合并、登记冲突、跳过被 git 跟踪的文件、从不删除本地文件、`--dry-run` 不写任何东西）；`conflicts show` 的输出和 `conflicts resolve` 之后的基准更新；会话开始时自动拉取超时后的提示；`setup` 合并 `settings.json` 时不破坏已有配置；hook 在没有 `.kanban-hub/` 或服务端连不上时静默、提醒只出现一次 |
 | 页面组件 | eslint、`tsc --noEmit`、`next build`；不引入浏览器端测试框架 |
-| Docker 部署 | 手工验收清单：构建、启动、健康检查、以 PUID 身份写出的文件属主、从备份恢复 |
+| Docker 部署 | 手工验收清单：构建、启动、健康检查、以 PUID 身份写出的文件属主、从备份恢复、多架构镜像抽查 |
 
 ## 17. 硬约束
 
-- 开发阶段不建 CI 配置（`.github/workflows/`），到准备发布时再加。
+- CI 仅由 `v*.*.*` 格式的 tag 触发（`.github/workflows/docker-publish.yml`：全量校验后构建 amd64 与 arm64 镜像发布到 Docker Hub）；main 与 dev 的日常推送不触发任何 workflow。
 - 第一版不引入数据库，存储细节封装在存储模块里。
 - 不侵入被管理的仓库：`kh` 平时只在仓库里写 `.kanban-hub/` 和 `.git/info/exclude`，其余一律只读。唯一的例外是拉取（会话开始时自动执行，或者手动执行 `kh pull`）：只写同步范围内、没有被 git 跟踪的文件，而且从不删除本地文件。可以用 `pull.auto: false` 关闭自动拉取。
 - 所有功能先写测试再写实现。

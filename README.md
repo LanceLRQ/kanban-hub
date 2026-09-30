@@ -73,6 +73,16 @@ docker compose up -d --build
 
 开发机需要 Node 22 及以上和 git。
 
+## 界面预览
+
+项目看板：按阶段 / 特性分组的任务、状态和“待你处理”标记。
+
+![项目看板](docs/images/screenshot-board.webp)
+
+文档浏览：各开发机推送上来的仓库文档，Markdown 直接渲染。
+
+![文档浏览](docs/images/screenshot-docs.webp)
+
 ## 文档
 
 用户手册在 [`docs/guide/`](docs/guide/README.md)：

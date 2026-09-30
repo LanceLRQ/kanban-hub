@@ -2076,7 +2076,9 @@ cmd_restore() {
     return 1
   fi
   info "正在从备份恢复（备份有密码时按提示输入，或先用环境变量 KH_RESTORE_PASSWORD 提供）…"
-  if compose run --rm kanban-hub restore "/backups/$name"; then
+  # -e 不带值：从当前 shell 继承 KH_RESTORE_PASSWORD，导出过才透传（密码不进命令行参数，
+  # 也不进进程列表）；没导出时容器里同样没有这个变量，restore 会照常交互询问
+  if compose run --rm -e KH_RESTORE_PASSWORD kanban-hub restore "/backups/$name"; then
     ok "恢复完成"
     if ui_confirm "现在启动服务？" y; then
       cmd_start

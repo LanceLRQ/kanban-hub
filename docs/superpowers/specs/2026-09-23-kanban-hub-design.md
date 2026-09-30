@@ -710,7 +710,7 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 - 挂载目录必须提前在宿主机上建好（`mkdir -p data backups`）。否则 Docker 会以 root 身份自动创建它们。
 - 镜像不预建 `/data`、`/backups`：漏挂载时启动自检直接报"目录不存在，请检查挂载"并给出 compose 挂载示例，而不是在容器里悄悄新建目录。一键脚本的向导与 `start` 会自动建目录并对齐属主。
 - 启动时自检：`/data`、`/backups` 不可写就立即退出，并打印应该执行的 `chown` 命令；同一数据目录有第二个进程持有单实例锁时拒绝启动。
-- 入口脚本在启动 node 之前：执行 `umask $UMASK`；把 `HOME` 设成一个可写的目录；设置 `GIT_COMMITTER_NAME=kanban-hub`；镜像里预先配置 `safe.directory=/data`。原因是容器的 UID 在系统里可能没有对应的用户，git 会因为缺少 HOME 或提交者身份而出错。
+- 入口脚本在启动 node 之前：执行 `umask $UMASK`；把 `HOME` 设成一个可写的目录；镜像里预先配置 `safe.directory=/data`。原因是容器的 UID 在系统里可能没有对应的用户，git 会因为缺少 HOME 而出错。提交者身份不靠入口脚本设置：存储层在每次 git 调用时随命令提供（并剥离继承的 `GIT_*` 变量），见 6.4。
 
 ### 14.3 开发
 

@@ -231,8 +231,8 @@ assert_cond "备份不存在时 data/ 未被改名" test -f "$KH2/data/old.txt"
 r=$(printf 'y\nn\n' | kh_run "$WITH2 cmd_restore kanban-hub-20260929-120000.zip >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
 assert_eq "restore 成功" "rc=0" "$r"
 assert_contains "restore 先停止容器" "docker compose stop" "$(cat "$LOG")"
-assert_contains "restore 经容器执行恢复并指向 /backups" \
-  "docker compose run --rm kanban-hub restore /backups/kanban-hub-20260929-120000.zip" "$(cat "$LOG")"
+assert_contains "restore 经容器执行恢复、透传密码环境变量并指向 /backups" \
+  "docker compose run --rm -e KH_RESTORE_PASSWORD kanban-hub restore /backups/kanban-hub-20260929-120000.zip" "$(cat "$LOG")"
 assert_cond "原数据改名保留（data.bak-时间戳）" test -f "$KH2"/data.bak-*/old.txt
 assert_eq "新建的 data/ 为空" "" "$(ls -A "$KH2/data")"
 assert_not_contains "询问启动回答否则不启动服务" "compose up" "$(cat "$LOG")"

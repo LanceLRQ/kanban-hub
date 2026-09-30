@@ -1,6 +1,6 @@
 {
   "name": "@kanban-hub/web",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "private": true,
   "scripts": {
     "dev": "KH_ADMIN_PASSWORD=\"${KH_ADMIN_PASSWORD:-dev}\" KH_DATA_DIR=\"$(cd ../.. && pwd)/dev-data/data\" KH_BACKUP_DIR=\"$(cd ../.. && pwd)/dev-data/backups\" KH_CLI_PACKAGE=\"$(cd ../.. && pwd)/packages/cli/dist/kh.tgz\" next dev -p 28970",

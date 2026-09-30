@@ -16,7 +16,7 @@ fi
 # ===== 1. 常量与可覆盖路径 =====
 
 # 脚本自身版本与内嵌模板版本相互独立：改模板只需后者 +1
-KH_SCRIPT_VERSION="0.1.0"
+KH_SCRIPT_VERSION="0.1.1"
 KH_TEMPLATE_VERSION=1
 KH_HUB_IMAGE="lancelrq/kanban-hub"
 # 本地构建镜像固定用这个名:tag，不随仓库/机器变化

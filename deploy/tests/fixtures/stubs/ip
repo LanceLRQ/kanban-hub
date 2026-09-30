@@ -1,0 +1,3 @@
+#!/usr/bin/env bash
+# 测试用 ip 桩：什么都不输出，模拟拿不到局域网地址；有 IP 的场景由 hostname 桩的 STUB_IPS 提供
+exit 0

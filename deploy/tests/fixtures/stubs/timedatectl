@@ -1,0 +1,6 @@
+#!/usr/bin/env bash
+# 测试用 timedatectl 桩：输出 $STUB_TIMEZONE（可为空），不读宿主机的真实时区
+if [ -n "${STUB_TIMEZONE:-}" ]; then
+  printf '%s\n' "$STUB_TIMEZONE"
+fi
+exit 0

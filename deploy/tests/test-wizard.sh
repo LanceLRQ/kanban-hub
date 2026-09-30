@@ -13,7 +13,7 @@ KH_PLAIN=1
 # shellcheck disable=SC1090  # 被测脚本路径经 lib.sh 注入
 . "$KH_TEST_SCRIPT"
 
-BIN=$(stub_bin hostname ss)
+BIN=$(stub_bin hostname ss ip timedatectl)
 
 # --- 版本常量 ---
 case "$KH_SCRIPT_VERSION" in
@@ -70,9 +70,10 @@ assert_no_cond "valid_public_url 拒绝含单引号" valid_public_url "http://a'
 ETC="$(temp_dir)/etc"
 mkdir -p "$ETC"
 printf 'Asia/Shanghai\n' >"$ETC/timezone"
-assert_eq "detect_timezone 读 /etc/timezone" "Asia/Shanghai" "$(KH_ETC="$ETC" detect_timezone)"
+assert_eq "detect_timezone 读 /etc/timezone" "Asia/Shanghai" "$(PATH=$(path_with "$BIN") KH_ETC="$ETC" detect_timezone)"
 rm -f "$ETC/timezone"
-assert_eq "detect_timezone 拿不到时按 UTC" "UTC" "$(KH_ETC="$ETC" detect_timezone)"
+assert_eq "detect_timezone 拿不到时按 UTC" "UTC" "$(PATH=$(path_with "$BIN") KH_ETC="$ETC" detect_timezone)"
+assert_eq "detect_timezone 读 timedatectl" "Europe/Berlin" "$(PATH=$(path_with "$BIN") STUB_TIMEZONE=Europe/Berlin KH_ETC="$ETC" detect_timezone)"
 
 # --- choose_password：留空随机生成，只此一次标记 ---
 r=$(printf '\n' | PATH=$(path_with "$BIN") kh_run 'choose_password >/dev/null 2>&1; printf "%s|%s|%s" "${#W_PASSWORD}" "$W_PASSWORD_GENERATED" "$(printf "%s" "$W_PASSWORD" | tr -d "A-Za-z0-9")"')

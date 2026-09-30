@@ -586,9 +586,11 @@ _ui_menu_draw() {
   printf '\r\033[K  %s%s%s\n' "$(kh_sgr 2)" "↑↓ 选择   Enter 确认   q 返回" "$(kh_sgr 0)" >&2
 }
 
-# ui_input 提示 默认值 → UI_VALUE。终端模式支持 ←→ 移动光标与退格（按字节计，面向 ASCII 路径与数字）
+# ui_input 提示 默认值 [说明] → UI_VALUE。终端模式支持 ←→ 移动光标与退格（按字节计，面向 ASCII 路径与数字）。
+# 说明单独占一行、只打印一次：编辑行每次按键用 \r 重画，提示折行后 \r 只回到最后一行，长说明必须挪出编辑行
 ui_input() {
-  local prompt="$1" def="${2:-}" buf pos key ch
+  local prompt="$1" def="${2:-}" hint="${3:-}" buf pos key ch
+  if [ -n "$hint" ]; then printf '%s%s%s\n' "$(kh_sgr 2)" "$hint" "$(kh_sgr 0)" >&2; fi
   if ui_plain; then
     if [ -n "$def" ]; then printf '%s [%s]: ' "$prompt" "$def" >&2; else printf '%s: ' "$prompt" >&2; fi
     ui_read_line buf || return 1
@@ -906,18 +908,6 @@ ensure_dir_writable() {
   as_root mkdir -p "$d" && as_root chown "$(id -u):$(id -g)" "$d"
 }
 
-# 对外访问地址的向导默认值：监听所有网卡时按第一个局域网 IP 推断，否则留空
-public_url_default() {
-  local ip=""
-  case "${1:-}" in
-    "" | 0.0.0.0) ip=$(lan_ips | head -n 1) ;;
-  esac
-  if [ -n "$ip" ]; then
-    printf 'http://%s:%s' "$ip" "${2:-$KH_DEFAULT_PORT}"
-  fi
-  return 0
-}
-
 # KH_PUBLIC_URL 形如 http(s)://host[:port][/path]；空值合法（=服务按请求 Host 自动识别）
 valid_public_url() {
   case "$1" in
@@ -1079,13 +1069,12 @@ choose_identity() {
   W_PGID="${v#*:}"
 }
 
-# 设置 W_PUBLIC_URL。默认值优先取现值（config 修改时直接回车不丢已存地址）；
-# 全新安装无现值时退回按局域网 IP 推断。输入 - 显式清空 = 服务按请求 Host 自动识别——
-# 直接回车只会接受默认值，没有这个入口就永远无法置空
+# 设置 W_PUBLIC_URL。默认值取现值（config 修改时直接回车不丢已存地址），全新安装默认留空 =
+# 服务按请求 Host 自动识别。输入 - 显式清空——直接回车只会接受默认值，没有这个入口就无法把已存值置空
 choose_public_url() {
   while :; do
-    ui_input "对外访问地址（接入引导展示给 agent 用；输入 - 清空，留空确认则由服务按请求 Host 自动识别）" \
-      "${W_PUBLIC_URL:-$(public_url_default "$W_BIND" "$W_PORT")}" || return 1
+    ui_input "对外访问地址" "$W_PUBLIC_URL" \
+      "接入引导展示给 agent 的服务地址。留空则按请求 Host 自动识别；已有值时输入 - 清空" || return 1
     if [ "$UI_VALUE" = "-" ]; then
       W_PUBLIC_URL=""
       return 0
@@ -1478,7 +1467,7 @@ main_menu() {
       4) cmd_config ;;
       5) cmd_upgrade ;;
       6)
-        ui_input "备份文件名（backups/ 下，形如 kanban-hub-20260929-120000.zip）" "" && cmd_restore "$UI_VALUE"
+        ui_input "备份文件名" "" "backups/ 下的文件名，形如 kanban-hub-20260929-120000.zip" && cmd_restore "$UI_VALUE"
         ;;
       7) cmd_doctor ;;
       8) cmd_uninstall && [ ! -d "$KH_HOME" ] && return 0 ;;

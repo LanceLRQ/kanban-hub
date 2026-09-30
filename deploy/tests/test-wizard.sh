@@ -36,16 +36,6 @@ assert_eq "向导默认运行身份为当前用户" "$(id -u):$(id -g)" "$W_PUID
 assert_eq "向导默认密码为空" "" "$W_PASSWORD"
 assert_eq "向导默认对外地址为空" "" "$W_PUBLIC_URL"
 
-# --- public_url_default：按局域网 IP 推断 ---
-r=$(PATH=$(path_with "$BIN") STUB_IPS="192.168.1.20 10.0.0.5" public_url_default 0.0.0.0 28970)
-assert_eq "对外地址默认按第一个局域网 IP 推断" "http://192.168.1.20:28970" "$r"
-r=$(PATH=$(path_with "$BIN") STUB_IPS="192.168.1.20" public_url_default "" 31000)
-assert_eq "对外地址默认带上传入端口" "http://192.168.1.20:31000" "$r"
-r=$(PATH=$(path_with "$BIN") STUB_IPS="192.168.1.20" public_url_default 127.0.0.1 28970)
-assert_eq "仅本机监听时对外地址默认留空" "" "$r"
-r=$(PATH=$(path_with "$BIN") STUB_IPS="" public_url_default 0.0.0.0 28970)
-assert_eq "拿不到局域网 IP 时留空" "" "$r"
-
 # --- 校验器 ---
 assert_cond "valid_port 接受常规端口" valid_port 28970
 assert_no_cond "valid_port 拒绝 0" valid_port 0
@@ -119,9 +109,13 @@ assert_eq "choose_timezone 回车采用默认" "Asia/Shanghai" "$r"
 r=$(printf 'Bad TZ\nAsia/Shanghai\n' | PATH=$(path_with "$BIN") kh_run 'choose_timezone >/dev/null 2>&1; printf "%s" "$W_TZ"')
 assert_eq "choose_timezone 拒绝含空格的时区" "Asia/Shanghai" "$r"
 
+# --- ui_input 说明行：单独一行打印，编辑行只留短提示 ---
+r=$(printf 'x\n' | kh_run 'ui_input "标题" "" "一段说明" 2>&1 >/dev/null')
+assert_eq "ui_input 说明单独成行、提示保持简短" "$(printf '一段说明\n标题: ')" "$r"
+
 # --- choose_public_url ---
-r=$(printf '\n' | PATH=$(path_with "$BIN") STUB_IPS="192.168.1.20" kh_run 'wizard_defaults; choose_public_url >/dev/null 2>&1; printf "%s" "$W_PUBLIC_URL"')
-assert_eq "choose_public_url 回车采用推断的默认值" "http://192.168.1.20:28970" "$r"
+r=$(printf '\n' | PATH=$(path_with "$BIN") STUB_IPS="192.168.1.20" kh_run 'wizard_defaults; choose_public_url >/dev/null 2>&1; printf "rc=%s url=[%s]" "$?" "$W_PUBLIC_URL"')
+assert_eq "choose_public_url 全新安装回车留空（不按局域网 IP 推断）" "rc=0 url=[]" "$r"
 
 r=$(printf 'ftp://x\nhttps://kb.example.com\n' | PATH=$(path_with "$BIN") kh_run 'choose_public_url >/dev/null 2>&1; printf "%s" "$W_PUBLIC_URL"')
 assert_eq "choose_public_url 拒绝非 http(s) 后采用合法值" "https://kb.example.com" "$r"

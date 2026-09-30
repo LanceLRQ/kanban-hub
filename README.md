@@ -93,7 +93,7 @@ docker compose up -d --build
 
 当前版本是 0.1.0。
 
-一键安装脚本从 Docker Hub 拉取镜像（`lancelrq/kanban-hub`，amd64 与 arm64）。镜像发布之前，请用上面的 Docker Compose 方式从源码构建。
+镜像发布在 Docker Hub：`lancelrq/kanban-hub`，有 amd64 和 arm64 两种架构，一键安装脚本默认从这里拉取。
 
 目前只有一个管理员账号，适合个人使用，部署在局域网或 HTTPS 反向代理后面。
 

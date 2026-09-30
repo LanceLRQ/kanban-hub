@@ -35,7 +35,11 @@ export async function ProjectCard({ project, now, index }: { project: ProjectCar
       href={`/p/${project.id}`}
       data-tone={tone}
       className={cn(
-        "kh-overview-card flex flex-col gap-3 rounded-md border bg-card p-4.5 shadow-[var(--shadow-raised)] transition-transform hover:-translate-y-0.5",
+        // min-w-0：卡片是 grid item，默认 min-width:auto 会取内容的 min-content——
+        // 卡片里 truncate 省略的长文本（仓库路径、最近活动）在窄屏下把整张卡顶到
+        // 近 1000px 宽，撑破网格和页面（横向溢出）。显式 0 解除，让卡片收缩到
+        // 轨道宽、截断在卡片内部发生。
+        "kh-overview-card flex min-w-0 flex-col gap-3 rounded-md border bg-card p-4.5 shadow-[var(--shadow-raised)] transition-transform hover:-translate-y-0.5",
         RADIUS_CLASSES[tone],
         archived && "opacity-60",
       )}

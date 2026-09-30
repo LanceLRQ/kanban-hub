@@ -92,9 +92,9 @@ assert_eq "非法版本不动 .env" "$KH_SCRIPT_VERSION" "$(env_get "$D/.env" KH
 r=$(printf '' | PATH=$(path_with "$BIN") kh_run "KH_HOME=$D; OPT_TO=1.2.3-rc.1; parse_args upgrade --to \"\$OPT_TO\"; valid_version \"\$OPT_TO\"; printf 'rc=%s' \"\$?\"")
 assert_eq "合法预发布版本通过校验" "rc=0" "$r"
 
-# --- _upgrade_apply：降级警告与拒绝 ---
+# --- _upgrade_apply：降级警告与拒绝 ---（目标版本必须低于 KH_SCRIPT_VERSION，当前 0.1.0）
 D=$(make_install)
-r=$(printf 'n\n' | PATH=$(path_with "$BIN") kh_run "KH_HOME=$D; OPT_TO=0.9.0; _upgrade_apply 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$UPGRADE_OUTCOME\"")
+r=$(printf 'n\n' | PATH=$(path_with "$BIN") kh_run "KH_HOME=$D; OPT_TO=0.0.1; _upgrade_apply 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$UPGRADE_OUTCOME\"")
 assert_contains "降级被拒绝则 declined 且不算失败" "rc=0|declined" "$r"
 assert_contains "降级时给出警告" "降级" "$r"
 assert_eq "拒绝后 .env 版本未动" "$KH_SCRIPT_VERSION" "$(env_get "$D/.env" KH_VERSION)"

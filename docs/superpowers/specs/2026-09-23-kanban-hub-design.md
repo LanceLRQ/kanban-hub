@@ -698,7 +698,7 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 | `TZ` | 时区 |
 
 - 挂载 `./data:/data`、`./backups:/backups`。
-- 镜像发布在 Docker Hub（`lancelrq/kanban-hub`，amd64 与 arm64），由 `v*.*.*` tag 触发的 CI 构建推送；手动部署也可以用仓库里的 compose 从源码构建。
+- 镜像发布在 Docker Hub（`lancelrq/kanban-hub`，amd64 与 arm64），由 `v*.*.*` tag 触发的 CI 构建推送；手动部署也可以用仓库里的 compose 从源码构建。**发版纪律**：`packages/core` 的 `version` 与部署脚本的 `KH_SCRIPT_VERSION` 是两个版本序列，但发版时必须一起递增到同一个号再打 tag——CI 校验 tag 与 core 版本一致，脚本的自更新按 `KH_SCRIPT_VERSION` 精确匹配，只 bump 一边会让一键安装拉不到镜像或 `upgrade` 以 self_version_mismatch 失败。
 - 镜像里自带 git，健康检查走 `/api/health`。
 - 入口脚本支持两个子命令：`serve`（默认）和 `restore <文件>`。
 - **一键部署**：`curl -fsSL https://raw.githubusercontent.com/LanceLRQ/kanban-hub/main/deploy/kanban-hub.sh | bash` 交互向导完成安装（确认前不写任何文件），此后在安装目录里手动运行同一个脚本管理：`start` / `stop` / `restart` / `status` / `logs` / `config` / `doctor` / `uninstall` / `upgrade [--to <版本>]` / `restore <备份文件名>`。升级支持脚本自更新与模板同步（手改过 compose 时展示差异确认）；`restore` 会先停容器、把原 `data/` 改名留存再走容器的恢复入口。脚本只支持 Linux 宿主机。

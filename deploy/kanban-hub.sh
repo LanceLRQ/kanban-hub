@@ -1829,7 +1829,7 @@ _upgrade_apply() {
   fi
   if [ -z "$target" ]; then
     info "正在查询最新版本…"
-    target=$(fetch_latest_version)
+    target=$(fetch_latest_version 10)
     if [ -z "$target" ]; then
       err "查询最新版本失败（可离线指定：bash kanban-hub.sh upgrade --to <版本号>）"
       UPGRADE_OUTCOME=rolled_back

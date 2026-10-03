@@ -10,6 +10,25 @@
  * 层顺序、不看选择器优先级，不用拔高声明的优先级就能盖过 Tailwind 工具类。
  */
 
+/*
+ * 项目卡片的不对称圆角按网格里的可见顺序循环，只在主题 B 下有差别（主题 A 下 --radius-a..d 都等于 --radius）。
+ * 放在 components 层，与原来的 .kh-radius-a..d 工具类同一层，和 Tailwind 工具类的先后关系不变。
+ */
+@layer components {
+  .kh-project-grid > .kh-overview-card:nth-child(4n + 1) {
+    border-radius: var(--radius-a);
+  }
+  .kh-project-grid > .kh-overview-card:nth-child(4n + 2) {
+    border-radius: var(--radius-b);
+  }
+  .kh-project-grid > .kh-overview-card:nth-child(4n + 3) {
+    border-radius: var(--radius-c);
+  }
+  .kh-project-grid > .kh-overview-card:nth-child(4n) {
+    border-radius: var(--radius-d);
+  }
+}
+
 @layer kh-base {
   /* ---------- 收件箱胶带：默认隐藏，只在主题 B 下显示 ---------- */
   .kh-overview-tape {
@@ -68,17 +87,17 @@
     font-size: 0.8125rem;
   }
 
-  /* ---------- 项目卡片：纸色区分 ---------- */
-  [data-theme="collage"] .kh-overview-card[data-tone="0"] {
+  /* ---------- 项目卡片：纸色按网格里的可见顺序循环区分 ---------- */
+  [data-theme="collage"] .kh-project-grid > .kh-overview-card:nth-child(4n + 1) {
     background: var(--paper-cream);
   }
-  [data-theme="collage"] .kh-overview-card[data-tone="1"] {
+  [data-theme="collage"] .kh-project-grid > .kh-overview-card:nth-child(4n + 2) {
     background: var(--paper-gray);
   }
-  [data-theme="collage"] .kh-overview-card[data-tone="2"] {
+  [data-theme="collage"] .kh-project-grid > .kh-overview-card:nth-child(4n + 3) {
     background: var(--paper-sage);
   }
-  [data-theme="collage"] .kh-overview-card[data-tone="3"] {
+  [data-theme="collage"] .kh-project-grid > .kh-overview-card:nth-child(4n) {
     background: var(--paper-kraft);
   }
 

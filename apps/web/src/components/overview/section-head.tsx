@@ -18,7 +18,7 @@ export function SectionHead({
 }: {
   no?: string;
   title: string;
-  count: number;
+  count: number | string;
   tag: string;
   tone?: "attention" | "default";
 }) {

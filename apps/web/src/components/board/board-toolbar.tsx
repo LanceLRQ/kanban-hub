@@ -5,6 +5,7 @@ import { TASK_STATUSES, type TaskStatus } from "@kanban-hub/core/schema";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { BOARD_SORTS, isDefaultBoardView, type BoardSort, type BoardViewState } from "@/lib/board-filter";
+import { FilterChip } from "@/components/filters/filter-chip";
 import { StatusMark } from "./marks";
 
 interface BoardToolbarProps {
@@ -35,15 +36,15 @@ export function BoardToolbar({ state, onChange, onReset }: BoardToolbarProps) {
     <div role="group" aria-label={t("toolbar.ariaLabel")} className="kh-board-toolbar flex flex-wrap items-center gap-x-4 gap-y-2.5">
       <div role="group" aria-label={t("toolbar.statusGroup")} className="flex flex-wrap items-center gap-2">
         {TASK_STATUSES.map((status) => (
-          <Chip key={status} active={selected.has(status)} onClick={() => toggleStatus(status)}>
+          <FilterChip key={status} active={selected.has(status)} onClick={() => toggleStatus(status)}>
             <StatusMark status={status} small />
             {te(`taskStatus.${status}`)}
-          </Chip>
+          </FilterChip>
         ))}
       </div>
-      <Chip active={state.humanOnly} onClick={() => onChange({ ...state, humanOnly: !state.humanOnly })}>
+      <FilterChip active={state.humanOnly} onClick={() => onChange({ ...state, humanOnly: !state.humanOnly })}>
         {t("toolbar.humanOnly")}
-      </Chip>
+      </FilterChip>
       <div className="flex flex-wrap items-center gap-2">
         <Select value={state.sort} onValueChange={(sort) => onChange({ ...state, sort: sort as BoardSort })}>
           <SelectTrigger size="sm" aria-label={t("toolbar.sortLabel")} className="kh-board-sort bg-card text-[13px] font-semibold">
@@ -64,7 +65,7 @@ export function BoardToolbar({ state, onChange, onReset }: BoardToolbarProps) {
             size="sm"
             data-testid="board-direction"
             onClick={() => onChange({ ...state, direction: state.direction === "desc" ? "asc" : "desc" })}
-            className="kh-board-filter-chip"
+            className="kh-filter-chip"
           >
             {t(`toolbar.direction.${state.direction}`)}
           </Button>
@@ -76,20 +77,5 @@ export function BoardToolbar({ state, onChange, onReset }: BoardToolbarProps) {
         </Button>
       )}
     </div>
-  );
-}
-
-function Chip({ active, onClick, children }: { active: boolean; onClick: () => void; children: React.ReactNode }) {
-  return (
-    <Button
-      type="button"
-      variant={active ? "secondary" : "outline"}
-      size="sm"
-      aria-pressed={active}
-      onClick={onClick}
-      className="kh-board-filter-chip"
-    >
-      {children}
-    </Button>
   );
 }

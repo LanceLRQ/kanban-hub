@@ -44,6 +44,9 @@ export interface ProjectCardView {
   name: string;
   cycle: Cycle;
   health: Health;
+  createdAt: string;
+  /** 最近一条事件的时间；没有任何事件时为 null */
+  lastEventAt: string | null;
   focus: string;
   progress: Progress;
   lastEvent: ProjectCardLastEvent | null;
@@ -161,6 +164,8 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
         name: project.name,
         cycle: project.cycle,
         health: project.health,
+        createdAt: project.createdAt,
+        lastEventAt,
         focus: project.focus,
         progress: projectProgress(board as unknown as Board),
         lastEvent,

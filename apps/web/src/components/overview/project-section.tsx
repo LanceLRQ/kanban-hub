@@ -4,26 +4,38 @@ import { buttonVariants } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { OverviewView } from "@/server/views/overview";
 import { ProjectCard } from "./project-card";
+import { ProjectGrid } from "./project-grid";
 import { SectionHead } from "./section-head";
 
-/** 项目列表页的区块：卡片网格；没有项目时显示提示和去接入页的链接 */
+/**
+ * 项目列表页的区块：先在服务端把每张卡片渲染成节点，再交给客户端的 ProjectGrid 做筛选与排序；
+ * 没有项目时显示提示和去接入页的链接，不显示工具栏。
+ */
 export async function ProjectSection({ view, now }: { view: OverviewView; now: Date }) {
   const t = await getTranslations("overview");
 
-  return (
-    <section>
-      <SectionHead title={t("projects.heading")} count={view.projects.length} tag="projects" />
-      {view.projects.length === 0 ? (
+  if (view.projects.length === 0) {
+    return (
+      <section>
+        <SectionHead title={t("projects.heading")} count={0} tag="projects" />
         <NoProjectsHint />
-      ) : (
-        <div className="grid gap-5 sm:grid-cols-2 xl:grid-cols-4 @[100rem]:grid-cols-5 @[120rem]:grid-cols-6">
-          {view.projects.map((project, index) => (
-            <ProjectCard key={project.id} project={project} now={now} index={index} />
-          ))}
-        </div>
-      )}
-    </section>
-  );
+      </section>
+    );
+  }
+
+  const items = view.projects.map((project) => ({
+    meta: {
+      id: project.id,
+      cycle: project.cycle,
+      health: project.health,
+      progress: project.progress,
+      createdAt: project.createdAt,
+      lastEventAt: project.lastEventAt,
+    },
+    node: <ProjectCard key={project.id} project={project} now={now} />,
+  }));
+
+  return <ProjectGrid items={items} title={t("projects.heading")} tag="projects" />;
 }
 
 /** 还没有任何项目时的提示和去接入页的链接；项目列表页和首页共用 */

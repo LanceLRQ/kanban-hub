@@ -185,6 +185,17 @@ describe("buildOverview：项目卡片", () => {
     expect(spy).not.toHaveBeenCalled();
   });
 
+  it("带上创建时间和最近事件时间（没有事件时为 null）", async () => {
+    api = await setupTestApi();
+    const { project } = await projectWithContainer(api, "kanban-hub");
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
+    const card = view.projects.find((p) => p.id === project.id)!;
+    expect(card.createdAt).toBe(project.createdAt);
+    expect(card.lastEventAt).toBe(api.store.getLastEventAt(project.id));
+    expect(card.lastEventAt).not.toBeNull();
+    expect(card.lastEventAt).toBe(card.lastEvent!.ts);
+  });
+
   it("排序：未归档按最近事件时间倒序；归档的放在最后", async () => {
     api = await setupTestApi();
     const actor = webActorOf(api);

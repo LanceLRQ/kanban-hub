@@ -11,36 +11,30 @@ import { looseTranslator } from "./loose-translator";
 import "./overview.css";
 import { ProgressBar } from "./progress-bar";
 
-/** 卡片的不对称圆角按卡片序号循环，只在主题 B 生效（overview.css），主题 A 下四个值都等于 --radius */
-const RADIUS_CLASSES = ["kh-radius-a", "kh-radius-b", "kh-radius-c", "kh-radius-d"];
-
 /**
  * 一张项目卡片：周期、健康度、焦点、进度、最近活动、主位置、停滞标记。每段文字各自限行、超长省略，
  * 被截断的鼠标悬停时显示完整内容（TruncatedText）。
- * 归档的项目整体淡化显示（`opacity`），点击进入 `/p/<id>`。`index` 只用来在主题 B 下循环纸色
- * 和圆角（`data-tone`，见 overview.css），不影响数据或排序。
+ * 归档的项目整体淡化显示（`opacity`），点击进入 `/p/<id>`。主题 B 下的纸色和不对称圆角
+ * 按卡片在网格里的位置循环（overview.css 的 .kh-project-grid 规则），卡片本身不关心自己排第几。
  */
-export async function ProjectCard({ project, now, index }: { project: ProjectCardView; now: Date; index: number }) {
+export async function ProjectCard({ project, now }: { project: ProjectCardView; now: Date }) {
   const t = await getTranslations("overview");
   const tc = await getTranslations("common");
   const te = looseTranslator(await getTranslations("enums"));
   const tev = looseTranslator(await getTranslations("events"));
   const archived = project.cycle === "archived";
-  const tone = index % 4;
   const lastEvent = project.lastEvent;
   const location = project.location ? formatLocationParts(project.location, (value) => t("projects.syncedAt", { value })) : null;
 
   return (
     <Link
       href={`/p/${project.id}`}
-      data-tone={tone}
       className={cn(
         // min-w-0：卡片是 grid item，默认 min-width:auto 会取内容的 min-content——
         // 卡片里 truncate 省略的长文本（仓库路径、最近活动）在窄屏下把整张卡顶到
         // 近 1000px 宽，撑破网格和页面（横向溢出）。显式 0 解除，让卡片收缩到
         // 轨道宽、截断在卡片内部发生。
         "kh-overview-card flex min-w-0 flex-col gap-3 rounded-md border bg-card p-4.5 shadow-[var(--shadow-raised)] transition-transform hover:-translate-y-0.5",
-        RADIUS_CLASSES[tone],
         archived && "opacity-60",
       )}
     >

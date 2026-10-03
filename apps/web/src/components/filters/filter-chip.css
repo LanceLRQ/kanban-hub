@@ -1,0 +1,30 @@
+/*
+ * 工具栏的筛选标签（看板、项目列表共用）：与时间线的筛选按钮同款。
+ * 当前项主题 A 用芥末黄填充，主题 B 用卡片底；偏移阴影由全局的 [data-slot="button"] 规则统一处理。
+ * 两层都排在 utilities 之后（层顺序声明见 globals.css 文件头）。
+ */
+
+@layer kh-base {
+  .kh-filter-chip[data-variant="secondary"],
+  .kh-filter-chip[data-variant="secondary"]:hover {
+    background: var(--mustard);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+}
+
+@layer kh-theme {
+  /* 当前项是卡片底 + 实线描边、字重加粗；非当前项是浅灰纸色底 + 淡边框（与时间线一致） */
+  [data-theme="collage"] .kh-filter-chip[data-variant="secondary"],
+  [data-theme="collage"] .kh-filter-chip[data-variant="secondary"]:hover {
+    background: var(--card);
+    border-width: 1.5px;
+    border-color: var(--border);
+    color: var(--foreground);
+    font-weight: 800;
+  }
+  [data-theme="collage"] .kh-filter-chip[data-variant="outline"] {
+    background: var(--paper-gray);
+    border-color: var(--border-soft);
+  }
+}

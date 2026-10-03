@@ -2,7 +2,7 @@
 
 import { useTranslations } from "next-intl";
 import { cn } from "@/lib/utils";
-import type { BoardSectionView } from "@/server/views/board";
+import type { BoardSectionView, BoardTaskView } from "@/server/views/board";
 import { containerAnchorId } from "./board-nav";
 import { ContainerEditDialog } from "./container-edit-dialog";
 import { StatusChip } from "./marks";
@@ -15,6 +15,10 @@ const RADIUS_CLASSES = ["kh-radius-c", "kh-radius-d", "kh-radius-a", "kh-radius-
 interface ContainerSectionProps {
   projectId: string;
   section: BoardSectionView;
+  /** 经筛选与排序后要显示的任务；表头计数等仍取自 section */
+  tasks: BoardTaskView[];
+  /** 是否显示“新建任务”输入框：筛选或排序偏离默认时隐藏，避免新任务因不满足筛选条件而直接消失 */
+  canCreate: boolean;
   index: number;
   expanded: boolean;
   onToggle: () => void;
@@ -22,12 +26,13 @@ interface ContainerSectionProps {
 }
 
 /** 一个容器分区：表头（编号、标题、目标版本、状态、摘要、编辑、折叠）+ 任务行 + 新建任务 */
-export function ContainerSection({ projectId, section, index, expanded, onToggle, onOpenTask }: ContainerSectionProps) {
+export function ContainerSection({ projectId, section, tasks, canCreate, index, expanded, onToggle, onOpenTask }: ContainerSectionProps) {
   const t = useTranslations("board");
   const te = useTranslations("enums");
   const { container, status } = section;
   const foldable = section.collapsed;
   const folded = foldable && !expanded;
+  const hiddenCount = tasks.length === 0 ? section.tasks.length : 0;
 
   const statusLabel =
     status === null ? null : status === "backlog" || status === "suspended" || status === "cancelled" ? te(`manualStatus.${status}`) : te(`containerStatus.${status}`);
@@ -80,12 +85,17 @@ export function ContainerSection({ projectId, section, index, expanded, onToggle
       </div>
       {!folded && (
         <div className="flex flex-col">
-          {section.tasks.map((task) => (
+          {tasks.map((task) => (
             <TaskRow key={task.id} task={task} onOpen={onOpenTask} />
           ))}
-          <div className={cn(section.tasks.length > 0 && "border-t border-[var(--border-soft)]")}>
-            <NewTaskInput projectId={projectId} containerId={container.id} containerTitle={container.title} />
-          </div>
+          {hiddenCount > 0 && (
+            <p className="px-[18px] py-[11px] text-[13px] font-semibold text-muted-foreground">{t("section.filteredHidden", { count: hiddenCount })}</p>
+          )}
+          {canCreate && (
+            <div className={cn(tasks.length > 0 && "border-t border-[var(--border-soft)]")}>
+              <NewTaskInput projectId={projectId} containerId={container.id} containerTitle={container.title} />
+            </div>
+          )}
         </div>
       )}
     </section>

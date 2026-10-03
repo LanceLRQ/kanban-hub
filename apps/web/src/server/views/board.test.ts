@@ -95,6 +95,16 @@ describe("buildBoardView", () => {
     expect(due.meta.main).toEqual({ kind: "due", date: "9 月 28 日" });
   });
 
+  it("任务带上创建与更新时间（ISO 字符串）", async () => {
+    api = await setupTestApi();
+    const { project, doing } = await seed(api);
+    const view = buildBoardView(api.services, project.id, NOW, TZ)!;
+    const row = view.sections.flatMap((s) => s.tasks).find((x) => x.id === doing.id)!;
+    expect(row.createdAt).toBe(doing.createdAt);
+    expect(row.updatedAt).toBe(doing.updatedAt);
+    expect(row.createdAt).toMatch(/^\d{4}-\d{2}-\d{2}T/);
+  });
+
   it("任务更新后，视图里的 version 跟着变", async () => {
     api = await setupTestApi();
     const { project, todo } = await seed(api);

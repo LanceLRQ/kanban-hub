@@ -12,7 +12,8 @@
     "targetDate": "目标日期 {date}",
     "expand": "展开 {title}",
     "collapse": "收起 {title}",
-    "edit": "编辑容器 {title}"
+    "edit": "编辑容器 {title}",
+    "filteredHidden": "{count} 个任务被筛选隐藏"
   },
   "meta": {
     "completed": "完成于 {date}",
@@ -96,5 +97,22 @@
     "save": "保存",
     "saving": "保存中……",
     "cancel": "取消"
+  },
+  "toolbar": {
+    "ariaLabel": "筛选与排序",
+    "statusGroup": "状态",
+    "humanOnly": "只看待你处理",
+    "sortLabel": "排序",
+    "sort": {
+      "manual": "手动顺序",
+      "updated": "最近更新",
+      "created": "创建时间",
+      "status": "状态"
+    },
+    "direction": {
+      "desc": "新的在前",
+      "asc": "旧的在前"
+    },
+    "reset": "重置"
   }
 }

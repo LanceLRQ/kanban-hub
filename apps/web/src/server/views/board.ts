@@ -24,6 +24,9 @@ export interface BoardTaskView {
   checklist: ChecklistItem[];
   dueDate: string | null;
   checklistProgress: Progress;
+  /** ISO 时间，供前端按创建 / 更新时间排序 */
+  createdAt: string;
+  updatedAt: string;
   meta: TaskMeta;
 }
 
@@ -120,6 +123,8 @@ export function buildBoardView(services: Services, projectId: string, now: Date,
       checklist: task.checklist.map((item) => ({ ...item })),
       dueDate: task.dueDate,
       checklistProgress: checklistProgress(task.checklist),
+      createdAt: task.createdAt,
+      updatedAt: task.updatedAt,
       meta: taskMeta(task, now, tz),
     })),
   }));

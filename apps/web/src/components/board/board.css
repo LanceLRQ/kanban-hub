@@ -8,6 +8,17 @@
 
 @layer kh-base {
   /*
+   * 工具栏的筛选标签：与时间线的筛选按钮同款。当前项主题 A 用芥末黄填充；
+   * 偏移阴影由全局的 [data-slot="button"] 规则统一处理。
+   */
+  .kh-board-filter-chip[data-variant="secondary"],
+  .kh-board-filter-chip[data-variant="secondary"]:hover {
+    background: var(--mustard);
+    color: var(--foreground);
+    border-color: var(--border);
+  }
+
+  /*
    * 实心标签（.kh-solid）里的状态标记：去掉语义色填充，描边和字符都用白色，
    * 保留形状提示，也让标签宽度与描边状态时一致（选中后不会挤得整排重新换行）。
    */
@@ -19,6 +30,20 @@
 }
 
 @layer kh-theme {
+  /* ---------- 工具栏：当前项是卡片底 + 实线描边、字重加粗；非当前项是浅灰纸色底 + 淡边框（与时间线一致） ---------- */
+  [data-theme="collage"] .kh-board-filter-chip[data-variant="secondary"],
+  [data-theme="collage"] .kh-board-filter-chip[data-variant="secondary"]:hover {
+    background: var(--card);
+    border-width: 1.5px;
+    border-color: var(--border);
+    color: var(--foreground);
+    font-weight: 800;
+  }
+  [data-theme="collage"] .kh-board-filter-chip[data-variant="outline"] {
+    background: var(--paper-gray);
+    border-color: var(--border-soft);
+  }
+
   /* ---------- 容器分区：相邻容器换纸色，表头是同色系略深的纸条，分隔线用虚线 ---------- */
   [data-theme="collage"] .kh-board-section {
     --kh-paper: var(--paper-cream);

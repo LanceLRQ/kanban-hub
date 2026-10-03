@@ -27,7 +27,7 @@ const task = makeTask({ id: fixtureId("t", 1), containerId: container.id, title:
 const board = makeBoard([container], [task]);
 const ctx = { board, projectName: "看板中枢", enumLabel, noneLabel: tEvents("common.none") };
 
-describe("describeEvent：12 种事件类型各一个用例", () => {
+describe("describeEvent：13 种事件类型各一个用例", () => {
   it("project.created", () => {
     const event = makeEvent({ type: "project.created", target: null, change: null, text: null });
     expect(describeAndRender(event, ctx)).toBe("创建了项目 看板中枢");
@@ -309,11 +309,54 @@ describe("sortEventsForDisplay", () => {
   });
 });
 
+describe("describeEvent：board.reordered", () => {
+  it("任务重排：消息键 board.reordered.tasks，值带容器显示", () => {
+    const event = makeEvent({
+      type: "board.reordered",
+      target: { containerId: container.id },
+      change: { taskOrder: { from: ["a"], to: ["b"] } },
+      text: null,
+    });
+    const description = describeEvent(event, ctx);
+    expect(description.key).toBe("board.reordered.tasks");
+    expect(description.values).toEqual({ container: "M1 阶段一" });
+    expect(describeAndRender(event, ctx)).toBe("重排了 M1 阶段一 的任务顺序");
+  });
+
+  it("任务重排：容器已删除时用 ID 前缀兜底，不抛错", () => {
+    const event = makeEvent({
+      type: "board.reordered",
+      target: { containerId: "zzzzzzzzzz" },
+      change: { taskOrder: { from: [], to: [] } },
+      text: null,
+    });
+    expect(describeEvent(event, ctx).values).toEqual({ container: "zzzz" });
+  });
+
+  it("容器重排：消息键 board.reordered.containers，没有值", () => {
+    const event = makeEvent({
+      type: "board.reordered",
+      target: null,
+      change: { containerOrder: { from: ["a"], to: ["b"] } },
+      text: null,
+    });
+    expect(describeEvent(event, ctx)).toEqual({ key: "board.reordered.containers", values: {} });
+    expect(describeAndRender(event, ctx)).toBe("调整了容器顺序");
+  });
+
+  it("同一时刻排在 log 等“其他”一档，位于 *.updated 之后", () => {
+    const ts = "2026-09-24T10:00:00.000Z";
+    const reordered = makeEvent({ type: "board.reordered", target: null, change: { containerOrder: { from: [], to: [] } }, text: null, ts });
+    const updated = makeEvent({ type: "container.updated", target: { containerId: container.id }, change: { title: { from: "a", to: "b" } }, text: null, ts });
+    expect(sortEventsForDisplay([reordered, updated]).map((e) => e.type)).toEqual(["container.updated", "board.reordered"]);
+  });
+});
+
 describe("EVENT_GROUPS / eventGroupOf", () => {
-  it("覆盖全部 12 种事件类型，且分组和「细节」表格一致", () => {
+  it("覆盖全部 13 种事件类型，且分组和「细节」表格一致", () => {
     expect(EVENT_GROUPS).toEqual({
       task: ["task.created", "task.updated", "task.status_changed", "task.human_changed"],
-      container: ["container.created", "container.updated"],
+      container: ["container.created", "container.updated", "board.reordered"],
       project: ["project.created", "project.updated"],
       log: ["log"],
       docs: ["docs.synced", "docs.pulled"],
@@ -324,6 +367,7 @@ describe("EVENT_GROUPS / eventGroupOf", () => {
   it("eventGroupOf 按类型返回所在分组", () => {
     expect(eventGroupOf("task.status_changed")).toBe("task");
     expect(eventGroupOf("container.updated")).toBe("container");
+    expect(eventGroupOf("board.reordered")).toBe("container");
     expect(eventGroupOf("project.created")).toBe("project");
     expect(eventGroupOf("log")).toBe("log");
     expect(eventGroupOf("docs.pulled")).toBe("docs");

@@ -17,7 +17,7 @@ import { containerRefLabel, taskShortRef } from "./refs";
 
 export const EVENT_GROUPS = {
   task: ["task.created", "task.updated", "task.status_changed", "task.human_changed"],
-  container: ["container.created", "container.updated"],
+  container: ["container.created", "container.updated", "board.reordered"],
   project: ["project.created", "project.updated"],
   log: ["log"],
   docs: ["docs.synced", "docs.pulled"],
@@ -135,6 +135,14 @@ function describeContainerUpdated(event: Event, ctx: EventDescribeCtx): EventDes
   return genericChange("container.updated.generic", change, { container });
 }
 
+/** 重排事件：change 里是 taskOrder 的是任务重排（target 带容器），否则是容器重排 */
+function describeBoardReordered(event: Event, ctx: EventDescribeCtx): EventDescription {
+  if (event.change != null && "taskOrder" in event.change) {
+    return { key: "board.reordered.tasks", values: { container: containerLabel(ctx.board, event.target?.containerId ?? "") } };
+  }
+  return { key: "board.reordered.containers", values: {} };
+}
+
 function describeTaskUpdated(event: Event, ctx: EventDescribeCtx): EventDescription {
   const change = (event.change ?? {}) as Change;
   const task = taskLabel(ctx.board, event.target?.taskId ?? "");
@@ -226,8 +234,7 @@ export function describeEvent(event: Event, ctx: EventDescribeCtx): EventDescrip
     case "container.updated":
       return describeContainerUpdated(event, ctx);
     case "board.reordered":
-      // 过渡兜底：时间线文案与分组随后补全
-      return { key: "log", values: { text: "重排" } };
+      return describeBoardReordered(event, ctx);
     case "task.created":
       return { key: "task.created", values: { task: taskLabel(ctx.board, event.target?.taskId ?? "") } };
     case "task.updated":

@@ -23,6 +23,12 @@
       "generic": "修改了 {container} 的 {field}"
     }
   },
+  "board": {
+    "reordered": {
+      "tasks": "重排了 {container} 的任务顺序",
+      "containers": "调整了容器顺序"
+    }
+  },
   "task": {
     "created": "新建了任务 {task}",
     "updated": {

@@ -125,6 +125,21 @@ describe("buildTimelinePage", () => {
     expect(combined.days.flatMap((d) => d.items)).toHaveLength(3);
   });
 
+  it("按容器分组筛选时包含 board.reordered 事件", async () => {
+    const store = await openStore(tickingClock("2026-09-24T00:00:00.000Z"));
+    const services = makeServices(store);
+    const admin = await store.auth.createUser({ name: "Lance", role: "admin", passwordHash: "x" });
+    const web: Actor = { userId: admin.id, machineId: null, via: "web", agent: null };
+    const { project } = await store.createProject({ name: "kanban-hub" }, web);
+    const c1 = await store.createContainer(project.id, { kind: "phase", title: "阶段一" }, web);
+    const c2 = await store.createContainer(project.id, { kind: "phase", title: "阶段二" }, web);
+    await store.reorderContainers(project.id, { containerIds: [c2.id, c1.id] }, web);
+
+    const page = await buildTimelinePage(services, { group: "container" }, undefined, new Date("2026-09-25T00:00:00.000Z"), labels);
+    const keys = page.days.flatMap((d) => d.items).map((i) => i.description.key);
+    expect(keys).toContain("board.reordered.containers");
+  });
+
   it("按天分组，跨午夜的事件分到两天", async () => {
     // 相隔 24 小时，任何时区下都落在不同的日历日；创建用户/项目额外消耗两个时钟节拍，
     // 只筛 log 分组，排除 project.created 对天数分组的干扰

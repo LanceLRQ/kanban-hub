@@ -174,6 +174,8 @@ kanban-hub/
 | `dueDate` | 截止日期，可以为空 |
 | `startedAt`、`completedAt` | 由状态变化自动记录，见 5.4 |
 
+`updatedAt` 是内容变更时间：重排只改 `order`，不刷新它（只有 `order` 变了的记录才让 `version` 加 1）。
+
 **事件**
 
 | 字段 | 说明 |
@@ -182,9 +184,9 @@ kanban-hub/
 | `ts` | 事件时间 |
 | `projectId` | 所属项目 |
 | `actor` | `{ userId, machineId, via: web / cli, agent }`。`agent` 由 `kh` 从环境变量识别（比如 Claude Code 设置的 `CLAUDECODE=1`），也可以用 `--agent <名称>` 显式指定；识别不出来时为空 |
-| `type` | `project.created` / `project.updated` / `container.created` / `container.updated` / `task.created` / `task.updated` / `task.status_changed` / `task.human_changed` / `log` / `docs.synced` / `docs.pulled` / `import.applied` |
+| `type` | `project.created` / `project.updated` / `container.created` / `container.updated` / `task.created` / `task.updated` / `task.status_changed` / `task.human_changed` / `board.reordered` / `log` / `docs.synced` / `docs.pulled` / `import.applied` |
 | `target` | `{ containerId, taskId }`，按类型选填 |
-| `change` | 变化的字段：`{ 字段名: { from, to } }` |
+| `change` | 变化的字段：`{ 字段名: { from, to } }`。`board.reordered` 记顺序的前后对比：任务重排为 `{ taskOrder: { from, to } }`（`target` 带容器），容器重排为 `{ containerOrder: { from, to } }`；一次重排只记一条，顺序没变时不记 |
 | `text` | 日志正文或备注 |
 | `imported` | 是否来自导入的历史数据 |
 
@@ -437,6 +439,8 @@ pull:
 | | `kh task set <任务> [--status <状态>] [--reason "…"] [--note "…"] [--doc <路径>]… [--title "…"] [--code <编号>] [--group <标签>] [--due <日期>] [--container <容器>]` |
 | | `kh task human <任务> (--decision\|--verify\|--action) "<说明>"`、`kh task human <任务> --clear` |
 | | `kh task check <任务> <清单项序号> [--undo]`、`kh task checklist <任务> --add "…"` |
+| 排序 | `kh task reorder <容器> <任务…>`：调整容器内任务的先后顺序 |
+| | `kh container reorder <容器…>`：调整阶段、特性容器之间的先后顺序 |
 | 时间线 | `kh log "<正文>"` |
 | 同步 | `kh sync [--quiet]`（推送） |
 | 跨机器文档 | `kh docs ls`、`kh docs cat`、`kh pull`、`kh conflicts [show \| resolve]`，见 9.3 |
@@ -447,6 +451,7 @@ pull:
 - **指定容器**：用编号（`M2`）或 ID 前缀；杂项容器写 `misc`。
 - **指定任务**：用 `容器编号/任务编号`（`M2/2.3`），或者 `kh status` 里显示的 `#` 短 ID。
 - `kh task set --container <容器>` 把任务移到另一个容器（写法同上）。
+- **重排**：列出的项按给定顺序排在最前，没列出的保持原有相对顺序跟在后面，整组从头重新编号；列表不能为空、不能有重复。`kh task reorder` 的任务参数除了 `#` 短 ID 和 `容器编号/任务编号`，也可以直接写本容器内的任务编号；任务不属于该容器时在本地报用法错误（退出码 2），不发请求。`kh container reorder` 不接受杂项容器，杂项容器不参与排序；网页把容器固定分成“正常 → 储备 → 杂项”三组，容器顺序只在所属分组内起作用，给储备容器排序只改变它在储备组里的位置。顺序没有变化时不写入、不记事件，命令输出“顺序未变化”。
 - 可空字段传空串表示清空，例如 `--code ""`、`--group ""`、`--due ""`、`--version ""`。
 - 所有命令都支持 `--agent <名称>`，用来显式标明调用者是哪个 agent。
 
@@ -544,6 +549,7 @@ events:                 # 可选：历史日志
 | 项目 | `GET /projects`、`GET /projects?fingerprint=…`、`POST /projects`、`GET /projects/:id`、`PATCH /projects/:id`、`PUT /projects/:id/locations/:machineId` |
 | 容器 | `POST /projects/:id/containers`、`PATCH /projects/:id/containers/:cid` |
 | 任务 | `POST /projects/:id/tasks`、`PATCH /projects/:id/tasks/:tid` |
+| 重排 | `POST /projects/:id/containers/:cid/reorder-tasks`：`{ taskIds }` → 该容器重排后的任务列表；`POST /projects/:id/reorder-containers`：`{ containerIds }` → 重排后的全部容器。列表语义见 10.2，单次最多 500 个 ID，列表为空、有重复、ID 不存在或任务不属于该容器时返回 400 或 404 |
 | 时间线 | `POST /projects/:id/log`、`GET /events?project=&before=&limit=&types=&actor=` |
 | 同步 | 见 9.1；另有 `POST /projects/:id/sync/pulled`，供 `kh` 在拉取完成后上报结果，服务端据此记一条 `docs.pulled` 事件（拉取发生在机器本地，服务端无法直接感知结果） |
 | 文档 | `GET /projects/:id/docs?machine=`（文件树与最近更新）、`POST /projects/:id/raw-tokens` |
@@ -667,8 +673,8 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 |---|---|
 | `/login` | 密码登录 |
 | `/` 首页 | 跨项目的“待你处理”收件箱，按决策、验证、操作分组；还没有任何项目时另外提示去接入引导 |
-| `/projects` 项目 | 项目卡片：周期、健康度、当前焦点、进度条、最近活动、停滞标记，以及所在机器和 git 状态 |
-| `/p/:id` 项目 | 四个标签页：**看板**（进行中的特性、阶段、储备、杂项；已完成的容器折叠成一行摘要。任务行显示状态、编号、标题、分组、待你处理、备注、文档链接、日期；点击后在侧边栏编辑，包括清单；每个容器末尾都可以直接新建任务；宽屏时左侧有吸顶的容器导航，每个容器一行，显示编号、标题和任务数，点击定位）、**时间线**、**文档**、**设置**（各位置信息、同步范围、跳过的文件、导出：两个链接，分别下载 YAML 和 Markdown） |
+| `/projects` 项目 | 项目卡片：周期、健康度、当前焦点、进度条、最近活动、停滞标记，以及所在机器和 git 状态。标题下方有工具栏：周期（多选，默认不含归档，所以归档项目默认隐藏；勾选后仍整体排在最后）、健康度（多选，默认全选）、进度（单选：全部 / 未开始 0% / 进行中 1–99% / 已完成 100%，口径与进度条一致，不计杂项，没有任务的项目算未开始），以及排序（最近活动 / 创建时间 / 进度百分比 / 健康度，可切换方向，进度与健康度同档内再按最近活动）。筛选后标题旁的计数显示“可见数 / 总数”，全部被筛掉时提示并给出重置按钮 |
+| `/p/:id` 项目 | 四个标签页：**看板**（进行中的特性、阶段、储备、杂项；容器分区上方有工具栏：任务状态多选筛选（默认全选，全部取消视同全选）、“只看待你处理”开关、排序（手动顺序 / 最近更新 / 创建时间 / 状态）和时间排序的方向，偏离默认值时出现重置按钮。排序只在每个容器分区内部生效，容器的先后顺序不变；筛选只隐藏任务行，分区表头的计数、状态和左侧导航仍按全部任务计算，分区里的任务全被筛掉时显示“N 个任务被筛选隐藏”；筛选或排序不在默认值时隐藏“新建任务”输入框，避免新建的任务因不满足条件而消失；用 `?task=` 打开侧边栏不受筛选影响；已完成的容器折叠成一行摘要。任务行显示状态、编号、标题、分组、待你处理、备注、文档链接、日期；点击后在侧边栏编辑，包括清单；每个容器末尾都可以直接新建任务；宽屏时左侧有吸顶的容器导航，每个容器一行，显示编号、标题和任务数，点击定位）、**时间线**、**文档**、**设置**（各位置信息、同步范围、跳过的文件、导出：两个链接，分别下载 YAML 和 Markdown） |
 | `/p/:id/docs/…` | 左边是文件树（可以切换机器，显示同步时间）和“最近更新”列表；右边按文件类型显示：Markdown 渲染（GFM、代码高亮、mermaid，标题带锚点，站内 `#锚点` 链接能跳到对应标题）；不超过大小上限的其他文本按代码块加高亮显示，其中扩展名不认识或没有扩展名的文件，只要不超过 1MB 且内容判断为文本，也按代码块显示；图片经 `/raw` 内嵌显示；html、svg、pdf 提示在新标签页打开；其余文件和超过大小上限的文件显示文件信息与“打开原文件”。文档里的相对链接改写成站内跳转，其余清单内文件改写成 `/raw` 链接在新标签页打开，目标不在快照里的链接保留原文字并提示“文件不在快照中”；用 rehype-sanitize 清理 HTML。还没有机器同步过这个项目时，提示“还没有机器同步过这个项目的文档”并给出 `kh sync` 的提示 |
 | `/raw/<令牌>/…` | 原始文件，在新标签页打开，不依赖登录会话，只凭令牌鉴权。所有响应都带 `Content-Security-Policy: sandbox allow-scripts allow-forms allow-popups`、`X-Content-Type-Options: nosniff`、`Referrer-Policy: no-referrer`、`Cache-Control: private, max-age=300`；按扩展名设置 `Content-Type`，文本类型带 `charset=utf-8`，认不出的类型用 `application/octet-stream`。令牌不对返回 404，过期返回 403 并提示刷新文档页；令牌的有效期 12 小时，由文档页在渲染时签发，一个令牌能访问该机器快照里的任意文件（不绑定单个路径），这样沙箱里的 demo 页面才能用相对路径加载子资源 |
 | `/timeline` | 跨项目的时间线，可以按项目、事件类型、操作者筛选；按天分组，宽屏时左侧有吸顶的日期导航（每天一项，带已加载的条数，点击定位；还有下一页时也可以在这里加载更多） |
@@ -677,6 +683,7 @@ Stop 在 Claude Code 每一轮回复结束时都会触发，所以它必须很�
 
 - **顶栏**：logo 与字标点击回首页；导航是项目、时间线、设置三项（项目页归在“项目”下，接入引导归在“设置”下）。
 - **外观**：提供两套界面主题可以切换（褪色印刷、纸本拼贴），等宽字体与中文字体各有几种可选项；偏好保存在浏览器本地，不同设备各自记忆。
+- **筛选与排序的记忆**：看板和项目列表的筛选、排序选择只保存在浏览器本地（各自一份，所有项目共用看板的那一份），不同设备各自记忆，不同步到服务端；读到无效内容时回退默认值。网页不提供拖拽排序，任务和容器的顺序由 AI 或命令行（见 10.2）决定。
 - **实时刷新**：网页通过 SSE 接收改动，更新看板和收件箱；断线后自动重连，重连后重新拉取一次数据。
 - **UI**：shadcn/ui + Tailwind CSS + lucide 图标；文案通过 next-intl 集中管理，第一版只有中文。
 

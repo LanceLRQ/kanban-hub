@@ -2,7 +2,7 @@
  * 项目看板的显示口径（纯函数）：容器分区的顺序与折叠、任务行右侧的信息。
  * 日期按调用方传入的时区格式化（页面里是服务端时区），不读全局时钟。
  */
-import { checklistProgress, summarizeContainer, type ContainerSummary } from "@kanban-hub/core/derive";
+import { checklistProgress, compareByOrder, summarizeContainer, type ContainerSummary } from "@kanban-hub/core/derive";
 import type { Board, Container, Task } from "@kanban-hub/core/schema";
 import { dayKey, formatDate, formatPlainDate } from "./time";
 
@@ -24,18 +24,14 @@ function sectionRank(container: Pick<Container, "kind" | "manualStatus">): numbe
   return 0;
 }
 
-function byOrder(a: { order: number; createdAt: string; id: string }, b: { order: number; createdAt: string; id: string }): number {
-  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-}
-
 /**
  * 看板分区：阶段和特性按 order 排列（储备的除外）→ 储备的容器 → 杂项容器。
  * 挂起、已取消的容器留在原位，只是状态不同。
  */
 export function boardSections(board: Pick<Board, "containers" | "tasks">): Section[] {
-  const containers = [...board.containers].sort((a, b) => sectionRank(a) - sectionRank(b) || byOrder(a, b));
+  const containers = [...board.containers].sort((a, b) => sectionRank(a) - sectionRank(b) || compareByOrder(a, b));
   return containers.map((container) => {
-    const tasks = board.tasks.filter((task) => task.containerId === container.id).sort(byOrder);
+    const tasks = board.tasks.filter((task) => task.containerId === container.id).sort(compareByOrder);
     const summary = summarizeContainer(container, tasks);
     return {
       container,

@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { z } from "zod";
+import { compareByOrder } from "@kanban-hub/core/derive";
 import { formatZodError } from "@kanban-hub/core/errors";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import {
@@ -30,7 +31,6 @@ import {
   requireLogin,
   requireRegisteredRepo,
   resolveContainerOrFail,
-  sortByOrder,
   withAgentOption,
 } from "./shared";
 
@@ -217,7 +217,7 @@ export function planContainerReorder(board: Pick<Board, "containers">, refs: rea
     }
     containerIds.push(container.id);
   }
-  const before = sortByOrder(board.containers.filter((c) => c.kind !== "misc")).map((c) => c.id);
+  const before = board.containers.filter((c) => c.kind !== "misc").sort(compareByOrder).map((c) => c.id);
   return { containerIds, before };
 }
 
@@ -248,7 +248,6 @@ async function runContainerReorder(ctx: CliContext, refs: string[], agentFlag: s
     z.array(containerSchema),
   );
   ctx.stdout.write(`${formatContainerReorder(project.board, plan.before, after)}\n`);
-  await afterReport(ctx, repo.config.projectId);
 }
 
 /** kh container add / set：新建、修改阶段 / 特性 / 杂项容器（规格 10.2） */

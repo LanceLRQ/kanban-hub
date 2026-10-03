@@ -1,6 +1,8 @@
 /**
  * kh task reorder / kh container reorder 的端到端测试：进程内测试服务端驱动 cli 的 main()。
  */
+import fs from "node:fs/promises";
+import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { Actor } from "@kanban-hub/core/schema";
 import { startTestServer, type TestServer } from "../server/api/test-server";
@@ -86,6 +88,17 @@ describe("kh task reorder", () => {
     const missing = await kh(["task", "reorder", "M2", "T9"]);
     expect(missing.code).toBe(2);
     expect(missing.stderr).toContain("里没有编号为 T9 的任务");
+  });
+
+  it("重排不更新最近上报时间", async () => {
+    const { projectId } = await setup();
+    const a = await addTask("T1");
+    const b = await addTask("T2");
+    const reportFile = path.join(home.dir, "cache", "reports", `${projectId}.json`);
+    const before = await fs.readFile(reportFile, "utf8");
+    expect((await kh(["task", "reorder", "M2", `#${b}`, `#${a}`])).code).toBe(0);
+    expect((await kh(["container", "reorder", "F1", "M3"])).code).toBe(0);
+    expect(await fs.readFile(reportFile, "utf8")).toBe(before);
   });
 
   it("顺序没变化时输出“顺序未变化”，不新增事件", async () => {

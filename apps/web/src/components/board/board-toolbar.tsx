@@ -65,7 +65,7 @@ export function BoardToolbar({ state, onChange, onReset }: BoardToolbarProps) {
             size="sm"
             data-testid="board-direction"
             onClick={() => onChange({ ...state, direction: state.direction === "desc" ? "asc" : "desc" })}
-            className="kh-filter-chip"
+            className="kh-sort-direction"
           >
             {t(`toolbar.direction.${state.direction}`)}
           </Button>

@@ -9,6 +9,7 @@ import {
   syncManifestInput,
 } from "@kanban-hub/core/api";
 import { commitScope } from "@kanban-hub/core/commit";
+import { compareByOrder } from "@kanban-hub/core/derive";
 import { KhError, parseInput } from "@kanban-hub/core/errors";
 import { generateId, idSchema } from "@kanban-hub/core/ids";
 import * as ops from "@kanban-hub/core/mutations";
@@ -150,11 +151,6 @@ interface Outcome<T> extends WriteChange {
 export interface ImportOptions {
   /** 只计算、不写入 */
   dryRun: boolean;
-}
-
-/** 与 apps/web/src/lib/board.ts 的 byOrder 同口径：order、createdAt、id */
-function byOrder(a: { order: number; createdAt: string; id: string }, b: { order: number; createdAt: string; id: string }): number {
-  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
 
 export class Store {
@@ -415,7 +411,7 @@ export class Store {
   reorderTasks(projectId: string, containerId: string, input: TaskReorderInput, actor: Actor): Promise<Task[]> {
     return this.mutate(actor, (ctx) => {
       const r = ops.reorderTasks(this.requireProject(projectId).board, projectId, containerId, input, ctx);
-      const value = r.board.tasks.filter((t) => t.containerId === containerId).sort(byOrder);
+      const value = r.board.tasks.filter((t) => t.containerId === containerId).sort(compareByOrder);
       return { projectId, board: r.board, events: r.events, value };
     });
   }
@@ -424,7 +420,7 @@ export class Store {
   reorderContainers(projectId: string, input: ContainerReorderInput, actor: Actor): Promise<Container[]> {
     return this.mutate(actor, (ctx) => {
       const r = ops.reorderContainers(this.requireProject(projectId).board, projectId, input, ctx);
-      const value = [...r.board.containers.filter((c) => c.kind !== "misc").sort(byOrder), ...r.board.containers.filter((c) => c.kind === "misc")];
+      const value = [...r.board.containers.filter((c) => c.kind !== "misc").sort(compareByOrder), ...r.board.containers.filter((c) => c.kind === "misc")];
       return { projectId, board: r.board, events: r.events, value };
     });
   }

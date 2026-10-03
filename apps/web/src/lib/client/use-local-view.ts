@@ -124,6 +124,7 @@ function removeValue(key: string) {
  * 服务端渲染和首次水合一律返回 defaults，挂载后再读取已保存的值；
  * 原始值不是合法 JSON、不满足 schema、读取抛异常时回退到 defaults；
  * 写入抛异常时只在内存里保存；其他标签页的修改通过 storage 事件同步。
+ * 同一个键必须始终使用同一份 schema 和 defaults：模块级缓存按键共享，后来者传入的不同定义不会生效。
  */
 export function useLocalView<T>(
   key: string,

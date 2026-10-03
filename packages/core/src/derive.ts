@@ -19,6 +19,13 @@ export interface ContainerSummary {
   openCount: number;
 }
 
+/** 容器、任务共用的显示顺序：order 升序，相同时依次比 createdAt、id（均按码点） */
+export function compareByOrder(a: { order: number; createdAt: string; id: string }, b: { order: number; createdAt: string; id: string }): number {
+  if (a.order !== b.order) return a.order - b.order;
+  if (a.createdAt !== b.createdAt) return a.createdAt < b.createdAt ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
 /** 停滞判定的默认天数（规格 5.5） */
 export const DEFAULT_STALE_DAYS = 7;
 

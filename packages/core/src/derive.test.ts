@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checklistProgress, containerStatus, isStale, parseStaleDays, progressOf, projectProgress, summarizeContainer } from "./derive";
+import { checklistProgress, compareByOrder, containerStatus, isStale, parseStaleDays, progressOf, projectProgress, summarizeContainer } from "./derive";
 import type { TaskStatus } from "./schema";
 import { fixtureId, makeContainer, makeMisc, makeProject, makeTask } from "./test-fixtures";
 
@@ -146,5 +146,18 @@ describe("parseStaleDays", () => {
     ["14", 14],
   ])("%s → %s", (raw, expected) => {
     expect(parseStaleDays(raw)).toBe(expected);
+  });
+});
+
+describe("compareByOrder", () => {
+  const item = (order: number, createdAt: string, id: string) => ({ order, createdAt, id });
+  it.each([
+    ["order 小的在前", item(1, "2026-01-02", "b"), item(2, "2026-01-01", "a"), -1],
+    ["order 大的在后", item(3, "2026-01-01", "a"), item(2, "2026-01-02", "b"), 1],
+    ["order 相同时比 createdAt", item(1, "2026-01-01", "z"), item(1, "2026-01-02", "a"), -1],
+    ["createdAt 也相同时比 id（码点）", item(1, "2026-01-01", "B"), item(1, "2026-01-01", "a"), -1],
+    ["完全相同", item(1, "2026-01-01", "a"), item(1, "2026-01-01", "a"), 0],
+  ])("%s", (_name, a, b, expected) => {
+    expect(compareByOrder(a, b)).toBe(expected);
   });
 });

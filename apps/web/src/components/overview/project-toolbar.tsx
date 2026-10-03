@@ -82,7 +82,7 @@ export function ProjectToolbar({ state, onChange, onReset }: ProjectToolbarProps
           size="sm"
           data-testid="projects-direction"
           onClick={() => onChange({ ...state, direction: state.direction === "desc" ? "asc" : "desc" })}
-          className="kh-filter-chip"
+          className="kh-sort-direction"
         >
           {t(`projects.toolbar.direction.${state.sort}.${state.direction}`)}
         </Button>

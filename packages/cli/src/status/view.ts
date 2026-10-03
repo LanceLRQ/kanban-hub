@@ -4,7 +4,7 @@
  * 所以这里不能掺进任何文件读写或网络调用。
  */
 import type { ProjectDetailResponse } from "@kanban-hub/core/api";
-import { checklistProgress, projectProgress, summarizeContainer } from "@kanban-hub/core/derive";
+import { checklistProgress, compareByOrder, projectProgress, summarizeContainer } from "@kanban-hub/core/derive";
 import type { ContainerStatus, Progress } from "@kanban-hub/core/derive";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import type { Container, ContainerKind, Cycle, Health, HumanFlag, TaskStatus } from "@kanban-hub/core/schema";
@@ -98,7 +98,7 @@ function sortContainers(containers: readonly Container[]): Container[] {
   const misc: Container[] = [];
   const rest: Container[] = [];
   for (const c of containers) (c.kind === "misc" ? misc : rest).push(c);
-  rest.sort((a, b) => a.order - b.order);
+  rest.sort(compareByOrder);
   return [...rest, ...misc];
 }
 
@@ -113,7 +113,7 @@ export function buildStatusView(detail: ProjectDetailResponse, opts: BuildStatus
     const summary = summarizeContainer(container, board.tasks);
     const tasks = board.tasks
       .filter((t) => t.containerId === container.id)
-      .sort((a, b) => a.order - b.order)
+      .sort(compareByOrder)
       .map(
         (task): StatusViewTask => ({
           id: task.id,
@@ -150,7 +150,7 @@ export function buildStatusView(detail: ProjectDetailResponse, opts: BuildStatus
   const inbox: StatusViewInboxItem[] = [];
   for (const container of sortedContainers) {
     const label = containerRefLabel(container, board.containers);
-    const own = board.tasks.filter((t) => t.containerId === container.id).sort((a, b) => a.order - b.order);
+    const own = board.tasks.filter((t) => t.containerId === container.id).sort(compareByOrder);
     for (const task of own) {
       if (task.human === null) continue;
       inbox.push({ ref: refOf(task.id), taskTitle: task.title, kind: task.human.kind, note: task.human.note, container: label });

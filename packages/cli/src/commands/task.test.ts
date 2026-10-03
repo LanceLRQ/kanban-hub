@@ -170,6 +170,23 @@ describe("planTaskReorder / formatTaskReorder", () => {
     expect(err.exitCode).toBe(EXIT.USAGE);
   });
 
+  it("裸参数按编号找不到时回退到完整 ID", () => {
+    const plan = planTaskReorder(board, "M2", ["b2bbbbbbbb", "a1aaaaaaaa"]);
+    expect(plan.taskIds).toEqual(["b2bbbbbbbb", "a1aaaaaaaa"]);
+  });
+
+  it("回退解析出的任务不属于该容器时仍抛 CliError(2)", () => {
+    const err = captureThrow(() => planTaskReorder(board, "M2", ["e4eeeeeeee"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).toContain("不属于");
+  });
+
+  it("编号和 ID 都找不到时报容器里没有该编号", () => {
+    const err = captureThrow(() => planTaskReorder(board, "M2", ["T9"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).toContain("里没有编号为 T9 的任务");
+  });
+
   it("裸编号按指定容器内的任务编号解析", () => {
     const plan = planTaskReorder(board, "M2", ["2", "1"]);
     expect(plan.taskIds).toEqual(["b2bbbbbbbb", "a1aaaaaaaa"]);

@@ -1,3 +1,4 @@
+import { compareByOrder } from "./derive";
 import { KhError, parseInput } from "./errors";
 import {
   type Actor,
@@ -424,11 +425,6 @@ function assertNoDuplicates(ids: readonly string[]): void {
   }
 }
 
-/** 与网页看板一致的原有顺序：order、createdAt、id */
-function byOrder(a: { order: number; createdAt: string; id: string }, b: { order: number; createdAt: string; id: string }): number {
-  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
-}
-
 /**
  * 计算重排：返回只含 order 变化记录（版本已加一）的 items，以及作用范围内全部 ID 的旧、新顺序；
  * 顺序与编号都没有变化时返回 null。
@@ -437,7 +433,7 @@ function planReorder<T extends { id: string; order: number; createdAt: string; v
   scope: readonly T[],
   ids: readonly string[],
 ): { items: T[]; from: string[]; to: string[] } | null {
-  const sorted = [...scope].sort(byOrder);
+  const sorted = [...scope].sort(compareByOrder);
   const listed = new Set(ids);
   const byId = new Map(sorted.map((x) => [x.id, x]));
   const next = [...ids.map((id) => byId.get(id)!), ...sorted.filter((x) => !listed.has(x.id))];

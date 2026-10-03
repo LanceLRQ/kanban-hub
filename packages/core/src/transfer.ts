@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { CONTAINER_KIND_LABELS, CONTAINER_STATUS_LABELS, CYCLE_LABELS, HEALTH_LABELS, TASK_STATUS_LABELS } from "./labels";
-import { containerStatus, projectProgress } from "./derive";
+import { compareByOrder, containerStatus, projectProgress } from "./derive";
 import { KhError, parseInput } from "./errors";
 import { createContainer, createTask, transitionTask, type MutationContext } from "./mutations";
 import {
@@ -649,7 +649,7 @@ function compact<T extends object>(obj: T): T {
 
 /** 把项目、看板与历史日志打成一份导出文件，格式与导入相同 */
 export function buildExportDoc(project: Project, board: Board, logs: readonly Event[]): TransferDoc {
-  const sortedContainers = [...board.containers].sort((a, b) => a.order - b.order);
+  const sortedContainers = [...board.containers].sort(compareByOrder);
   return {
     format: TRANSFER_FORMAT,
     project: { cycle: project.cycle, health: project.health, focus: project.focus },
@@ -664,7 +664,7 @@ export function buildExportDoc(project: Project, board: Board, logs: readonly Ev
         manualReason: c.manualReason ?? undefined,
         tasks: board.tasks
           .filter((t) => t.containerId === c.id)
-          .sort((a, b) => a.order - b.order)
+          .sort(compareByOrder)
           .map((t) =>
             compact({
               code: t.code ?? undefined,
@@ -720,9 +720,9 @@ export function renderBoardMarkdown(project: Project, board: Board, opts: { now:
   if (project.focus) lines.push(`当前焦点：${project.focus}`);
   lines.push("");
 
-  const sortedContainers = [...board.containers].sort((a, b) => a.order - b.order);
+  const sortedContainers = [...board.containers].sort(compareByOrder);
   for (const container of sortedContainers) {
-    const tasks = board.tasks.filter((t) => t.containerId === container.id).sort((a, b) => a.order - b.order);
+    const tasks = board.tasks.filter((t) => t.containerId === container.id).sort(compareByOrder);
     const status = containerStatus(container, tasks);
     const kindLabel = CONTAINER_KIND_LABELS[container.kind];
     const statusLabel = status ? CONTAINER_STATUS_LABELS[status] : null;

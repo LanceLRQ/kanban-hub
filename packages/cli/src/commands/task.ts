@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import { z } from "zod";
+import { compareByOrder } from "@kanban-hub/core/derive";
 import { resolveTaskRef } from "@kanban-hub/core/refs";
 import type { ProjectDetailResponse } from "@kanban-hub/core/api";
 import {
@@ -37,7 +38,6 @@ import {
   resolveContainerOrFail,
   resolveTaskOrFail,
   shortRef,
-  sortByOrder,
   withAgentOption,
 } from "./shared";
 
@@ -166,6 +166,11 @@ function parseDueDateForAdd(raw: string | undefined): string | undefined {
 function resolveReorderTask(board: Pick<Board, "containers" | "tasks">, container: Container, ref: string): Task {
   if (ref.startsWith("#") || ref.includes("/")) return resolveTaskOrFail(board, ref);
   const result = resolveTaskRef(board, `${container.id}/${ref}`);
+  if (!result.ok && result.reason === "not_found") {
+    // 不是本容器内的编号时，再按完整 ID 或 ID 前缀解析一次
+    const byId = resolveTaskRef(board, ref);
+    if (byId.ok) return board.tasks.find((x) => x.id === byId.id)!;
+  }
   if (!result.ok) {
     const label = containerRefLabel(container, board.containers);
     throw new CliError(
@@ -206,7 +211,7 @@ export function planTaskReorder(
     }
     taskIds.push(task.id);
   }
-  const before = sortByOrder(board.tasks.filter((t) => t.containerId === container.id)).map((t) => t.id);
+  const before = board.tasks.filter((t) => t.containerId === container.id).sort(compareByOrder).map((t) => t.id);
   return { container, taskIds, before };
 }
 
@@ -429,7 +434,6 @@ async function runReorder(ctx: CliContext, containerRef: string, taskRefs: strin
     z.array(taskSchema),
   );
   ctx.stdout.write(`${formatTaskReorder(detail.board, plan.container, plan.before, after)}\n`);
-  await afterReport(ctx, repo.config.projectId);
 }
 
 /** kh task：新增、修改、标记待你处理、清单（规格 10.2，另加“与规格的出入”第 2 条：task set 的附加选项） */

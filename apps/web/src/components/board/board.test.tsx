@@ -11,10 +11,12 @@ import type { BoardSectionView, BoardTaskView, BoardView } from "@/server/views/
 import { resetLocalViewStoreForTest } from "@/lib/client/use-local-view";
 import { Board } from "./board";
 
+const nav = vi.hoisted(() => ({ query: "" }));
+
 vi.mock("next/navigation", () => ({
   usePathname: () => "/p/p1",
   useRouter: () => ({ replace: vi.fn() }),
-  useSearchParams: () => new URLSearchParams(),
+  useSearchParams: () => new URLSearchParams(nav.query),
 }));
 
 (globalThis as { IS_REACT_ACT_ENVIRONMENT?: boolean }).IS_REACT_ACT_ENVIRONMENT = true;
@@ -92,6 +94,7 @@ const newTaskInputs = () => container.querySelectorAll(`input[aria-label^="在 "
 const resetButton = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "重置");
 
 beforeEach(() => {
+  nav.query = "";
   window.localStorage.clear();
   resetLocalViewStoreForTest();
   container = document.createElement("div");
@@ -129,6 +132,16 @@ describe("看板筛选与排序", () => {
     expect(text()).toContain("1 个任务被筛选隐藏");
     expect(container.querySelectorAll("section")).toHaveLength(2);
     expect(text()).toContain("第二块");
+  });
+
+  it("?task= 指向被筛选隐藏的任务时，侧栏仍然打开并显示该任务", () => {
+    nav.query = "task=t1";
+    mount();
+    click(chip("待开始"));
+    expect(rowTitles().some((r) => r.includes("写文档"))).toBe(false);
+    const dialog = document.body.querySelector('[role="dialog"]');
+    expect(dialog).not.toBeNull();
+    expect(dialog!.textContent).toContain("写文档");
   });
 
   it("只看待你处理", () => {

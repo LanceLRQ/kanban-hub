@@ -48,6 +48,9 @@
       "created": "容器创建",
       "updated": "容器更新"
     },
+    "board": {
+      "reordered": "重排"
+    },
     "task": {
       "created": "任务创建",
       "updated": "任务更新",

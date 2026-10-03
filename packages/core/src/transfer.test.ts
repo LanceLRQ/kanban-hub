@@ -8,6 +8,7 @@ import {
   fixtureId,
   makeBoard,
   makeContainer,
+  makeEvent,
   makeMisc,
   makeProject,
   makeTask,
@@ -625,5 +626,18 @@ describe("renderBoardMarkdown：时区", () => {
     expect(utc).toContain("2026/10/01");
     expect(sh).toContain("2026/10/02");
     expect(utc).not.toEqual(sh);
+  });
+});
+
+describe("重排事件与导出", () => {
+  it("导出只带日志事件，board.reordered 事件被忽略", () => {
+    const reordered = makeEvent({
+      type: "board.reordered",
+      text: null,
+      target: { containerId: fixtureId("c", 1) },
+      change: { taskOrder: { from: [], to: [] } },
+    });
+    const doc = buildExportDoc(makeProject(), makeBoard(), [reordered, makeEvent({ id: fixtureId("e", 2), text: "留下" })]);
+    expect(doc.events).toEqual([{ ts: T0, text: "留下" }]);
   });
 });

@@ -225,6 +225,9 @@ export function describeEvent(event: Event, ctx: EventDescribeCtx): EventDescrip
       return { key: "container.created", values: { container: containerLabel(ctx.board, event.target?.containerId ?? "") } };
     case "container.updated":
       return describeContainerUpdated(event, ctx);
+    case "board.reordered":
+      // 过渡兜底：时间线文案与分组随后补全
+      return { key: "log", values: { text: "重排" } };
     case "task.created":
       return { key: "task.created", values: { task: taskLabel(ctx.board, event.target?.taskId ?? "") } };
     case "task.updated":

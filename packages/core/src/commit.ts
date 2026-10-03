@@ -5,6 +5,7 @@ const EVENT_LABELS: Record<EventType, string> = {
   "project.updated": "项目更新",
   "container.created": "新建容器",
   "container.updated": "容器更新",
+  "board.reordered": "重排",
   "task.created": "新建任务",
   "task.updated": "任务更新",
   "task.status_changed": "任务状态变更",

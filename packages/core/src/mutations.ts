@@ -5,6 +5,7 @@ import {
   type Container,
   type ContainerCreateInput,
   type ContainerPatchInput,
+  type ContainerReorderInput,
   type Event,
   type EventType,
   type GitState,
@@ -18,9 +19,11 @@ import {
   type Task,
   type TaskCreateInput,
   type TaskPatchInput,
+  type TaskReorderInput,
   type TaskStatus,
   containerCreateInput,
   containerPatchInput,
+  containerReorderInput,
   containerSchema,
   locationInput,
   logInput,
@@ -29,6 +32,7 @@ import {
   projectSchema,
   taskCreateInput,
   taskPatchInput,
+  taskReorderInput,
   taskSchema,
 } from "./schema";
 
@@ -54,6 +58,11 @@ export interface ProjectResult {
 export interface ContainerResult {
   board: Board;
   container: Container;
+  events: Event[];
+}
+
+export interface ReorderResult {
+  board: Board;
   events: Event[];
 }
 
@@ -351,7 +360,91 @@ export function createLogEvent(board: Board, projectId: string, input: LogInput,
   return makeEvent(ctx, projectId, "log", { target, text: data.text });
 }
 
+/**
+ * 重排容器内的全部任务（含已完成、已取消）：列出的排最前，其余保持原有相对顺序，整组重新编号。
+ * 只有 order 变化的任务版本加一，updatedAt 不变；顺序完全不变时原样返回看板且没有事件。
+ */
+export function reorderTasks(
+  board: Board,
+  projectId: string,
+  containerId: string,
+  input: TaskReorderInput,
+  ctx: MutationContext,
+): ReorderResult {
+  const data = parseInput(taskReorderInput, input);
+  findContainer(board, containerId);
+  assertNoDuplicates(data.taskIds);
+  for (const id of data.taskIds) {
+    if (findTask(board, id).containerId !== containerId) throw new KhError("invalid", `任务 ${id} 不属于容器 ${containerId}`);
+  }
+  const scope = board.tasks.filter((t) => t.containerId === containerId);
+  const plan = planReorder(scope, data.taskIds);
+  if (!plan) return { board, events: [] };
+  const renumbered = new Map(plan.items.map((t) => [t.id, parseInput(taskSchema, t)]));
+  return {
+    board: { ...board, tasks: board.tasks.map((t) => renumbered.get(t.id) ?? t) },
+    events: [
+      makeEvent(ctx, projectId, "board.reordered", {
+        target: { containerId },
+        change: { taskOrder: { from: plan.from, to: plan.to } },
+      }),
+    ],
+  };
+}
+
+/** 重排全部非杂项容器，规则同 reorderTasks；杂项容器不能出现在列表里 */
+export function reorderContainers(
+  board: Board,
+  projectId: string,
+  input: ContainerReorderInput,
+  ctx: MutationContext,
+): ReorderResult {
+  const data = parseInput(containerReorderInput, input);
+  assertNoDuplicates(data.containerIds);
+  for (const id of data.containerIds) {
+    if (findContainer(board, id).kind === "misc") throw new KhError("invalid", "杂项容器不能参与排序");
+  }
+  const scope = board.containers.filter((c) => c.kind !== "misc");
+  const plan = planReorder(scope, data.containerIds);
+  if (!plan) return { board, events: [] };
+  const renumbered = new Map(plan.items.map((c) => [c.id, parseInput(containerSchema, c)]));
+  return {
+    board: { ...board, containers: board.containers.map((c) => renumbered.get(c.id) ?? c) },
+    events: [makeEvent(ctx, projectId, "board.reordered", { change: { containerOrder: { from: plan.from, to: plan.to } } })],
+  };
+}
+
 // ---------- 内部工具 ----------
+
+function assertNoDuplicates(ids: readonly string[]): void {
+  const seen = new Set<string>();
+  for (const id of ids) {
+    if (seen.has(id)) throw new KhError("invalid", `ID ${id} 重复出现`);
+    seen.add(id);
+  }
+}
+
+/** 与网页看板一致的原有顺序：order、createdAt、id */
+function byOrder(a: { order: number; createdAt: string; id: string }, b: { order: number; createdAt: string; id: string }): number {
+  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
+}
+
+/**
+ * 计算重排：返回只含 order 变化记录（版本已加一）的 items，以及作用范围内全部 ID 的旧、新顺序；
+ * 顺序与编号都没有变化时返回 null。
+ */
+function planReorder<T extends { id: string; order: number; createdAt: string; version: number }>(
+  scope: readonly T[],
+  ids: readonly string[],
+): { items: T[]; from: string[]; to: string[] } | null {
+  const sorted = [...scope].sort(byOrder);
+  const listed = new Set(ids);
+  const byId = new Map(sorted.map((x) => [x.id, x]));
+  const next = [...ids.map((id) => byId.get(id)!), ...sorted.filter((x) => !listed.has(x.id))];
+  if (next.every((x, i) => x.id === sorted[i]!.id)) return null;
+  const items = next.flatMap((x, order) => (x.order === order ? [] : [{ ...x, order, version: x.version + 1 }]));
+  return { items, from: sorted.map((x) => x.id), to: next.map((x) => x.id) };
+}
 
 function makeEvent(
   ctx: MutationContext,

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   boardSchema,
   containerCreateInput,
+  containerReorderInput,
   containerSchema,
   eventSchema,
   isRepoRelativePath,
@@ -9,6 +10,7 @@ import {
   projectCreateInput,
   syncScopeSchema,
   taskPatchInput,
+  taskReorderInput,
   taskSchema,
   timestampSchema,
 } from "./schema";
@@ -171,5 +173,24 @@ describe("同步范围", () => {
       syncScopeSchema.safeParse({ include: ["docs/**"], exclude: [], maxFileSize: SYNC_MAX_FILE_SIZE_LIMIT + 1 })
         .success,
     ).toBe(false);
+  });
+});
+
+describe("重排输入", () => {
+  const ids = (n: number) => Array.from({ length: n }, (_, i) => fixtureId("t", i + 1));
+  it.each([
+    ["任务", (v: unknown) => taskReorderInput.safeParse(v), "taskIds"],
+    ["容器", (v: unknown) => containerReorderInput.safeParse(v), "containerIds"],
+  ])("%s重排：接受 1 到 500 个 ID，拒绝空列表、超长和未知字段", (_n, parse, key) => {
+    expect(parse({ [key]: ids(1) }).success).toBe(true);
+    expect(parse({ [key]: ids(500) }).success).toBe(true);
+    expect(parse({ [key]: [] }).success).toBe(false);
+    expect(parse({ [key]: ids(501) }).success).toBe(false);
+    expect(parse({ [key]: ids(1), extra: 1 }).success).toBe(false);
+    expect(parse({ [key]: ["bad id"] }).success).toBe(false);
+  });
+  it("事件 schema 接受 board.reordered", () => {
+    const e = makeEvent({ type: "board.reordered", text: null, target: null, change: { containerOrder: { from: [], to: [] } } });
+    expect(eventSchema.safeParse(e).success).toBe(true);
   });
 });

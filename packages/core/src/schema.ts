@@ -85,6 +85,7 @@ export const EVENT_TYPES = [
   "project.updated",
   "container.created",
   "container.updated",
+  "board.reordered",
   "task.created",
   "task.updated",
   "task.status_changed",
@@ -412,6 +413,13 @@ export const logInput = z
   })
   .strict();
 export type LogInput = z.input<typeof logInput>;
+
+/** 批量重排：列出的 ID 排在最前，其余保持原有相对顺序 */
+export const taskReorderInput = z.object({ taskIds: z.array(idSchema).min(1).max(500) }).strict();
+export type TaskReorderInput = z.input<typeof taskReorderInput>;
+
+export const containerReorderInput = z.object({ containerIds: z.array(idSchema).min(1).max(500) }).strict();
+export type ContainerReorderInput = z.input<typeof containerReorderInput>;
 
 /** 登记项目在某台机器上的位置；lastSyncAt、git、skippedFiles 由服务端在 M5 维护，不经这个输入设置 */
 export const locationInput = z

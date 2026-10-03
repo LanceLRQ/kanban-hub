@@ -170,6 +170,33 @@ describe("planTaskReorder / formatTaskReorder", () => {
     expect(err.exitCode).toBe(EXIT.USAGE);
   });
 
+  it("裸编号按指定容器内的任务编号解析", () => {
+    const plan = planTaskReorder(board, "M2", ["2", "1"]);
+    expect(plan.taskIds).toEqual(["b2bbbbbbbb", "a1aaaaaaaa"]);
+  });
+
+  it("裸编号在容器内不存在时抛 CliError(2)，提示里带容器标签", () => {
+    const err = captureThrow(() => planTaskReorder(board, "M2", ["9"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).toContain("容器 M2 里没有编号为 9 的任务");
+  });
+
+  it("“容器/编号”指向别的容器的任务时仍报不属于", () => {
+    const boardWithCode = {
+      containers,
+      tasks: [...tasks.slice(0, 3), { ...tasks[3]!, code: "7" } as Task],
+    };
+    const err = captureThrow(() => planTaskReorder(boardWithCode, "M2", ["misc/7"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).toContain("不属于");
+  });
+
+  it("裸编号与 #短ID 指向同一任务按重复处理", () => {
+    const err = captureThrow(() => planTaskReorder(board, "M2", ["1", "#a1aa"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+    expect(err.message).toContain("重复");
+  });
+
   it("杂项容器可以重排自己的任务", () => {
     const plan = planTaskReorder(board, "misc", ["#e4ee"]);
     expect(plan.taskIds).toEqual(["e4eeeeeeee"]);

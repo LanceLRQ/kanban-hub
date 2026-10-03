@@ -73,6 +73,21 @@ describe("kh task reorder", () => {
     expect(events.filter((e) => e.type === "board.reordered")).toHaveLength(1);
   });
 
+  it("任务参数可以写本容器内的裸编号，也可以和 #短ID 混用", async () => {
+    const { projectId } = await setup();
+    await addTask("T1");
+    const b = await addTask("T2");
+    await addTask("T3");
+
+    const result = await kh(["task", "reorder", "M2", "T3", `#${b}`]);
+    expect(result.code).toBe(0);
+    expect(taskTitles(projectId)).toEqual(["T3", "T2", "T1"]);
+
+    const missing = await kh(["task", "reorder", "M2", "T9"]);
+    expect(missing.code).toBe(2);
+    expect(missing.stderr).toContain("里没有编号为 T9 的任务");
+  });
+
   it("顺序没变化时输出“顺序未变化”，不新增事件", async () => {
     const { projectId } = await setup();
     const a = await addTask("T1");
@@ -87,7 +102,7 @@ describe("kh task reorder", () => {
 
   it("任务不属于该容器、参数重复：退出码 2，顺序不变", async () => {
     const { projectId } = await setup();
-    const a = await addTask("T1");
+    await addTask("T1");
     const b = await addTask("T2");
     const misc = await kh(["task", "add", "misc", "杂项任务"]);
     const m = /#([0-9a-z]{4,10})/.exec(misc.stdout)![1]!;
@@ -97,7 +112,6 @@ describe("kh task reorder", () => {
     const dup = await kh(["task", "reorder", "M2", `#${b}`, `#${b}`]);
     expect(dup.code).toBe(2);
     expect(taskTitles(projectId)).toEqual(["T1", "T2"]);
-    void a;
   });
 });
 

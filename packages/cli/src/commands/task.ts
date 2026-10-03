@@ -1,7 +1,7 @@
 import type { Command } from "commander";
 import { z } from "zod";
+import { resolveTaskRef } from "@kanban-hub/core/refs";
 import type { ProjectDetailResponse } from "@kanban-hub/core/api";
-import { formatZodError } from "@kanban-hub/core/errors";
 import {
   dateSchema,
   TASK_STATUSES,
@@ -29,6 +29,7 @@ import {
   globalAgentFlag,
   loadProject,
   parseEnumOption,
+  parseInputOrFail,
   parseNullableDateOption,
   parseNullableOption,
   requireLogin,
@@ -135,12 +136,6 @@ export function resolveHumanFlag(opts: HumanOptionsInput): { kind: HumanKind; no
   return { kind, note: value };
 }
 
-function parseInputOrFail<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
-  const result = schema.safeParse(input);
-  if (!result.success) throw new CliError(EXIT.USAGE, formatZodError(result.error).join("；"));
-  return result.data;
-}
-
 function replaceTaskIn(tasks: readonly Task[], next: Task): Task[] {
   return tasks.map((t) => (t.id === next.id ? next : t));
 }
@@ -164,6 +159,23 @@ function parseDueDateForAdd(raw: string | undefined): string | undefined {
   return raw;
 }
 
+/**
+ * 重排命令里的任务写法：# 开头的短 ID、含 / 的“容器编号/任务编号”照常解析；
+ * 其余当作指定容器内的任务编号（容器已经由第一个参数确定，不必再写前缀）。
+ */
+function resolveReorderTask(board: Pick<Board, "containers" | "tasks">, container: Container, ref: string): Task {
+  if (ref.startsWith("#") || ref.includes("/")) return resolveTaskOrFail(board, ref);
+  const result = resolveTaskRef(board, `${container.id}/${ref}`);
+  if (!result.ok) {
+    const label = containerRefLabel(container, board.containers);
+    throw new CliError(
+      result.reason === "not_found" ? EXIT.USAGE : EXIT.DATA,
+      result.reason === "not_found" ? `容器 ${label} 里没有编号为 ${ref} 的任务` : result.message,
+    );
+  }
+  return board.tasks.find((x) => x.id === result.id)!;
+}
+
 export interface TaskReorderPlan {
   container: Container;
   /** 请求体里的任务 ID，按命令行给出的顺序 */
@@ -184,7 +196,7 @@ export function planTaskReorder(
   const container = resolveContainerOrFail(board, containerRef);
   const taskIds: string[] = [];
   for (const ref of taskRefs) {
-    const task = resolveTaskOrFail(board, ref);
+    const task = resolveReorderTask(board, container, ref);
     if (taskIds.includes(task.id)) {
       throw new CliError(EXIT.USAGE, `任务重复出现：${ref}`, "同一个任务在参数里只能写一次");
     }
@@ -495,7 +507,7 @@ export function registerTask(program: Command, ctx: CliContext): void {
       .command("reorder")
       .description("调整容器内任务的顺序：列出的任务排在最前，没列出的保持原有相对顺序")
       .argument("<容器>", "容器写法：编号、misc 或 ID 前缀")
-      .argument("<任务...>", "任务写法：#短ID、容器编号/任务编号 或完整 ID，至少一个，按期望的先后顺序给出"),
+      .argument("<任务...>", "任务写法：本容器内的任务编号、#短ID 或 容器编号/任务编号，至少一个，按期望的先后顺序给出"),
   ).action(async (containerRef: string, taskRefs: string[], _opts: unknown, cmd: Command) => {
     await runReorder(ctx, containerRef, taskRefs, cmd);
   });

@@ -24,6 +24,7 @@ import {
   globalAgentFlag,
   loadProject,
   parseEnumOption,
+  parseInputOrFail,
   parseNullableDateOption,
   parseNullableOption,
   requireLogin,
@@ -240,11 +241,10 @@ async function runContainerReorder(ctx: CliContext, refs: string[], agentFlag: s
   const project = await loadProject(client, repo.config.projectId);
   const plan = planContainerReorder(project.board, refs);
 
-  const parsed = containerReorderInput.safeParse({ containerIds: plan.containerIds });
-  if (!parsed.success) throw new CliError(EXIT.USAGE, formatZodError(parsed.error).join("；"));
+  const input = parseInputOrFail(containerReorderInput, { containerIds: plan.containerIds });
   const after = await client.post(
     `/api/v1/projects/${repo.config.projectId}/reorder-containers`,
-    parsed.data,
+    input,
     z.array(containerSchema),
   );
   ctx.stdout.write(`${formatContainerReorder(project.board, plan.before, after)}\n`);

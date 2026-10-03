@@ -1,4 +1,6 @@
 import type { Command } from "commander";
+import type { z } from "zod";
+import { formatZodError } from "@kanban-hub/core/errors";
 import { projectDetailResponse, type ProjectDetailResponse } from "@kanban-hub/core/api";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import { resolveContainerRef, resolveTaskRef, type RefResult } from "@kanban-hub/core/refs";
@@ -187,4 +189,11 @@ export function formatChange(label: string, from: string, to: string): string {
 /** 与服务端、网页看板一致的原有顺序：order、createdAt、id */
 export function sortByOrder<T extends { order: number; createdAt: string; id: string }>(items: readonly T[]): T[] {
   return [...items].sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}
+
+/** 用 zod schema 校验请求体，不合法是用法错误（2） */
+export function parseInputOrFail<S extends z.ZodType>(schema: S, input: unknown): z.output<S> {
+  const result = schema.safeParse(input);
+  if (!result.success) throw new CliError(EXIT.USAGE, formatZodError(result.error).join("；"));
+  return result.data;
 }

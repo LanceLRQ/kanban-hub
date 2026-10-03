@@ -18,6 +18,7 @@ import {
   type Container,
   type ContainerCreateInput,
   type ContainerPatchInput,
+  type ContainerReorderInput,
   type DeepReadonly,
   type Event,
   type EventType,
@@ -29,6 +30,7 @@ import {
   type Task,
   type TaskCreateInput,
   type TaskPatchInput,
+  type TaskReorderInput,
   actorSchema,
   boardSchema,
   eventSchema,
@@ -148,6 +150,11 @@ interface Outcome<T> extends WriteChange {
 export interface ImportOptions {
   /** 只计算、不写入 */
   dryRun: boolean;
+}
+
+/** 与 apps/web/src/lib/board.ts 的 byOrder 同口径：order、createdAt、id */
+function byOrder(a: { order: number; createdAt: string; id: string }, b: { order: number; createdAt: string; id: string }): number {
+  return a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id);
 }
 
 export class Store {
@@ -401,6 +408,24 @@ export class Store {
       const board = this.requireProject(projectId).board;
       const r = ops.updateContainer(board, projectId, containerId, patch, ctx, opts.expectedVersion);
       return { projectId, board: r.board, events: r.events, value: r.container };
+    });
+  }
+
+  /** 重排容器内的任务，返回该容器按新顺序排列的全部任务；顺序不变时不写入 */
+  reorderTasks(projectId: string, containerId: string, input: TaskReorderInput, actor: Actor): Promise<Task[]> {
+    return this.mutate(actor, (ctx) => {
+      const r = ops.reorderTasks(this.requireProject(projectId).board, projectId, containerId, input, ctx);
+      const value = r.board.tasks.filter((t) => t.containerId === containerId).sort(byOrder);
+      return { projectId, board: r.board, events: r.events, value };
+    });
+  }
+
+  /** 重排非杂项容器，返回按新顺序排列的全部容器，杂项容器在最后 */
+  reorderContainers(projectId: string, input: ContainerReorderInput, actor: Actor): Promise<Container[]> {
+    return this.mutate(actor, (ctx) => {
+      const r = ops.reorderContainers(this.requireProject(projectId).board, projectId, input, ctx);
+      const value = [...r.board.containers.filter((c) => c.kind !== "misc").sort(byOrder), ...r.board.containers.filter((c) => c.kind === "misc")];
+      return { projectId, board: r.board, events: r.events, value };
     });
   }
 

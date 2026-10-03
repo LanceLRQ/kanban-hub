@@ -24,6 +24,8 @@ import { GET as meGet } from "@/app/api/v1/me/route";
 import { POST as pairPost } from "@/app/api/v1/pair/route";
 import { POST as pairingCodesPost } from "@/app/api/v1/pairing-codes/route";
 import { PATCH as containerPatch } from "@/app/api/v1/projects/[id]/containers/[cid]/route";
+import { POST as reorderTasksPost } from "@/app/api/v1/projects/[id]/containers/[cid]/reorder-tasks/route";
+import { POST as reorderContainersPost } from "@/app/api/v1/projects/[id]/reorder-containers/route";
 import { POST as containersPost } from "@/app/api/v1/projects/[id]/containers/route";
 import { GET as docsGet } from "@/app/api/v1/projects/[id]/docs/route";
 import { GET as exportGet } from "@/app/api/v1/projects/[id]/export/route";
@@ -95,6 +97,8 @@ const ROUTES: RouteEntry[] = [
   { pattern: "/api/v1/projects/:id", handlers: { GET: asRouteHandler(projectGet), PATCH: asRouteHandler(projectPatch) } },
   { pattern: "/api/v1/projects/:id/containers", handlers: { POST: asRouteHandler(containersPost) } },
   { pattern: "/api/v1/projects/:id/containers/:cid", handlers: { PATCH: asRouteHandler(containerPatch) } },
+  { pattern: "/api/v1/projects/:id/containers/:cid/reorder-tasks", handlers: { POST: asRouteHandler(reorderTasksPost) } },
+  { pattern: "/api/v1/projects/:id/reorder-containers", handlers: { POST: asRouteHandler(reorderContainersPost) } },
   { pattern: "/api/v1/projects/:id/docs", handlers: { GET: asRouteHandler(docsGet) } },
   { pattern: "/api/v1/projects/:id/export", handlers: { GET: asRouteHandler(exportGet) } },
   { pattern: "/api/v1/projects/:id/import", handlers: { POST: asRouteHandler(importPost) } },

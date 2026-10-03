@@ -1,10 +1,13 @@
 import { describe, expect, it } from "vitest";
+import type { Container, Task } from "@kanban-hub/core/schema";
 import { EXIT, type CliError } from "../errors";
 import {
   assertHasSetOption,
   assertSuspendReason,
   dedupePaths,
+  formatTaskReorder,
   parseChecklistIndex,
+  planTaskReorder,
   resolveHumanFlag,
   type SetOptionsInput,
 } from "./task";
@@ -131,5 +134,62 @@ describe("resolveHumanFlag", () => {
   it("给了类型选项但没有说明文字（commander 的可选参数解析成 true）时抛 CliError(2)", () => {
     const err = captureThrow(() => resolveHumanFlag({ decision: true }));
     expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+});
+
+describe("planTaskReorder / formatTaskReorder", () => {
+  const base = { version: 1, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" };
+  const containers = [
+    { ...base, id: "c1aaaaaaaa", kind: "phase", code: "M2", title: "阶段二", order: 0 },
+    { ...base, id: "c2bbbbbbbb", kind: "misc", code: null, title: "杂项", order: 1 },
+  ] as unknown as Container[];
+  const mk = (id: string, code: string | null, order: number, containerId: string, status = "todo") =>
+    ({ ...base, id, code, order, containerId, status, title: `任务${id.slice(0, 2)}` }) as unknown as Task;
+  const tasks = [
+    mk("a1aaaaaaaa", "1", 0, "c1aaaaaaaa"),
+    mk("b2bbbbbbbb", "2", 1, "c1aaaaaaaa", "in_progress"),
+    mk("d3dddddddd", null, 2, "c1aaaaaaaa"),
+    mk("e4eeeeeeee", null, 0, "c2bbbbbbbb"),
+  ];
+  const board = { containers, tasks };
+
+  it("解析容器与任务，返回请求体用的 ID 和改前顺序", () => {
+    const plan = planTaskReorder(board, "M2", ["M2/2", "#d3dd"]);
+    expect(plan.container.id).toBe("c1aaaaaaaa");
+    expect(plan.taskIds).toEqual(["b2bbbbbbbb", "d3dddddddd"]);
+    expect(plan.before).toEqual(["a1aaaaaaaa", "b2bbbbbbbb", "d3dddddddd"]);
+  });
+
+  it("参数重复（写法不同但指向同一任务）时抛 CliError(2)", () => {
+    const err = captureThrow(() => planTaskReorder(board, "M2", ["M2/1", "#a1aa"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("任务不属于指定容器时抛 CliError(2)", () => {
+    const err = captureThrow(() => planTaskReorder(board, "M2", ["M2/1", "#e4ee"]));
+    expect(err.exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("杂项容器可以重排自己的任务", () => {
+    const plan = planTaskReorder(board, "misc", ["#e4ee"]);
+    expect(plan.taskIds).toEqual(["e4eeeeeeee"]);
+  });
+
+  it("输出：首行、逐行序号 / 短 ID / 编号 / 标题 / 状态", () => {
+    const after = [tasks[1]!, tasks[2]!, tasks[0]!];
+    const out = formatTaskReorder(board, containers[0]!, ["a1aaaaaaaa", "b2bbbbbbbb", "d3dddddddd"], after);
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("已重排 M2 的任务顺序：");
+    expect(lines[1]).toContain("1.");
+    expect(lines[1]).toContain("#b2bb");
+    expect(lines[1]).toContain("2");
+    expect(lines[1]).toContain("任务b2");
+    expect(lines[1]).toContain("进行中");
+    expect(lines).toHaveLength(4);
+  });
+
+  it("顺序没变时只输出“顺序未变化”", () => {
+    const out = formatTaskReorder(board, containers[0]!, ["a1aaaaaaaa", "b2bbbbbbbb", "d3dddddddd"], tasks.slice(0, 3));
+    expect(out).toBe("顺序未变化");
   });
 });

@@ -93,6 +93,20 @@ describe("SKILL_MD", () => {
       }
     });
 
+    it("调整顺序一节", () => {
+      for (const kw of [
+        "## 调整顺序",
+        "kh task reorder <容器> <任务...>",
+        "kh container reorder <容器...>",
+        "没列出的保持原有相对顺序",
+        "正常",
+        "储备",
+        "不算一次进度上报",
+      ]) {
+        expect(SKILL_MD, `应包含 ${kw}`).toContain(kw);
+      }
+    });
+
     it("退出码的表和细化归属（3、4、6）", () => {
       expect(SKILL_MD).toContain("kh login");
       expect(SKILL_MD).toContain("配对码");

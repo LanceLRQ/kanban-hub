@@ -1,11 +1,15 @@
 import type { Command } from "commander";
+import { z } from "zod";
 import { formatZodError } from "@kanban-hub/core/errors";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import {
   containerCreateInput,
   containerPatchInput,
+  containerReorderInput,
   containerSchema,
   MANUAL_STATUSES,
+  type Board,
+  type Container,
   type ManualStatus,
 } from "@kanban-hub/core/schema";
 import type { CliContext } from "../context";
@@ -25,6 +29,7 @@ import {
   requireLogin,
   requireRegisteredRepo,
   resolveContainerOrFail,
+  sortByOrder,
   withAgentOption,
 } from "./shared";
 
@@ -191,6 +196,61 @@ async function runContainerSet(
   await afterReport(ctx, repo.config.projectId);
 }
 
+export interface ContainerReorderPlan {
+  /** 请求体里的容器 ID，按命令行给出的顺序 */
+  containerIds: string[];
+  /** 改之前除杂项外全部容器的 ID（按 order、createdAt、id） */
+  before: string[];
+}
+
+/** kh container reorder 的本地校验：参数重复、含杂项容器都是用法错误（2），不碰网络 */
+export function planContainerReorder(board: Pick<Board, "containers">, refs: readonly string[]): ContainerReorderPlan {
+  const containerIds: string[] = [];
+  for (const ref of refs) {
+    const container = resolveContainerOrFail(board, ref);
+    if (container.kind === "misc") {
+      throw new CliError(EXIT.USAGE, "杂项容器不参与排序", "杂项容器固定排在最后，请从参数里去掉 misc");
+    }
+    if (containerIds.includes(container.id)) {
+      throw new CliError(EXIT.USAGE, `容器重复出现：${ref}`, "同一个容器在参数里只能写一次");
+    }
+    containerIds.push(container.id);
+  }
+  const before = sortByOrder(board.containers.filter((c) => c.kind !== "misc")).map((c) => c.id);
+  return { containerIds, before };
+}
+
+/** 重排结果的输出（杂项容器固定在最后，不列出）；顺序没有变化时只有一行 */
+export function formatContainerReorder(
+  board: Pick<Board, "containers">,
+  before: readonly string[],
+  after: readonly Container[],
+): string {
+  const ordered = after.filter((c) => c.kind !== "misc");
+  if (ordered.length === before.length && ordered.every((c, i) => c.id === before[i])) return "顺序未变化";
+  const lines = ordered.map(
+    (c, i) => `  ${i + 1}. ${containerRefLabel(c, board.containers)}（${CONTAINER_KIND_LABELS[c.kind as ContainerAddKind]}）${c.title}`,
+  );
+  return ["已调整容器顺序：", ...lines].join("\n");
+}
+
+async function runContainerReorder(ctx: CliContext, refs: string[], agentFlag: string | undefined): Promise<void> {
+  const repo = await requireRegisteredRepo(ctx);
+  const { client } = await requireLogin(ctx, agentFlag);
+  const project = await loadProject(client, repo.config.projectId);
+  const plan = planContainerReorder(project.board, refs);
+
+  const parsed = containerReorderInput.safeParse({ containerIds: plan.containerIds });
+  if (!parsed.success) throw new CliError(EXIT.USAGE, formatZodError(parsed.error).join("；"));
+  const after = await client.post(
+    `/api/v1/projects/${repo.config.projectId}/reorder-containers`,
+    parsed.data,
+    z.array(containerSchema),
+  );
+  ctx.stdout.write(`${formatContainerReorder(project.board, plan.before, after)}\n`);
+  await afterReport(ctx, repo.config.projectId);
+}
+
 /** kh container add / set：新建、修改阶段 / 特性 / 杂项容器（规格 10.2） */
 export function registerContainer(program: Command, ctx: CliContext): void {
   const container = program.command("container").description("容器相关命令");
@@ -221,5 +281,14 @@ export function registerContainer(program: Command, ctx: CliContext): void {
       .option("--target-date <日期>", "目标日期（YYYY-MM-DD），传空字符串清空"),
   ).action(async (ref: string, opts: ContainerSetOptions, cmd: Command) => {
     await runContainerSet(ctx, ref, opts, globalAgentFlag(cmd));
+  });
+
+  withAgentOption(
+    container
+      .command("reorder")
+      .description("调整阶段 / 特性容器的顺序：列出的排在最前，没列出的保持原有相对顺序（杂项固定在最后）")
+      .argument("<容器...>", "容器编号或 ID 前缀，至少一个，按期望的先后顺序给出"),
+  ).action(async (refs: string[], _opts: unknown, cmd: Command) => {
+    await runContainerReorder(ctx, refs, globalAgentFlag(cmd));
   });
 }

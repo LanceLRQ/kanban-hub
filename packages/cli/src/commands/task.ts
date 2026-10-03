@@ -1,5 +1,5 @@
 import type { Command } from "commander";
-import type { z } from "zod";
+import { z } from "zod";
 import type { ProjectDetailResponse } from "@kanban-hub/core/api";
 import { formatZodError } from "@kanban-hub/core/errors";
 import {
@@ -7,7 +7,9 @@ import {
   TASK_STATUSES,
   taskCreateInput,
   taskPatchInput,
+  taskReorderInput,
   taskSchema,
+  type Board,
   type Container,
   type HumanKind,
   type Task,
@@ -34,6 +36,7 @@ import {
   resolveContainerOrFail,
   resolveTaskOrFail,
   shortRef,
+  sortByOrder,
   withAgentOption,
 } from "./shared";
 
@@ -159,6 +162,55 @@ function parseDueDateForAdd(raw: string | undefined): string | undefined {
     throw new CliError(EXIT.USAGE, `截止日期格式不对：${raw}`, "使用 YYYY-MM-DD 格式，例如 2026-10-01");
   }
   return raw;
+}
+
+export interface TaskReorderPlan {
+  container: Container;
+  /** 请求体里的任务 ID，按命令行给出的顺序 */
+  taskIds: string[];
+  /** 改之前该容器全部任务的 ID（按 order、createdAt、id） */
+  before: string[];
+}
+
+/**
+ * kh task reorder 的本地校验：解析容器和任务引用，参数重复、任务不属于该容器都是用法错误（2）。
+ * 只做解析和校验，不碰网络，方便单元测试。
+ */
+export function planTaskReorder(
+  board: Pick<Board, "containers" | "tasks">,
+  containerRef: string,
+  taskRefs: readonly string[],
+): TaskReorderPlan {
+  const container = resolveContainerOrFail(board, containerRef);
+  const taskIds: string[] = [];
+  for (const ref of taskRefs) {
+    const task = resolveTaskOrFail(board, ref);
+    if (taskIds.includes(task.id)) {
+      throw new CliError(EXIT.USAGE, `任务重复出现：${ref}`, "同一个任务在参数里只能写一次");
+    }
+    if (task.containerId !== container.id) {
+      const label = containerRefLabel(container, board.containers);
+      throw new CliError(EXIT.USAGE, `任务 ${ref} 不属于容器 ${label}`, "只能重排同一个容器内的任务");
+    }
+    taskIds.push(task.id);
+  }
+  const before = sortByOrder(board.tasks.filter((t) => t.containerId === container.id)).map((t) => t.id);
+  return { container, taskIds, before };
+}
+
+/** 重排结果的输出：顺序没有变化时只有一行，否则首行加逐行的新顺序 */
+export function formatTaskReorder(
+  board: Pick<Board, "containers" | "tasks">,
+  container: Container,
+  before: readonly string[],
+  after: readonly Task[],
+): string {
+  if (after.length === before.length && after.every((t, i) => t.id === before[i])) return "顺序未变化";
+  const lines = after.map((t, i) => {
+    const code = t.code !== null ? ` ${t.code}` : "";
+    return `  ${i + 1}. ${shortRef(board, t.id)}${code} ${t.title}（${TASK_STATUS_LABELS[t.status]}）`;
+  });
+  return [`已重排 ${containerRefLabel(container, board.containers)} 的任务顺序：`, ...lines].join("\n");
 }
 
 interface TaskEditContext {
@@ -352,6 +404,22 @@ async function runChecklist(ctx: CliContext, taskRef: string, opts: ChecklistOpt
   await afterReport(ctx, repo.config.projectId);
 }
 
+async function runReorder(ctx: CliContext, containerRef: string, taskRefs: string[], cmd: Command): Promise<void> {
+  const repo = await requireRegisteredRepo(ctx);
+  const { client } = await requireLogin(ctx, globalAgentFlag(cmd));
+  const detail = await loadProject(client, repo.config.projectId);
+  const plan = planTaskReorder(detail.board, containerRef, taskRefs);
+
+  const input = parseInputOrFail(taskReorderInput, { taskIds: plan.taskIds });
+  const after = await client.post(
+    `/api/v1/projects/${repo.config.projectId}/containers/${plan.container.id}/reorder-tasks`,
+    input,
+    z.array(taskSchema),
+  );
+  ctx.stdout.write(`${formatTaskReorder(detail.board, plan.container, plan.before, after)}\n`);
+  await afterReport(ctx, repo.config.projectId);
+}
+
 /** kh task：新增、修改、标记待你处理、清单（规格 10.2，另加“与规格的出入”第 2 条：task set 的附加选项） */
 export function registerTask(program: Command, ctx: CliContext): void {
   const task = program.command("task").description("任务：新增、修改、标记待你处理、清单");
@@ -420,5 +488,15 @@ export function registerTask(program: Command, ctx: CliContext): void {
       .option("--add <内容>", "追加一项清单内容（可重复给出，按顺序追加）", collect, [] as string[]),
   ).action(async (taskRef: string, opts: ChecklistOptions, cmd: Command) => {
     await runChecklist(ctx, taskRef, opts, cmd);
+  });
+
+  withAgentOption(
+    task
+      .command("reorder")
+      .description("调整容器内任务的顺序：列出的任务排在最前，没列出的保持原有相对顺序")
+      .argument("<容器>", "容器写法：编号、misc 或 ID 前缀")
+      .argument("<任务...>", "任务写法：#短ID、容器编号/任务编号 或完整 ID，至少一个，按期望的先后顺序给出"),
+  ).action(async (containerRef: string, taskRefs: string[], _opts: unknown, cmd: Command) => {
+    await runReorder(ctx, containerRef, taskRefs, cmd);
   });
 }

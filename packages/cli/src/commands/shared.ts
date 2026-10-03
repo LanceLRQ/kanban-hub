@@ -183,3 +183,8 @@ export function assertAnyOptionGiven(given: readonly boolean[], hint?: string): 
 export function formatChange(label: string, from: string, to: string): string {
   return `${label} ${from} → ${to}`;
 }
+
+/** 与服务端、网页看板一致的原有顺序：order、createdAt、id */
+export function sortByOrder<T extends { order: number; createdAt: string; id: string }>(items: readonly T[]): T[] {
+  return [...items].sort((a, b) => a.order - b.order || a.createdAt.localeCompare(b.createdAt) || a.id.localeCompare(b.id));
+}

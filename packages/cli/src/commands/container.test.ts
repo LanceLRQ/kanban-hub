@@ -1,9 +1,12 @@
 import { describe, expect, it } from "vitest";
+import type { Container } from "@kanban-hub/core/schema";
 import { EXIT, type CliError } from "../errors";
 import {
   buildContainerCreateInput,
   buildContainerPatch,
   formatContainerAddedMessage,
+  formatContainerReorder,
+  planContainerReorder,
   parseTargetDateOption,
 } from "./container";
 
@@ -130,5 +133,41 @@ describe("buildContainerPatch", () => {
   it("多个选项一起给出时都整理进请求体", () => {
     const patch = buildContainerPatch({ title: "新标题", version: "v2", targetDate: "" });
     expect(patch).toEqual({ title: "新标题", targetVersion: "v2", targetDate: null });
+  });
+});
+
+describe("planContainerReorder / formatContainerReorder", () => {
+  const base = { version: 1, createdAt: "2026-10-01T00:00:00.000Z", updatedAt: "2026-10-01T00:00:00.000Z" };
+  const containers = [
+    { ...base, id: "c1aaaaaaaa", kind: "phase", code: "M1", title: "一", order: 0 },
+    { ...base, id: "c2bbbbbbbb", kind: "phase", code: "M2", title: "二", order: 1 },
+    { ...base, id: "c3cccccccc", kind: "feature", code: "F1", title: "特性", order: 2 },
+    { ...base, id: "c9mmmmmmmm", kind: "misc", code: null, title: "杂项", order: 3 },
+  ] as unknown as Container[];
+  const board = { containers };
+
+  it("解析引用，返回请求体用的 ID 和改前顺序（不含杂项）", () => {
+    const plan = planContainerReorder(board, ["F1", "M2"]);
+    expect(plan.containerIds).toEqual(["c3cccccccc", "c2bbbbbbbb"]);
+    expect(plan.before).toEqual(["c1aaaaaaaa", "c2bbbbbbbb", "c3cccccccc"]);
+  });
+
+  it("参数重复时抛 CliError(2)", () => {
+    expect(captureError(() => planContainerReorder(board, ["M1", "M1"])).exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("参数含杂项容器时抛 CliError(2)", () => {
+    expect(captureError(() => planContainerReorder(board, ["M1", "misc"])).exitCode).toBe(EXIT.USAGE);
+  });
+
+  it("输出新顺序；杂项不列出；顺序没变时只输出“顺序未变化”", () => {
+    const before = ["c1aaaaaaaa", "c2bbbbbbbb", "c3cccccccc"];
+    const after = [containers[2]!, containers[0]!, containers[1]!, containers[3]!];
+    const out = formatContainerReorder(board, before, after);
+    const lines = out.split("\n");
+    expect(lines[0]).toBe("已调整容器顺序：");
+    expect(lines[1]).toContain("F1");
+    expect(lines).toHaveLength(4);
+    expect(formatContainerReorder(board, before, containers)).toBe("顺序未变化");
   });
 });

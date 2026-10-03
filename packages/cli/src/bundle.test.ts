@@ -122,6 +122,15 @@ describe("kh 打包产物", () => {
     expect(exp.stdout).toContain("--md");
   });
 
+  it("kh task reorder --help、kh container reorder --help：退出码 0", async () => {
+    const task = await execFileAsync(process.execPath, [outfile, "task", "--help"]);
+    expect(task.stdout).toContain("reorder");
+    const container = await execFileAsync(process.execPath, [outfile, "container", "--help"]);
+    expect(container.stdout).toContain("reorder");
+    const taskReorder = await execFileAsync(process.execPath, [outfile, "task", "reorder", "--help"]);
+    expect(taskReorder.stdout).toContain("<任务...>");
+  });
+
   it("kh backup --help：退出码 0，列出 --no-history（新命令的解析依赖在真实产物上验证）", async () => {
     const backup = await execFileAsync(process.execPath, [outfile, "backup", "--help"]);
     expect(backup.stdout).toContain("backup");

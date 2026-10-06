@@ -103,7 +103,7 @@ docker compose up -d --build
 
 ## 版本
 
-当前版本是 0.1.1。
+当前版本是 0.1.2。
 
 镜像发布在 Docker Hub：`lancelrq/kanban-hub`，有 amd64 和 arm64 两种架构，一键安装脚本默认从这里拉取。
 

@@ -1,5 +1,5 @@
 /** kanban-hub 的版本号。服务端、kh 命令行、网页共用这一个来源。 */
-export const KH_VERSION = "0.1.1";
+export const KH_VERSION = "0.1.2";
 
 interface ParsedVersion {
   major: number;

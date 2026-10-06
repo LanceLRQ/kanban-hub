@@ -60,7 +60,16 @@ export async function ProjectCard({ project, now }: { project: ProjectCardView; 
       </div>
 
       <div className="flex items-center gap-2.5">
-        <ProgressBar done={project.progress.done} total={project.progress.total} />
+        <ProgressBar
+          done={project.progress.done}
+          started={project.startedCount}
+          total={project.progress.total}
+          title={t("projects.progressDetail", {
+            done: project.progress.done,
+            started: project.startedCount,
+            todo: project.progress.total - project.progress.done - project.startedCount,
+          })}
+        />
         <span className="kh-num shrink-0 text-xs font-bold text-muted-foreground">
           {project.progress.done}/{project.progress.total}
         </span>

@@ -10,6 +10,7 @@
     "heading": "项目",
     "focusLabel": "焦点",
     "focusEmpty": "（无）",
+    "progressDetail": "已完成 {done} · 进行中 {started} · 待开始 {todo}",
     "syncedAt": "同步于 {value}",
     "stale": "停滞 {days} 天",
     "noActivity": "没有最近活动",

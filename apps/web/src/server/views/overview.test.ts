@@ -148,6 +148,25 @@ describe("buildOverview：项目卡片", () => {
     expect(card.location).toBeNull();
   });
 
+  it("startedCount 统计已开始未完成（进行中、复核中、挂起）的任务，同样不计杂项", async () => {
+    api = await setupTestApi();
+    const { project, container, actor } = await projectWithContainer(api, "多状态");
+    for (const status of ["todo", "in_progress", "review", "suspended", "done", "cancelled"] as const) {
+      await api.store.createTask(
+        project.id,
+        { containerId: container.id, title: status, status, ...(status === "suspended" ? { suspendReason: "等待" } : {}) },
+        actor,
+      );
+    }
+    const misc = api.store.getBoard(project.id)!.containers.find((c) => c.kind === "misc")!;
+    await api.store.createTask(project.id, { containerId: misc.id, title: "杂项进行中", status: "in_progress" }, actor);
+
+    const view = await buildOverview(api.services, new Date(), enumLabel, "（无）");
+    const card = view.projects.find((p) => p.id === project.id)!;
+    expect(card.progress).toEqual({ done: 1, total: 5 });
+    expect(card.startedCount).toBe(3);
+  });
+
   it("最近活动取最新的一条事件", async () => {
     api = await setupTestApi();
     const { project, container, actor } = await projectWithContainer(api, "kanban-hub");

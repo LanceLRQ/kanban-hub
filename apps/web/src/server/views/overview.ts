@@ -49,6 +49,8 @@ export interface ProjectCardView {
   lastEventAt: string | null;
   focus: string;
   progress: Progress;
+  /** 已开始但未完成（进行中、复核中、挂起）的任务数，口径与 progress 一致：不计杂项 */
+  startedCount: number;
   lastEvent: ProjectCardLastEvent | null;
   location: LocationSummary | null;
   stale: { days: number } | null;
@@ -168,6 +170,7 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
         lastEventAt,
         focus: project.focus,
         progress: projectProgress(board as unknown as Board),
+        startedCount: startedCount(board as unknown as Board),
         lastEvent,
         location,
         stale: stale ? { days: idleDays } : null,
@@ -195,4 +198,12 @@ function compareRows(a: { card: ProjectCardView; lastEventAt: string | null }, b
   if (a.lastEventAt === null) return 1;
   if (b.lastEventAt === null) return -1;
   return Date.parse(b.lastEventAt) - Date.parse(a.lastEventAt);
+}
+
+const STARTED_STATUSES: ReadonlySet<Task["status"]> = new Set(["in_progress", "review", "suspended"]);
+
+/** 已开始但未完成的任务数：不计杂项，与 projectProgress 的范围一致 */
+function startedCount(board: Pick<Board, "containers" | "tasks">): number {
+  const miscContainerId = board.containers.find((c) => c.kind === "misc")?.id;
+  return board.tasks.filter((t) => t.containerId !== miscContainerId && STARTED_STATUSES.has(t.status)).length;
 }

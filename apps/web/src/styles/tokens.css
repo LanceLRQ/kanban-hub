@@ -10,6 +10,8 @@
  *   - 语义色 · 健康度：--health-on-track --health-at-risk --health-blocked
  *   - 语义色 · 任务状态：--task-todo --task-in-progress --task-review
  *     --task-done --task-suspended --task-cancelled
+ *     --task-done-ink --task-in-progress-ink（写在芥末底等有色背景上的数字，比同名底色深）
+ *     --task-in-progress-on-mustard（芥末底上的进行中色块，主题 A 里与底色同色，需要深一档）
  *   - 语义色 · 待你处理：--human-decision --human-verify --human-action
  *   - 语义色 · 停滞：--stale
  *   - 实心标签（状态、健康度、待你处理）：--solid-shade 语义色加深后的保留比例，--on-solid 字色
@@ -75,6 +77,9 @@
   --task-done: var(--sage);
   --task-suspended: var(--dryrose);
   --task-cancelled: var(--cancelbg);
+  --task-done-ink: #4f6e46;
+  --task-in-progress-ink: #6e5210;
+  --task-in-progress-on-mustard: #a8821f;
 
   /* 语义色 · 待你处理 */
   --human-decision: var(--dryrose);

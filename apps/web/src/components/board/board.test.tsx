@@ -53,8 +53,8 @@ function section(id: string, title: string, tasks: BoardTaskView[], status: Boar
     status,
     collapsed: status === "done" || status === "cancelled",
     taskCount: tasks.length,
-    doneCount: 0,
-    openCount: tasks.length,
+    doneCount: tasks.filter((t) => t.status === "done").length,
+    startedCount: tasks.filter((t) => t.status === "in_progress" || t.status === "review" || t.status === "suspended").length,
     cancelledCount: 0,
     completedDate: null,
     tasks,
@@ -398,3 +398,27 @@ describe("状态下拉", () => {
     expect(sectionTitles()).toEqual(["进行中块", "杂项块"]);
   });
 });
+
+describe("里程碑表头的进度", () => {
+  it("显示带颜色的 已完成/进行中/未开始 与总数，数字带含义说明，进度条按状态分段", () => {
+    mount();
+    const head = container.querySelector(`section[aria-label="第一块"] .kh-board-head`)!;
+    const counts = [...head.querySelectorAll("[data-count]")].map((el) => [el.getAttribute("data-count"), el.textContent, el.getAttribute("aria-label")]);
+    expect(counts).toEqual([
+      ["done", "1", "已完成 1"],
+      ["started", "1", "进行中 1（含复核中、挂起）"],
+      ["todo", "1", "未开始 1"],
+    ]);
+    expect(head.textContent).toContain("1/1/1，共 3 个任务");
+    const segments = [...head.querySelectorAll("[data-segment]")].map((el) => el.getAttribute("data-segment"));
+    expect(segments).toEqual(["done", "started", "todo"]);
+  });
+
+  it("杂项也显示进度", () => {
+    mount(mixedView);
+    const head = container.querySelector(`section[aria-label="杂项块"] .kh-board-head`)!;
+    expect(head.textContent).toContain("0/0/1，共 1 个任务");
+    expect(head.querySelectorAll("[data-segment]")).toHaveLength(1);
+  });
+});
+

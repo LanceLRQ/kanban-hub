@@ -37,6 +37,11 @@ export function progressOf(tasks: readonly Pick<Task, "status">[]): Progress {
   return { done: counted.filter((t) => t.status === "done").length, total: counted.length };
 }
 
+/** 已开始但未完成的任务数：进行中、复核中、挂起 */
+export function startedCount(tasks: readonly Pick<Task, "status">[]): number {
+  return tasks.filter((t) => t.status === "in_progress" || t.status === "review" || t.status === "suspended").length;
+}
+
 /** 任务清单的完成度 */
 export function checklistProgress(items: readonly { done: boolean }[]): Progress {
   return { done: items.filter((i) => i.done).length, total: items.length };

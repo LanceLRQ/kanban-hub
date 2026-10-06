@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { checklistProgress, compareByOrder, containerStatus, isStale, parseStaleDays, progressOf, projectProgress, summarizeContainer } from "./derive";
+import { checklistProgress, compareByOrder, containerStatus, isStale, parseStaleDays, progressOf, projectProgress, startedCount, summarizeContainer } from "./derive";
 import type { TaskStatus } from "./schema";
 import { fixtureId, makeContainer, makeMisc, makeProject, makeTask } from "./test-fixtures";
 
@@ -73,6 +73,10 @@ describe("summarizeContainer", () => {
 describe("进度", () => {
   it("不计已取消的任务", () => {
     expect(progressOf(tasksOf("done", "todo", "cancelled"))).toEqual({ done: 1, total: 2 });
+  });
+
+  it("已开始未完成：进行中、复核中、挂起", () => {
+    expect(startedCount(tasksOf("todo", "in_progress", "review", "suspended", "done", "cancelled"))).toBe(3);
   });
 
   it("清单完成度", () => {

@@ -5,7 +5,7 @@
  * （页面用 next-intl 的 getTranslations("enums") 构造，测试用 createTranslator 加载真实
  * messages/zh-CN/enums.json），本文件不直接依赖 next-intl。
  */
-import { isStale, projectProgress, type Progress } from "@kanban-hub/core/derive";
+import { isStale, projectProgress, startedCount, type Progress } from "@kanban-hub/core/derive";
 import type { Board, Cycle, Event, Health, HumanKind, Project, Task } from "@kanban-hub/core/schema";
 import { actorLabel, type ActorLabel } from "@/lib/actor";
 import { type EnumLabelFn, type EventDescription, describeEvent } from "@/lib/events";
@@ -170,7 +170,7 @@ export async function buildOverview(services: Services, now: Date, enumLabel: En
         lastEventAt,
         focus: project.focus,
         progress: projectProgress(board as unknown as Board),
-        startedCount: startedCount(board as unknown as Board),
+        startedCount: projectStartedCount(board as unknown as Board),
         lastEvent,
         location,
         stale: stale ? { days: idleDays } : null,
@@ -200,10 +200,8 @@ function compareRows(a: { card: ProjectCardView; lastEventAt: string | null }, b
   return Date.parse(b.lastEventAt) - Date.parse(a.lastEventAt);
 }
 
-const STARTED_STATUSES: ReadonlySet<Task["status"]> = new Set(["in_progress", "review", "suspended"]);
-
 /** 已开始但未完成的任务数：不计杂项，与 projectProgress 的范围一致 */
-function startedCount(board: Pick<Board, "containers" | "tasks">): number {
+function projectStartedCount(board: Pick<Board, "containers" | "tasks">): number {
   const miscContainerId = board.containers.find((c) => c.kind === "misc")?.id;
-  return board.tasks.filter((t) => t.containerId !== miscContainerId && STARTED_STATUSES.has(t.status)).length;
+  return startedCount(board.tasks.filter((t) => t.containerId !== miscContainerId));
 }

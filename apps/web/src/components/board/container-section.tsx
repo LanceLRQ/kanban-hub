@@ -1,6 +1,8 @@
 "use client";
 
 import { useTranslations } from "next-intl";
+import { ProgressBar } from "@/components/progress-bar";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import type { BoardSectionView, BoardTaskView } from "@/server/views/board";
 import { containerAnchorId } from "./board-nav";
@@ -25,7 +27,7 @@ interface ContainerSectionProps {
   onOpenTask: (taskId: string) => void;
 }
 
-/** 一个容器分区：表头（编号、标题、目标版本、状态、摘要、编辑、折叠）+ 任务行 + 新建任务 */
+/** 一个容器分区：表头（编号、标题、目标版本、状态、进度、摘要、编辑、折叠）+ 任务行 + 新建任务 */
 export function ContainerSection({ projectId, section, tasks, canCreate, index, expanded, onToggle, onOpenTask }: ContainerSectionProps) {
   const t = useTranslations("board");
   const te = useTranslations("enums");
@@ -65,6 +67,7 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
           {status !== null && statusLabel !== null && <StatusChip status={status} label={statusLabel} />}
           {container.manualReason !== null && <span className="text-xs font-semibold text-muted-foreground">{container.manualReason}</span>}
         </span>
+        <SectionProgress section={section} t={t} />
         <span className="kh-num ml-auto text-right text-xs font-bold">{summaryText(section, t)}</span>
         <ContainerEditDialog projectId={projectId} container={container} />
         <button
@@ -101,18 +104,55 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
-/** 表头右侧的摘要：杂项只显示未完成数；已完成的容器写“N 个任务全部完成 · 完成日期”；其余写目标日期与任务数 */
+/**
+ * 标题右侧的进度：进度条（窄屏隐藏）+ 带颜色的“已完成/进行中/未开始”三个数字与总数，数字悬停时用 tooltip 说明含义。
+ * 已取消的任务不计入，与进度条、项目进度的口径一致。
+ */
+function SectionProgress({ section, t }: { section: BoardSectionView; t: Translate }) {
+  const todo = section.taskCount - section.doneCount - section.startedCount;
+  const numbers = [
+    { key: "done", count: section.doneCount, tip: t("section.doneTip", { count: section.doneCount }), className: "text-[var(--task-done-ink)]" },
+    { key: "started", count: section.startedCount, tip: t("section.startedTip", { count: section.startedCount }), className: "text-[var(--task-in-progress-ink)]" },
+    { key: "todo", count: todo, tip: t("section.todoTip", { count: todo }), className: "text-muted-foreground" },
+  ];
+  return (
+    <span className="flex items-center gap-2.5">
+      <span className="kh-board-progress hidden w-[120px] sm:flex">
+        <ProgressBar done={section.doneCount} started={section.startedCount} total={section.taskCount} title={numbers.map((n) => n.tip).join(" · ")} />
+      </span>
+      <span className="kh-num text-xs font-bold">
+        <TooltipProvider delayDuration={300}>
+          {numbers.map((n, i) => (
+            <span key={n.key}>
+              {i > 0 && "/"}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span data-count={n.key} aria-label={n.tip} className={n.className}>
+                    {n.count}
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="kh-tooltip">
+                  {n.tip}
+                </TooltipContent>
+              </Tooltip>
+            </span>
+          ))}
+        </TooltipProvider>
+        {t("section.taskTotal", { count: section.taskCount })}
+      </span>
+    </span>
+  );
+}
+
+/** 表头右侧的摘要：已完成的写完成日期，其余写目标日期；有已取消的任务时另注一句。任务数见 SectionProgress */
 function summaryText(section: BoardSectionView, t: Translate): string {
   const { container, status } = section;
-  const cancelled = section.cancelledCount > 0 ? [t("section.cancelledNote", { count: section.cancelledCount })] : [];
-  if (container.kind === "misc") return t("section.openCount", { count: section.openCount });
-  if (status === "done") {
-    const parts = [t("section.allDone", { count: section.taskCount })];
-    if (section.completedDate !== null) parts.push(t("section.completedOn", { date: section.completedDate }));
-    return [...parts, ...cancelled].join(" · ");
-  }
   const parts: string[] = [];
-  if (container.targetDateLabel !== null) parts.push(t("section.targetDate", { date: container.targetDateLabel }));
-  parts.push(t("section.taskCount", { count: section.taskCount }));
-  return [...parts, ...cancelled].join(" · ");
+  if (status === "done") {
+    if (section.completedDate !== null) parts.push(t("section.completedOn", { date: section.completedDate }));
+  } else if (container.kind !== "misc" && container.targetDateLabel !== null) {
+    parts.push(t("section.targetDate", { date: container.targetDateLabel }));
+  }
+  if (section.cancelledCount > 0) parts.push(t("section.cancelledNote", { count: section.cancelledCount }));
+  return parts.join(" · ");
 }

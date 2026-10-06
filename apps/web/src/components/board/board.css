@@ -16,6 +16,11 @@
     border-color: currentColor;
     color: currentColor;
   }
+
+  /* 表头里的进度条：主题 A 的表头是芥末底，与“进行中”的色块同色，换成深一档 */
+  .kh-board-progress {
+    --task-in-progress: var(--task-in-progress-on-mustard);
+  }
 }
 
 @layer kh-theme {

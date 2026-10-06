@@ -1,4 +1,4 @@
-import { checklistProgress, type ContainerStatus, type Progress } from "@kanban-hub/core/derive";
+import { checklistProgress, startedCount, type ContainerStatus, type Progress } from "@kanban-hub/core/derive";
 import { shortIdPrefixes } from "@kanban-hub/core/ids";
 import type { Board, ChecklistItem, ContainerKind, HumanFlag, ManualStatus, TaskStatus } from "@kanban-hub/core/schema";
 import type { Services } from "@/server/services";
@@ -54,8 +54,8 @@ export interface BoardSectionView {
   /** 任务数，不计已取消 */
   taskCount: number;
   doneCount: number;
-  /** 未完成（既不是已完成也不是已取消）的任务数 */
-  openCount: number;
+  /** 已开始但未完成（进行中、复核中、挂起）的任务数 */
+  startedCount: number;
   cancelledCount: number;
   /** 容器已完成时的完成日期（服务端时区） */
   completedDate: string | null;
@@ -104,7 +104,7 @@ export function buildBoardView(services: Services, projectId: string, now: Date,
     collapsed,
     taskCount: summary.progress.total,
     doneCount: summary.progress.done,
-    openCount: summary.openCount,
+    startedCount: startedCount(tasks),
     cancelledCount,
     completedDate: summary.completedAt !== null ? formatDate(summary.completedAt, tz, now) : null,
     tasks: tasks.map((task) => ({

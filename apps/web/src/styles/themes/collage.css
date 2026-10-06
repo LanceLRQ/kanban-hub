@@ -56,6 +56,9 @@ html[data-theme="collage"] {
   --task-in-progress: var(--ink-mustard);
   --task-review: var(--ink-blue);
   --task-done: var(--ink-green);
+  --task-done-ink: var(--ink-green);
+  --task-in-progress-ink: #8a6c1a;
+  --task-in-progress-on-mustard: var(--ink-mustard);
   --task-suspended: var(--ink-brick);
   --task-cancelled: var(--paper-gray);
 

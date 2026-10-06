@@ -5,9 +5,10 @@
     "ariaLabel": "里程碑导航"
   },
   "section": {
-    "taskCount": "{count} 个任务",
-    "openCount": "{count} 个未完成",
-    "allDone": "{count} 个任务全部完成",
+    "taskTotal": "，共 {count} 个任务",
+    "doneTip": "已完成 {count}",
+    "startedTip": "进行中 {count}（含复核中、挂起）",
+    "todoTip": "未开始 {count}",
     "completedOn": "{date}完成",
     "cancelledNote": "另有 {count} 个已取消",
     "targetDate": "目标日期 {date}",

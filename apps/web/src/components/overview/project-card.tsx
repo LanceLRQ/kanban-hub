@@ -9,7 +9,7 @@ import type { ProjectCardView } from "@/server/views/overview";
 import { TruncatedText } from "@/components/truncated-text";
 import { looseTranslator } from "./loose-translator";
 import "./overview.css";
-import { ProgressBar } from "./progress-bar";
+import { ProgressBar } from "@/components/progress-bar";
 
 /**
  * 一张项目卡片：周期、健康度、焦点、进度、最近活动、主位置、停滞标记。每段文字各自限行、超长省略，

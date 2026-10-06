@@ -54,7 +54,7 @@ describe("buildBoardView", () => {
     expect(view.sections[0]!.collapsed).toBe(true);
     expect(view.sections[0]!.status).toBe("done");
     expect(view.sections[0]!.completedDate).not.toBeNull();
-    expect(view.sections[1]!).toMatchObject({ collapsed: false, status: "in_progress", taskCount: 2, cancelledCount: 0 });
+    expect(view.sections[1]!).toMatchObject({ collapsed: false, status: "in_progress", taskCount: 2, doneCount: 0, startedCount: 1, cancelledCount: 0 });
     expect(view.sections[1]!.container).toMatchObject({ code: "M2", label: "M2", title: "API 与鉴权", targetVersion: "v0.2", version: m2.version });
     expect(view.sections[2]!.status).toBe("backlog");
   });

@@ -105,8 +105,8 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
 type Translate = (key: string, values?: Record<string, string | number>) => string;
 
 /**
- * 标题右侧的进度：进度条（窄屏隐藏）+ 带颜色的“已完成/进行中/未开始”三个数字与总数，数字悬停时用 tooltip 说明含义。
- * 已取消的任务不计入，与进度条、项目进度的口径一致。
+ * 标题右侧的进度：进度条（窄屏隐藏）+ 带颜色的“已完成/进行中/未开始”三个数字与总数。
+ * 进度条和数字算一组，悬停时用一个 tooltip 列出全部明细。已取消的任务不计入，与项目进度的口径一致。
  */
 function SectionProgress({ section, t }: { section: BoardSectionView; t: Translate }) {
   const todo = section.taskCount - section.doneCount - section.startedCount;
@@ -115,32 +115,37 @@ function SectionProgress({ section, t }: { section: BoardSectionView; t: Transla
     { key: "started", count: section.startedCount, tip: t("section.startedTip", { count: section.startedCount }), className: "text-[var(--task-in-progress-ink)]" },
     { key: "todo", count: todo, tip: t("section.todoTip", { count: todo }), className: "text-muted-foreground" },
   ];
+  const detail = [
+    ...numbers.map((n) => n.tip),
+    t("section.totalTip", { count: section.taskCount }),
+    ...(section.cancelledCount > 0 ? [t("section.cancelledTip", { count: section.cancelledCount })] : []),
+  ].join(" · ");
   return (
-    <span className="flex items-center gap-2.5">
-      <span className="kh-board-progress hidden w-[120px] sm:flex">
-        <ProgressBar done={section.doneCount} started={section.startedCount} total={section.taskCount} title={numbers.map((n) => n.tip).join(" · ")} />
-      </span>
-      <span className="kh-num text-xs font-bold">
-        <TooltipProvider delayDuration={300}>
-          {numbers.map((n, i) => (
-            <span key={n.key}>
-              {i > 0 && "/"}
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span data-count={n.key} aria-label={n.tip} className={n.className}>
+    <TooltipProvider delayDuration={300}>
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <span data-progress-detail aria-label={detail} className="flex items-center gap-2.5">
+            <span className="kh-board-progress hidden w-[120px] sm:flex">
+              <ProgressBar done={section.doneCount} started={section.startedCount} total={section.taskCount} />
+            </span>
+            <span className="kh-num text-xs font-bold">
+              {numbers.map((n, i) => (
+                <span key={n.key}>
+                  {i > 0 && "/"}
+                  <span data-count={n.key} className={n.className}>
                     {n.count}
                   </span>
-                </TooltipTrigger>
-                <TooltipContent side="top" className="kh-tooltip">
-                  {n.tip}
-                </TooltipContent>
-              </Tooltip>
+                </span>
+              ))}
+              {t("section.taskTotal", { count: section.taskCount })}
             </span>
-          ))}
-        </TooltipProvider>
-        {t("section.taskTotal", { count: section.taskCount })}
-      </span>
-    </span>
+          </span>
+        </TooltipTrigger>
+        <TooltipContent side="top" className="kh-tooltip">
+          {detail}
+        </TooltipContent>
+      </Tooltip>
+    </TooltipProvider>
   );
 }
 

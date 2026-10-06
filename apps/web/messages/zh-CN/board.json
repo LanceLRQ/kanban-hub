@@ -9,6 +9,8 @@
     "doneTip": "已完成 {count}",
     "startedTip": "进行中 {count}（含复核中、挂起）",
     "todoTip": "未开始 {count}",
+    "totalTip": "共 {count} 个任务",
+    "cancelledTip": "另有 {count} 个已取消（不计入）",
     "completedOn": "{date}完成",
     "cancelledNote": "另有 {count} 个已取消",
     "targetDate": "目标日期 {date}",

@@ -8,8 +8,8 @@ interface ProgressBarProps {
   /** 已开始但未完成（进行中、复核中、挂起）的任务数 */
   started: number;
   total: number;
-  /** 悬停时显示的各状态明细 */
-  title: string;
+  /** 悬停时显示的各状态明细；外层另有 tooltip 时不传 */
+  title?: string;
 }
 
 /**

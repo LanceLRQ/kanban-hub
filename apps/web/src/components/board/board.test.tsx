@@ -400,18 +400,26 @@ describe("状态下拉", () => {
 });
 
 describe("里程碑表头的进度", () => {
-  it("显示带颜色的 已完成/进行中/未开始 与总数，数字带含义说明，进度条按状态分段", () => {
+  it("显示带颜色的 已完成/进行中/未开始 与总数，进度条与数字共用一个明细说明，进度条按状态分段", () => {
     mount();
     const head = container.querySelector(`section[aria-label="第一块"] .kh-board-head`)!;
-    const counts = [...head.querySelectorAll("[data-count]")].map((el) => [el.getAttribute("data-count"), el.textContent, el.getAttribute("aria-label")]);
+    const counts = [...head.querySelectorAll("[data-count]")].map((el) => [el.getAttribute("data-count"), el.textContent]);
     expect(counts).toEqual([
-      ["done", "1", "已完成 1"],
-      ["started", "1", "进行中 1（含复核中、挂起）"],
-      ["todo", "1", "未开始 1"],
+      ["done", "1"],
+      ["started", "1"],
+      ["todo", "1"],
     ]);
+    // 进度条和三个数字是一组，共用一个说明
+    expect(head.querySelector("[data-progress-detail]")!.getAttribute("aria-label")).toBe("已完成 1 · 进行中 1（含复核中、挂起） · 未开始 1 · 共 3 个任务");
     expect(head.textContent).toContain("1/1/1，共 3 个任务");
     const segments = [...head.querySelectorAll("[data-segment]")].map((el) => el.getAttribute("data-segment"));
     expect(segments).toEqual(["done", "started", "todo"]);
+  });
+
+  it("有已取消的任务时，明细里另注一句（不计入）", () => {
+    const withCancelled = { ...section("c9", "带取消", [task("y1", "己任务", "done")]), cancelledCount: 2 };
+    mount({ projectId: "p1", sections: [withCancelled], containerOptions: [] });
+    expect(container.querySelector("[data-progress-detail]")!.getAttribute("aria-label")).toBe("已完成 1 · 进行中 0（含复核中、挂起） · 未开始 0 · 共 1 个任务 · 另有 2 个已取消（不计入）");
   });
 
   it("杂项也显示进度", () => {

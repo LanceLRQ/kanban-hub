@@ -10,6 +10,17 @@
     "recentTitle": "最近更新",
     "recentEmpty": "还没有文档更新"
   },
+  "tree": {
+    "search": "搜索文件路径",
+    "regex": "正则",
+    "invalidRegex": "正则无效",
+    "matchCount": "{count} 个匹配",
+    "noMatch": "没有匹配的文件",
+    "expandAll": "全部展开",
+    "collapseAll": "全部收起",
+    "expand": "展开 {name}",
+    "collapse": "收起 {name}"
+  },
   "file": {
     "openRaw": "打开原文件",
     "openInNewTab": "在新标签页打开",

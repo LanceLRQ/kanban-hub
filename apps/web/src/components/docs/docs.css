@@ -21,6 +21,14 @@
     box-shadow: inset 3px 0 0 var(--focus-ring);
   }
 
+  /* 文件树工具栏吸顶，底色同面板，滚动时不透出下面的树 */
+  .kh-doc-tree-toolbar {
+    background: var(--card);
+  }
+  .kh-doc-tree-mark {
+    background: color-mix(in srgb, var(--mustard) 45%, transparent);
+  }
+
   /* ---------- 左栏面板标题栏：浅纸色底条 + 小号标签字，两个面板（文件树、最近更新）共用 ---------- */
   .kh-doc-panel-head {
     background: var(--bg-hover);
@@ -242,6 +250,12 @@
   }
   [data-theme="collage"] .kh-doc-recent-box {
     background: var(--paper-gray);
+  }
+  [data-theme="collage"] .kh-doc-tree-toolbar {
+    background: var(--paper-cream);
+  }
+  [data-theme="collage"] .kh-doc-tree-mark {
+    background: var(--paper-tape);
   }
   [data-theme="collage"] .kh-doc-panel-head {
     background: color-mix(in srgb, var(--card) 88%, var(--fg) 6%);

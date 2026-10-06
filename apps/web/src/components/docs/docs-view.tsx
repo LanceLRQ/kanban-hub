@@ -46,7 +46,7 @@ export async function DocsView({ projectId, view }: DocsViewProps) {
           bodyClassName="max-h-[50vh] md:max-h-none md:flex-1"
           activeKey={currentPath}
         >
-          <DocTreeView nodes={view.tree} currentPath={currentPath} hrefFor={(p) => docPageHref(projectId, p, { machineId: selectedMachine?.id })} />
+          <DocTreeView projectId={projectId} machineId={selectedMachine?.id} nodes={view.tree} currentPath={currentPath} />
         </DocSidebarPanel>
 
         <DocSidebarPanel title={t("sidebar.recentTitle")} className="kh-doc-recent-box shrink-0" bodyClassName="max-h-56">

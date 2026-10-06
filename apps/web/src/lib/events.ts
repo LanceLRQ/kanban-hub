@@ -209,8 +209,8 @@ function describeImportApplied(event: Event): EventDescription {
   if (!counts) return { key: "import.applied.plain", values: {} };
   const list = countList([
     ["项目字段", counts.projectFields.length],
-    ["新建容器", counts.containersCreated],
-    ["更新容器", counts.containersUpdated],
+    ["新建里程碑", counts.containersCreated],
+    ["更新里程碑", counts.containersUpdated],
     ["新建任务", counts.tasksCreated],
     ["更新任务", counts.tasksUpdated],
     ["历史日志", counts.logsAdded],

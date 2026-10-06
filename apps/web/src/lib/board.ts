@@ -9,7 +9,7 @@ import { dayKey, formatDate, formatPlainDate } from "./time";
 export interface Section {
   container: Container;
   summary: ContainerSummary;
-  /** 推算状态为已完成的容器默认折叠成一行摘要 */
+  /** 默认是否收起：已完成、已取消的容器默认收起，用户可以自由展开 */
   collapsed: boolean;
   /** 本容器的全部任务（含已取消），按 order 排列 */
   tasks: Task[];
@@ -17,16 +17,17 @@ export interface Section {
   cancelledCount: number;
 }
 
-/** 分区的大类：阶段 / 特性（储备的除外）→ 储备 → 杂项 */
+/** 分区的大类：阶段 / 特性（储备、已取消的除外）→ 储备 → 杂项 → 已取消 */
 function sectionRank(container: Pick<Container, "kind" | "manualStatus">): number {
+  if (container.manualStatus === "cancelled") return 3;
   if (container.kind === "misc") return 2;
   if (container.manualStatus === "backlog") return 1;
   return 0;
 }
 
 /**
- * 看板分区：阶段和特性按 order 排列（储备的除外）→ 储备的容器 → 杂项容器。
- * 挂起、已取消的容器留在原位，只是状态不同。
+ * 看板分区：阶段和特性按 order 排列（储备的除外）→ 储备的容器 → 杂项容器 → 已取消的容器。
+ * 挂起的容器留在原位，只是状态不同。
  */
 export function boardSections(board: Pick<Board, "containers" | "tasks">): Section[] {
   const containers = [...board.containers].sort((a, b) => sectionRank(a) - sectionRank(b) || compareByOrder(a, b));
@@ -36,7 +37,7 @@ export function boardSections(board: Pick<Board, "containers" | "tasks">): Secti
     return {
       container,
       summary,
-      collapsed: summary.status === "done",
+      collapsed: summary.status === "done" || summary.status === "cancelled",
       tasks,
       cancelledCount: tasks.filter((task) => task.status === "cancelled").length,
     };

@@ -1,7 +1,8 @@
 {
-  "empty": "这个项目还没有容器。",
+  "empty": "这个项目还没有里程碑。",
+  "noMatch": "没有符合条件的里程碑",
   "nav": {
-    "ariaLabel": "容器导航"
+    "ariaLabel": "里程碑导航"
   },
   "section": {
     "taskCount": "{count} 个任务",
@@ -12,7 +13,7 @@
     "targetDate": "目标日期 {date}",
     "expand": "展开 {title}",
     "collapse": "收起 {title}",
-    "edit": "编辑容器 {title}",
+    "edit": "编辑里程碑 {title}",
     "filteredHidden": "{count} 个任务被筛选隐藏"
   },
   "meta": {
@@ -52,7 +53,7 @@
     "checklistToggle": "勾选：{text}",
     "note": "备注",
     "notePlaceholder": "失焦或 Ctrl/⌘ + 回车保存",
-    "container": "所属容器",
+    "container": "所属里程碑",
     "code": "编号",
     "codePlaceholder": "例如 2.3",
     "group": "分组",
@@ -64,7 +65,7 @@
     "docRefsRemove": "移除 {path}"
   },
   "containerDialog": {
-    "title": "编辑容器",
+    "title": "编辑里程碑",
     "description": "修改编号、标题、目标与手动状态",
     "code": "编号",
     "codePlaceholder": "例如 M2",
@@ -76,7 +77,7 @@
     "manualStatusNone": "无（按任务推算）",
     "manualReason": "原因",
     "manualReasonPlaceholder": "挂起时必须填写",
-    "miscHint": "杂项容器不参与状态推算，也不能手动设置状态。",
+    "miscHint": "杂项不参与状态推算，也不能手动设置状态。",
     "reasonRequired": "挂起时必须填写原因",
     "titleRequired": "标题不能为空",
     "save": "保存",
@@ -100,7 +101,17 @@
   },
   "toolbar": {
     "ariaLabel": "筛选与排序",
-    "statusGroup": "状态",
+    "status": "状态",
+    "statusOne": "状态（{first}）",
+    "statusMany": "状态（{first}等 {count} 项）",
+    "taskOnly": "仅任务",
+    "milestoneOnly": "仅里程碑",
+    "filterMode": "筛选方式",
+    "mode": {
+      "milestone": "按里程碑",
+      "task": "按任务",
+      "both": "按里程碑和任务"
+    },
     "humanOnly": "只看待你处理",
     "sortLabel": "排序",
     "sort": {

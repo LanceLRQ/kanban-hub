@@ -25,11 +25,21 @@ describe("boardSections", () => {
       makeContainer({ id: c(4), order: 3 }),
     ]);
     const sections = boardSections(board);
-    expect(sections.map((s) => s.container.id)).toEqual([c(1), c(2), c(3), c(4), fixtureId("c", 0)]);
+    expect(sections.map((s) => s.container.id)).toEqual([c(1), c(2), c(4), fixtureId("c", 0), c(3)]);
     expect(sections[1]!.summary.status).toBe("suspended");
-    expect(sections[2]!.summary.status).toBe("cancelled");
+    expect(sections[4]!.summary.status).toBe("cancelled");
     expect(sections[1]!.collapsed).toBe(false);
-    expect(sections[2]!.collapsed).toBe(false);
+    expect(sections[4]!.collapsed).toBe(true);
+  });
+
+  it("已取消的容器排在杂项之后，已取消的储备也一样", () => {
+    const board = makeBoard([
+      makeContainer({ id: c(1), order: 0, manualStatus: "cancelled" }),
+      makeContainer({ id: c(2), order: 1, manualStatus: "backlog" }),
+      makeContainer({ id: c(3), order: 2 }),
+      makeContainer({ id: c(4), order: 3, manualStatus: "cancelled" }),
+    ]);
+    expect(boardSections(board).map((s) => s.container.id)).toEqual([c(3), c(2), fixtureId("c", 0), c(1), c(4)]);
   });
 
   it("已完成的容器默认折叠；已取消的任务不计入任务数，另记个数", () => {

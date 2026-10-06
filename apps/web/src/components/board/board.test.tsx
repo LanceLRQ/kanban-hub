@@ -46,11 +46,12 @@ function task(id: string, title: string, status: TaskStatus, extra: { human?: bo
   } as unknown as BoardTaskView;
 }
 
-function section(id: string, title: string, tasks: BoardTaskView[]): BoardSectionView {
+function section(id: string, title: string, tasks: BoardTaskView[], status: BoardSectionView["status"] = "in_progress"): BoardSectionView {
+  const manualStatus = status === "cancelled" || status === "backlog" || status === "suspended" ? status : null;
   return {
-    container: { id, kind: "feature", code: id.toUpperCase(), label: id, title, targetVersion: null, targetDate: null, targetDateLabel: null, manualStatus: null, manualReason: null, version: 1 },
-    status: "in_progress",
-    collapsed: false,
+    container: { id, kind: status === null ? "misc" : "feature", code: status === null ? null : id.toUpperCase(), label: id, title, targetVersion: null, targetDate: null, targetDateLabel: null, manualStatus, manualReason: null, version: 1 },
+    status,
+    collapsed: status === "done" || status === "cancelled",
     taskCount: tasks.length,
     doneCount: 0,
     openCount: tasks.length,
@@ -69,14 +70,26 @@ const view: BoardView = {
   containerOptions: [],
 };
 
+/** 含已完成、已取消、杂项的看板；顺序同 boardSections：正常 → 杂项 → 已取消 */
+const mixedView: BoardView = {
+  projectId: "p1",
+  sections: [
+    section("c1", "进行中块", [task("a1", "甲任务", "todo"), task("a2", "乙任务", "done")]),
+    section("c2", "完成块", [task("b1", "丙任务", "done")], "done"),
+    section("c0", "杂项块", [task("m1", "丁任务", "todo")], null),
+    section("c3", "取消块", [task("x1", "戊任务", "cancelled")], "cancelled"),
+  ],
+  containerOptions: [],
+};
+
 let container: HTMLDivElement;
 let root: Root;
 
-function mount() {
+function mount(v: BoardView = view) {
   act(() => {
     root.render(
       <NextIntlClientProvider locale="zh-CN" messages={{ board, common, enums }}>
-        <Board view={view} />
+        <Board view={v} />
       </NextIntlClientProvider>,
     );
   });
@@ -89,6 +102,24 @@ const chip = (label: string) => {
   return el;
 };
 const click = (el: Element) => act(() => el.dispatchEvent(new MouseEvent("click", { bubbles: true })));
+const buttonStartingWith = (prefix: string) => [...container.querySelectorAll("button")].find((b) => (b.textContent ?? "").startsWith(prefix));
+const statusTrigger = () => buttonStartingWith("状态")!;
+/** Radix 下拉由 pointerdown 打开，菜单经 Portal 渲染在 body 里 */
+const openMenu = (trigger: Element) => act(() => trigger.dispatchEvent(new MouseEvent("pointerdown", { bubbles: true, button: 0 })));
+const menuItem = (label: string) => {
+  const el = [...document.body.querySelectorAll('[role^="menuitem"]')].find((i) => (i.textContent ?? "").includes(label));
+  if (!el) throw new Error(`没有菜单项 ${label}`);
+  return el;
+};
+const pickStatus = (...labels: string[]) => {
+  openMenu(statusTrigger());
+  for (const label of labels) click(menuItem(label));
+};
+const sectionTitles = () => [...container.querySelectorAll("section")].map((s) => s.getAttribute("aria-label"));
+const navTitles = () => [...container.querySelectorAll(".kh-board-nav-item")].map((b) => b.textContent ?? "");
+const foldButton = (title: string) => container.querySelector<HTMLButtonElement>(`button[aria-label="展开 ${title}"], button[aria-label="收起 ${title}"]`)!;
+const FOLD_KEY = "kh-board-fold:p1";
+const rowNames = () => rowTitles().map((r) => /[甲乙丙丁戊]任务/.exec(r)?.[0]);
 const rowTitles = () => [...container.querySelectorAll(".kh-task-row")].map((r) => r.textContent ?? "");
 const newTaskInputs = () => container.querySelectorAll(`input[aria-label^="在 "]`).length;
 const resetButton = () => [...container.querySelectorAll("button")].find((b) => b.textContent === "重置");
@@ -113,22 +144,21 @@ describe("看板筛选与排序", () => {
     expect(rowTitles()).toHaveLength(4);
     expect(newTaskInputs()).toBe(2);
     expect(resetButton()).toBeUndefined();
-    expect(chip("待开始").getAttribute("aria-pressed")).toBe("true");
+    expect(statusTrigger().textContent).toBe("状态");
+    expect(buttonStartingWith("按")).toBeUndefined();
   });
 
-  it("切换状态标签后，不满足的任务行被隐藏，表头计数不变", () => {
+  it("按任务筛选：不满足的任务行被隐藏，表头计数不变", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ statuses: ["in_progress"], filterMode: "task", humanOnly: false, sort: "manual", direction: "desc" }));
     mount();
-    click(chip("待开始"));
-    // 默认全选，点一个等于取消它
     expect(rowTitles().some((r) => r.includes("写文档"))).toBe(false);
     expect(rowTitles().some((r) => r.includes("跑测试"))).toBe(true);
-    expect(chip("待开始").getAttribute("aria-pressed")).toBe("false");
     expect(text()).toContain("3 个任务");
   });
 
   it("分区里的任务全被筛掉时显示“N 个任务被筛选隐藏”，分区本身保留", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ statuses: ["in_progress"], filterMode: "task", humanOnly: false, sort: "manual", direction: "desc" }));
     mount();
-    click(chip("待开始"));
     expect(text()).toContain("1 个任务被筛选隐藏");
     expect(container.querySelectorAll("section")).toHaveLength(2);
     expect(text()).toContain("第二块");
@@ -136,8 +166,8 @@ describe("看板筛选与排序", () => {
 
   it("?task= 指向被筛选隐藏的任务时，侧栏仍然打开并显示该任务", () => {
     nav.query = "task=t1";
+    window.localStorage.setItem(KEY, JSON.stringify({ statuses: ["in_progress"], filterMode: "task", humanOnly: false, sort: "manual", direction: "desc" }));
     mount();
-    click(chip("待开始"));
     expect(rowTitles().some((r) => r.includes("写文档"))).toBe(false);
     const dialog = document.body.querySelector('[role="dialog"]');
     expect(dialog).not.toBeNull();
@@ -157,18 +187,20 @@ describe("看板筛选与排序", () => {
     expect(newTaskInputs()).toBe(0);
   });
 
-  it("全部取消选中视同全部选中", () => {
+  it("七项全选等同不筛，存成空数组", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ statuses: ["in_progress"], filterMode: "task", humanOnly: false, sort: "manual", direction: "desc" }));
     mount();
-    click(chip("待开始"));
-    for (const label of ["进行中", "复核中", "已完成", "挂起", "已取消"]) click(chip(label));
+    openMenu(statusTrigger());
+    for (const label of ["待开始", "复核中", "已完成", "储备", "挂起", "已取消"]) click(menuItem(label));
+    expect(JSON.parse(window.localStorage.getItem(KEY)!).statuses).toEqual([]);
     expect(rowTitles()).toHaveLength(4);
-    expect(chip("待开始").getAttribute("aria-pressed")).toBe("true");
+    expect(statusTrigger().textContent).toBe("状态");
   });
 
   it("重置后恢复默认视图", () => {
     mount();
     click(chip("只看待你处理"));
-    click(chip("待开始"));
+    pickStatus("进行中");
     expect(rowTitles()).toHaveLength(1);
     click(resetButton()!);
     expect(rowTitles()).toHaveLength(4);
@@ -219,5 +251,150 @@ describe("看板筛选与排序", () => {
     mount();
     expect(rowTitles()).toHaveLength(4);
     expect(resetButton()).toBeUndefined();
+  });
+});
+
+describe("里程碑折叠", () => {
+  it("默认：进行中、杂项展开，已完成、已取消收起", () => {
+    mount(mixedView);
+    expect(foldButton("进行中块").getAttribute("aria-expanded")).toBe("true");
+    expect(foldButton("杂项块").getAttribute("aria-expanded")).toBe("true");
+    expect(foldButton("完成块").getAttribute("aria-expanded")).toBe("false");
+    expect(foldButton("取消块").getAttribute("aria-expanded")).toBe("false");
+    expect(rowNames()).toEqual(["甲任务", "乙任务", "丁任务"]);
+  });
+
+  it("进行中的里程碑可以折叠，折叠后表头仍显示摘要", () => {
+    mount(mixedView);
+    click(foldButton("进行中块"));
+    expect(foldButton("进行中块").getAttribute("aria-expanded")).toBe("false");
+    expect(rowTitles().some((r) => r.includes("甲任务"))).toBe(false);
+    expect(text()).toContain("2 个任务");
+  });
+
+  it("点表头空白处也切换折叠", () => {
+    mount(mixedView);
+    click(container.querySelector("section[aria-label=完成块] .kh-board-head")!);
+    expect(foldButton("完成块").getAttribute("aria-expanded")).toBe("true");
+    expect(rowTitles().some((r) => r.includes("丙任务"))).toBe(true);
+  });
+
+  it("手动切换按项目写进 localStorage，重新挂载后恢复；没切换过的仍按默认", () => {
+    mount(mixedView);
+    click(foldButton("进行中块"));
+    click(foldButton("完成块"));
+    expect(JSON.parse(window.localStorage.getItem(FOLD_KEY)!)).toEqual({ c1: false, c2: true });
+    act(() => root.unmount());
+    resetLocalViewStoreForTest();
+    root = createRoot(container);
+    mount(mixedView);
+    expect(foldButton("进行中块").getAttribute("aria-expanded")).toBe("false");
+    expect(foldButton("完成块").getAttribute("aria-expanded")).toBe("true");
+    expect(foldButton("取消块").getAttribute("aria-expanded")).toBe("false");
+    expect(foldButton("杂项块").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("折叠记录损坏时回退为默认", () => {
+    window.localStorage.setItem(FOLD_KEY, '{"c1":"x"}');
+    mount(mixedView);
+    expect(foldButton("进行中块").getAttribute("aria-expanded")).toBe("true");
+  });
+
+  it("左栏点击只滚动，不展开已收起的里程碑", () => {
+    mount(mixedView);
+    const scrollIntoView = vi.fn();
+    Element.prototype.scrollIntoView = scrollIntoView;
+    const item = [...container.querySelectorAll(".kh-board-nav-item")].find((b) => (b.textContent ?? "").includes("完成块"))!;
+    click(item);
+    expect(scrollIntoView).toHaveBeenCalled();
+    expect(foldButton("完成块").getAttribute("aria-expanded")).toBe("false");
+  });
+});
+
+describe("已取消的里程碑", () => {
+  it("排在最后，不进左栏导航", () => {
+    mount(mixedView);
+    expect(sectionTitles()).toEqual(["进行中块", "完成块", "杂项块", "取消块"]);
+    expect(navTitles().some((n) => n.includes("取消块"))).toBe(false);
+    expect(navTitles()).toHaveLength(3);
+  });
+});
+
+describe("状态下拉", () => {
+  it("按钮文字：未选 / 选 1 项 / 选多项", () => {
+    mount(mixedView);
+    expect(statusTrigger().textContent).toBe("状态");
+    pickStatus("已完成");
+    expect(statusTrigger().textContent).toBe("状态（已完成）");
+    click(menuItem("进行中"));
+    expect(statusTrigger().textContent).toBe("状态（进行中等 2 项）");
+  });
+
+  it("菜单项共 7 项，复核中标注仅任务、储备标注仅里程碑", () => {
+    mount(mixedView);
+    openMenu(statusTrigger());
+    const items = [...document.body.querySelectorAll('[role="menuitemcheckbox"]')].map((i) => i.textContent ?? "");
+    expect(items).toHaveLength(7);
+    ["待开始", "进行中", "复核中仅任务", "已完成", "储备仅里程碑", "挂起", "已取消"].forEach((label, i) => expect(items[i]).toContain(label));
+  });
+
+  it("选了状态才出现筛选方式，默认按里程碑", () => {
+    mount(mixedView);
+    expect(buttonStartingWith("按")).toBeUndefined();
+    pickStatus("已完成");
+    expect(buttonStartingWith("按")!.textContent).toBe("按里程碑");
+  });
+
+  it("按里程碑：只留状态符合的里程碑和杂项，里面的任务全部显示，左栏同步", () => {
+    mount(mixedView);
+    pickStatus("已完成");
+    expect(sectionTitles()).toEqual(["完成块", "杂项块"]);
+    expect(navTitles().some((n) => n.includes("进行中块"))).toBe(false);
+    // 杂项里的任务不受筛选影响；完成块默认收起
+    expect(rowNames()).toEqual(["丁任务"]);
+  });
+
+  it("按任务：里程碑全留，只筛任务行", () => {
+    mount(mixedView);
+    pickStatus("已完成");
+    openMenu(buttonStartingWith("按")!);
+    click(menuItem("按任务"));
+    expect(sectionTitles()).toEqual(["进行中块", "完成块", "杂项块", "取消块"]);
+    expect(rowNames()).toEqual(["乙任务"]);
+  });
+
+  it("按里程碑和任务：两层都筛", () => {
+    mount(mixedView);
+    pickStatus("进行中", "已完成");
+    openMenu(buttonStartingWith("按")!);
+    click(menuItem("按里程碑和任务"));
+    expect(sectionTitles()).toEqual(["进行中块", "完成块", "杂项块"]);
+    expect(rowNames()).toEqual(["乙任务"]);
+  });
+
+  it("只按里程碑筛选时新建任务输入框仍在；按任务筛选时隐藏", () => {
+    mount(mixedView);
+    pickStatus("进行中");
+    expect(newTaskInputs()).toBeGreaterThan(0);
+    openMenu(buttonStartingWith("按")!);
+    click(menuItem("按任务"));
+    expect(newTaskInputs()).toBe(0);
+  });
+
+  it("全部里程碑都被筛掉（杂项也没有）时提示没有符合条件，并可重置", () => {
+    mount(view);
+    pickStatus("已完成");
+    expect(text()).toContain("没有符合条件的里程碑");
+    expect(container.querySelectorAll("section")).toHaveLength(0);
+    click(resetButton()!);
+    expect(container.querySelectorAll("section")).toHaveLength(2);
+    expect(text()).not.toContain("没有符合条件的里程碑");
+  });
+
+  it("旧的本地存值（没有筛选方式）仍能读取", () => {
+    window.localStorage.setItem(KEY, JSON.stringify({ statuses: ["in_progress"], humanOnly: false, sort: "manual", direction: "desc" }));
+    mount(mixedView);
+    expect(statusTrigger().textContent).toBe("状态（进行中）");
+    expect(sectionTitles()).toEqual(["进行中块", "杂项块"]);
   });
 });

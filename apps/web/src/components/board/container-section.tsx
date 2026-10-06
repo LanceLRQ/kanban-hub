@@ -17,7 +17,7 @@ interface ContainerSectionProps {
   section: BoardSectionView;
   /** 经筛选与排序后要显示的任务；表头计数等仍取自 section */
   tasks: BoardTaskView[];
-  /** 是否显示“新建任务”输入框：筛选或排序偏离默认时隐藏，避免新任务因不满足筛选条件而直接消失 */
+  /** 是否显示“新建任务”输入框：任务行被筛选或排序偏离默认时隐藏，避免新任务因不满足筛选条件而直接消失 */
   canCreate: boolean;
   index: number;
   expanded: boolean;
@@ -30,8 +30,7 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
   const t = useTranslations("board");
   const te = useTranslations("enums");
   const { container, status } = section;
-  const foldable = section.collapsed;
-  const folded = foldable && !expanded;
+  const folded = !expanded;
   const hiddenCount = tasks.length === 0 ? section.tasks.length : 0;
 
   const statusLabel =
@@ -48,11 +47,11 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
         className={cn(
           "kh-board-head flex flex-wrap items-center gap-3 bg-[var(--mustard)] px-[18px] py-[11px]",
           !folded && "border-b",
-          foldable && "cursor-pointer select-none hover:bg-[var(--mustard-deep)]",
+          "cursor-pointer select-none hover:bg-[var(--mustard-deep)]",
         )}
         onClick={(e) => {
           // 对话框经 Portal 渲染在别处，但 React 事件仍会冒泡到这里；只响应表头自身 DOM 里的点击
-          if (foldable && e.currentTarget.contains(e.target as Node)) onToggle();
+          if (e.currentTarget.contains(e.target as Node)) onToggle();
         }}
       >
         {container.kind !== "misc" && container.code !== null && (
@@ -68,20 +67,18 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
         </span>
         <span className="kh-num ml-auto text-right text-xs font-bold">{summaryText(section, t)}</span>
         <ContainerEditDialog projectId={projectId} container={container} />
-        {foldable && (
-          <button
-            type="button"
-            aria-expanded={expanded}
-            aria-label={expanded ? t("section.collapse", { title: container.title }) : t("section.expand", { title: container.title })}
-            onClick={(e) => {
-              e.stopPropagation();
-              onToggle();
-            }}
-            className="kh-board-icon-btn kh-num inline-flex size-[26px] flex-none items-center justify-center rounded-[3px] border-[1.5px] border-border bg-card text-base leading-none font-extrabold"
-          >
-            {expanded ? "−" : "+"}
-          </button>
-        )}
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={expanded ? t("section.collapse", { title: container.title }) : t("section.expand", { title: container.title })}
+          onClick={(e) => {
+            e.stopPropagation();
+            onToggle();
+          }}
+          className="kh-board-icon-btn kh-num inline-flex size-[26px] flex-none items-center justify-center rounded-[3px] border-[1.5px] border-border bg-card text-base leading-none font-extrabold"
+        >
+          {expanded ? "−" : "+"}
+        </button>
       </div>
       {!folded && (
         <div className="flex flex-col">

@@ -45,8 +45,8 @@
       "updated": "项目更新"
     },
     "container": {
-      "created": "容器创建",
-      "updated": "容器更新"
+      "created": "里程碑创建",
+      "updated": "里程碑更新"
     },
     "board": {
       "reordered": "重排"
@@ -68,7 +68,7 @@
   },
   "eventTypeGroup": {
     "task": "任务",
-    "container": "容器",
+    "container": "里程碑",
     "project": "项目",
     "log": "日志",
     "docs": "文档",

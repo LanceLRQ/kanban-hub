@@ -13,7 +13,7 @@
     }
   },
   "container": {
-    "created": "新建了容器 {container}",
+    "created": "新建了里程碑 {container}",
     "updated": {
       "manualStatus": "将 {container} 的状态改为{status}",
       "manualStatusCleared": "将 {container} 的状态恢复正常",
@@ -26,7 +26,7 @@
   "board": {
     "reordered": {
       "tasks": "重排了 {container} 的任务顺序",
-      "containers": "调整了容器顺序"
+      "containers": "调整了里程碑顺序"
     }
   },
   "task": {

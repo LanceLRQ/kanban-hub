@@ -45,7 +45,7 @@ describe("describeEvent：13 种事件类型各一个用例", () => {
 
   it("container.created", () => {
     const event = makeEvent({ type: "container.created", target: { containerId: container.id }, change: null, text: null });
-    expect(describeAndRender(event, ctx)).toBe("新建了容器 M1 阶段一");
+    expect(describeAndRender(event, ctx)).toBe("新建了里程碑 M1 阶段一");
   });
 
   it("container.updated", () => {
@@ -170,7 +170,7 @@ describe("describeEvent：13 种事件类型各一个用例", () => {
       }),
       text: null,
     });
-    expect(describeAndRender(event, ctx)).toBe("应用了一次导入：项目字段 2、新建容器 1、新建任务 3、更新任务 2、历史日志 5");
+    expect(describeAndRender(event, ctx)).toBe("应用了一次导入：项目字段 2、新建里程碑 1、新建任务 3、更新任务 2、历史日志 5");
   });
 
   it("import.applied：计数格式不对时退回普通描述", () => {
@@ -341,7 +341,7 @@ describe("describeEvent：board.reordered", () => {
       text: null,
     });
     expect(describeEvent(event, ctx)).toEqual({ key: "board.reordered.containers", values: {} });
-    expect(describeAndRender(event, ctx)).toBe("调整了容器顺序");
+    expect(describeAndRender(event, ctx)).toBe("调整了里程碑顺序");
   });
 
   it("同一时刻排在 log 等“其他”一档，位于 *.updated 之后", () => {

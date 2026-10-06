@@ -1,16 +1,22 @@
 "use client";
 
 import "./board.css";
-import { useMemo, useOptimistic, useState, useTransition } from "react";
+import { useMemo, useOptimistic, useTransition } from "react";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useTranslations } from "next-intl";
-import { applyBoardView, boardViewStateSchema, DEFAULT_BOARD_VIEW, isDefaultBoardView } from "@/lib/board-filter";
+import { z } from "zod";
+import { applyBoardView, boardViewStateSchema, DEFAULT_BOARD_VIEW, sectionVisible, tasksUnfiltered } from "@/lib/board-filter";
+import { Button } from "@/components/ui/button";
 import { useLocalView } from "@/lib/client/use-local-view";
 import type { BoardView } from "@/server/views/board";
 import { BoardNav } from "./board-nav";
 import { BoardToolbar } from "./board-toolbar";
 import { ContainerSection } from "./container-section";
 import { TaskSheet } from "./task-sheet";
+
+/** 按项目记用户手动展开 / 收起过的里程碑：true 为展开；没记录的按默认（已完成、已取消的收起） */
+const foldStateSchema = z.record(z.string(), z.boolean());
+const NO_FOLD_CHOICES: Record<string, boolean> = {};
 
 /**
  * 项目看板：左栏容器导航（宽屏吸顶）+ 容器分区 + 任务侧栏。
@@ -19,8 +25,9 @@ import { TaskSheet } from "./task-sheet";
  * 刷新页面后仍停在同一个任务上；`?task=` 指向不存在的任务时忽略。URL 更新要等一次服务端往返，
  * 期间用 useOptimistic 先显示目标任务，侧栏不必等网络。
  *
- * 筛选与排序只作用于各分区内的任务行，选择存在本地（所有项目共用）；侧栏查找、分区表头计数、
- * 左栏导航都仍按全部任务计算。
+ * 状态筛选可以筛里程碑（整个分区不显示，左栏导航同步去掉）、筛任务行或两者都筛；只看待你处理与排序只作用于任务行。
+ * 选择存在本地（所有项目共用）；侧栏查找、分区表头计数都仍按全部任务计算。
+ * 每个里程碑都能折叠，折叠结果按项目存在本地；已取消的里程碑不进左栏导航。
  */
 export function Board({ view }: { view: BoardView }) {
   const t = useTranslations("board");
@@ -29,11 +36,11 @@ export function Board({ view }: { view: BoardView }) {
   const searchParams = useSearchParams();
   const [, startTransition] = useTransition();
   const [taskParam, setTaskParam] = useOptimistic(searchParams.get("task"));
-  // 用户手动展开 / 收起过的已完成容器；没动过的按默认折叠
-  const [toggled, setToggled] = useState<Record<string, boolean>>({});
+  const [foldChoices, setFoldChoices] = useLocalView(`kh-board-fold:${view.projectId}`, foldStateSchema, NO_FOLD_CHOICES);
 
   const [boardView, setBoardView, resetBoardView] = useLocalView("kh-board-view", boardViewStateSchema, DEFAULT_BOARD_VIEW);
-  const defaultView = isDefaultBoardView(boardView);
+  const canCreate = tasksUnfiltered(boardView);
+  const sections = useMemo(() => view.sections.filter((s) => sectionVisible(s, boardView)), [view, boardView]);
 
   const tasksById = useMemo(() => new Map(view.sections.flatMap((s) => s.tasks).map((task) => [task.id, task])), [view]);
   const selected = taskParam !== null ? (tasksById.get(taskParam) ?? null) : null;
@@ -56,28 +63,41 @@ export function Board({ view }: { view: BoardView }) {
       <BoardNav
         className="hidden md:sticky md:top-4 md:flex md:max-h-[calc(100dvh-2rem)] md:self-start"
         ariaLabel={t("nav.ariaLabel")}
-        entries={view.sections.map((s) => ({
-          id: s.container.id,
-          code: s.container.kind === "misc" ? null : s.container.code,
-          title: s.container.title,
-          taskCount: s.taskCount,
-        }))}
+        entries={sections
+          .filter((s) => s.status !== "cancelled")
+          .map((s) => ({
+            id: s.container.id,
+            code: s.container.kind === "misc" ? null : s.container.code,
+            title: s.container.title,
+            taskCount: s.taskCount,
+          }))}
       />
       <div className="flex min-w-0 flex-col gap-6">
         <BoardToolbar state={boardView} onChange={setBoardView} onReset={resetBoardView} />
-        {view.sections.map((section, index) => (
-          <ContainerSection
-            key={section.container.id}
-            projectId={view.projectId}
-            section={section}
-            tasks={applyBoardView(section.tasks, boardView)}
-            canCreate={defaultView}
-            index={index}
-            expanded={toggled[section.container.id] ?? false}
-            onToggle={() => setToggled((prev) => ({ ...prev, [section.container.id]: !(prev[section.container.id] ?? false) }))}
-            onOpenTask={(taskId) => navigate(taskId)}
-          />
-        ))}
+        {sections.length === 0 && (
+          <div className="flex flex-col items-start gap-2 text-muted-foreground">
+            <p>{t("noMatch")}</p>
+            <Button type="button" variant="ghost" size="sm" onClick={resetBoardView} className="kh-board-reset">
+              {t("toolbar.reset")}
+            </Button>
+          </div>
+        )}
+        {sections.map((section, index) => {
+          const expanded = foldChoices[section.container.id] ?? !section.collapsed;
+          return (
+            <ContainerSection
+              key={section.container.id}
+              projectId={view.projectId}
+              section={section}
+              tasks={applyBoardView(section.tasks, boardView)}
+              canCreate={canCreate}
+              index={index}
+              expanded={expanded}
+              onToggle={() => setFoldChoices({ ...foldChoices, [section.container.id]: !expanded })}
+              onOpenTask={(taskId) => navigate(taskId)}
+            />
+          );
+        })}
       </div>
       <TaskSheet projectId={view.projectId} task={selected} containerOptions={view.containerOptions} onClose={() => navigate(null)} />
     </div>

@@ -476,3 +476,48 @@ describe("pushDocs：留存推送过的内容", () => {
     expect(await readPushed(repo.home, PID)).toEqual({});
   });
 });
+
+describe("pushDocs：按内置规则跳过目录的提示行", () => {
+  async function repoWithVenv(): Promise<RepoFixture> {
+    const repo = await setupRepo();
+    await fs.mkdir(path.join(repo.root, "docs", "env1"), { recursive: true });
+    await fs.writeFile(path.join(repo.root, "docs", "env1", "pyvenv.cfg"), "");
+    await fs.mkdir(path.join(repo.root, "docs", "node_modules"), { recursive: true });
+    await fs.mkdir(path.join(repo.root, "docs", "tmp"), { recursive: true });
+    await fs.writeFile(path.join(repo.root, "docs", "tmp", "x.md"), "x");
+    await fs.mkdir(path.join(repo.root, ".kanban-hub"), { recursive: true });
+    await fs.writeFile(path.join(repo.root, ".kanban-hub", "ignore"), "docs/tmp/\n");
+    return repo;
+  }
+
+  function okClient(): FakeClient {
+    return new FakeClient((url) => {
+      if (isManifestUrl(url)) return { syncId: "s1", missing: [], expiresAt: "2026-01-01T00:00:00.000Z" };
+      return { added: 0, modified: 0, removed: 0, unchanged: 1 };
+    });
+  }
+
+  it("摘要末尾提示按内置规则或标记跳过的目录数；只由忽略文件排除的不计入", async () => {
+    const repo = await repoWithVenv();
+    let out = "";
+    const ctx = fakeContext({ env: { ...process.env, KH_HOME: repo.home }, stdout: { write: (s) => void (out += String(s)) } });
+    const result = await pushDocs(ctx, repo.registered, asApiClient(okClient()), { quiet: false });
+    // docs/node_modules 是空目录也会被剪枝（内置规则），docs/env1 是标记，docs/tmp 只由忽略文件排除
+    expect(result.skippedDirs.map((d) => d.path)).toEqual(["docs/env1", "docs/node_modules", "docs/tmp"]);
+    expect(out.trimEnd().split("\n").at(-1)).toBe("按内置规则跳过了 2 个目录，执行 kh sync --dry-run 查看");
+  });
+
+  it("--quiet 时不输出；没有这类目录时没有提示行", async () => {
+    const repo = await repoWithVenv();
+    let out = "";
+    const ctx = fakeContext({ env: { ...process.env, KH_HOME: repo.home }, stdout: { write: (s) => void (out += String(s)) } });
+    await pushDocs(ctx, repo.registered, asApiClient(okClient()), { quiet: true });
+    expect(out).toBe("");
+
+    const plain = await setupRepo();
+    let plainOut = "";
+    const plainCtx = fakeContext({ env: { ...process.env, KH_HOME: plain.home }, stdout: { write: (s) => void (plainOut += String(s)) } });
+    await pushDocs(plainCtx, plain.registered, asApiClient(okClient()), { quiet: false });
+    expect(plainOut).not.toContain("--dry-run");
+  });
+});

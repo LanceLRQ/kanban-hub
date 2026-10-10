@@ -12,6 +12,7 @@ import type { ApiClient } from "../http/client";
 import { confirm } from "../prompt";
 import { readRepoConfig, formatByteSize, toSyncScope, writeRepoConfig, type RepoConfig } from "../repo/config";
 import { planExclude, ensureExcluded } from "../repo/exclude";
+import { planIgnoreTemplate, writeIgnoreTemplate } from "../repo/ignore-template";
 import { fingerprint } from "../repo/fingerprint";
 import { collidesWithKhHome, findRegisteredRepoInGit, inspectRepo, type RegisteredRepo, type RepoInspection } from "../repo/root";
 import { suggestSyncInclude } from "../repo/scope";
@@ -107,6 +108,8 @@ function buildPlanLines(opts: {
   name: string;
   include: readonly string[];
   excludePath: string | null;
+  /** 将要生成的忽略文件模板路径；文件已存在时为 null */
+  ignorePath: string | null;
   warning?: string;
 }): string[] {
   const lines: string[] = [
@@ -123,6 +126,7 @@ function buildPlanLines(opts: {
   );
   lines.push("将要写入的文件：");
   lines.push(`  - ${repoConfigPathFor(opts.root)}`);
+  if (opts.ignorePath) lines.push(`  - ${opts.ignorePath}`);
   lines.push(opts.excludePath ? `  - ${opts.excludePath}` : "  -（不是 git 仓库，跳过 info/exclude）");
   lines.push("将要调用的接口：");
   if (opts.action.kind === "new") lines.push("  - POST /api/v1/projects");
@@ -307,6 +311,7 @@ async function registerFresh(
     name,
     include,
     excludePath: inspection.isGit ? excludePlan.path : null,
+    ignorePath: await planIgnoreTemplate(root),
     warning,
   });
 
@@ -314,7 +319,7 @@ async function registerFresh(
   if (!proceed) return;
 
   // 执行顺序：1. 新建项目（--new 或自动新建时）；2. PUT 本机位置；3. ensureExcluded；
-  // 4. writeRepoConfig。配置文件最后写，它存在就代表注册完成。
+  // 4. 忽略文件模板（已存在则不动）；5. writeRepoConfig。配置文件最后写，它存在就代表注册完成。
   let project: Project;
   if (action.kind === "new") {
     // createInput 在 action.kind === "new" 分支上面已经赋值过，这里不会是 undefined
@@ -337,6 +342,7 @@ async function registerFresh(
     const updated = await putLocation(client, project.id, machine.id, root, sync);
 
     await ensureExcluded(inspection);
+    await writeIgnoreTemplate(root);
     await writeRepoConfig(root, repoConfig);
 
     printRegistered(ctx, updated, root);

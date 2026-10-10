@@ -111,6 +111,33 @@ describe("kh register", () => {
       expect(events.some((e) => e.type === "project.updated" && e.actor.agent === "claude-code")).toBe(true);
     });
 
+    it("新建配置时生成忽略文件模板（只有注释）；已有的忽略文件不被覆盖；已有配置的重复注册不再生成", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      const ignorePath = path.join(repo.dir, ".kanban-hub", "ignore");
+
+      const first = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(first.code).toBe(0);
+      const template = await fs.readFile(ignorePath, "utf8");
+      expect(template).toContain("git add -f .kanban-hub/ignore");
+      expect(template.split("\n").filter((l) => l.trim() !== "" && !l.startsWith("#"))).toEqual([]);
+      expect(gitStatusPorcelain(repo.dir)).toBe("");
+
+      // 用户改过之后再次注册（已有配置的分支）不会动它
+      await fs.writeFile(ignorePath, "docs/tmp/\n");
+      const again = await runKh(["register", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(again.code).toBe(0);
+      expect(await fs.readFile(ignorePath, "utf8")).toBe("docs/tmp/\n");
+
+      // 另一个仓库里已经有用户自己的忽略文件时，新建配置也不覆盖
+      const repo2 = await tempRepo();
+      await fs.mkdir(path.join(repo2.dir, ".kanban-hub"), { recursive: true });
+      await fs.writeFile(path.join(repo2.dir, ".kanban-hub", "ignore"), "*.log\n");
+      const second = await runKh(["register", "--new", "--yes"], { cwd: repo2.dir, khHome: home.dir });
+      expect(second.code).toBe(0);
+      expect(await fs.readFile(path.join(repo2.dir, ".kanban-hub", "ignore"), "utf8")).toBe("*.log\n");
+    });
+
     it("--include 覆盖建议值；glob 不合法时退出码 2", async () => {
       const repo = await tempRepo();
       const home = await loginHome();
@@ -234,6 +261,19 @@ describe("kh register", () => {
         expect(result.stdout).toContain(keyword);
       }
       expect(result.stdout).toContain(repo.dir);
+      expect(result.stdout).toContain(`  - ${path.join(repo.dir, ".kanban-hub", "ignore")}`);
+    });
+
+    it("忽略文件已经存在时，计划里不再列出它", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      await fs.mkdir(path.join(repo.dir, ".kanban-hub"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, ".kanban-hub", "ignore"), "docs/tmp/\n");
+
+      const result = await runKh(["register", "--new", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain(path.join(repo.dir, ".kanban-hub", "config.yaml"));
+      expect(result.stdout).not.toContain(path.join(repo.dir, ".kanban-hub", "ignore"));
     });
 
     it("--name 超过 100 个字符时，--dry-run 就返回 2：名称校验排在打印计划之前，不建项目也不写文件", async () => {

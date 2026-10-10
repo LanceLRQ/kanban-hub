@@ -22,7 +22,7 @@ import { CliError, EXIT } from "../errors";
 import type { ApiClient } from "../http/client";
 import { formatByteSize } from "../repo/config";
 import { collectGitState, listTrackedPaths } from "./git-state";
-import { readIgnoreLines } from "./ignore";
+import { readIgnoreLines, type SkippedDir } from "./ignore";
 import { withSyncLock } from "./lock";
 import { scanSyncFiles, type ScanResult } from "./scan";
 import { openSyncState, type SyncState } from "./state";
@@ -34,6 +34,8 @@ export interface PushResult {
   unchanged: number;
   skipped: { path: string; size: number }[];
   ignoredLinks: string[];
+  /** 扫描时整个被跳过的目录（含只由忽略文件排除的） */
+  skippedDirs: SkippedDir[];
   /** 清单与上一次成功推送相同、且还在跳过窗口之内，这次没有联网 */
   skippedUnchanged: boolean;
 }
@@ -283,6 +285,9 @@ function renderSummary(result: PushResult): string {
     lines.push("指向仓库外或已失效，已跳过的软链接：");
     for (const link of result.ignoredLinks) lines.push(`  ${link}`);
   }
+  // 只数内置规则与标记造成的：用户自己写在忽略文件里的排除不需要再提醒
+  const builtinSkipped = result.skippedDirs.filter((d) => d.category === "builtin" || d.category === "marker").length;
+  if (builtinSkipped > 0) lines.push(`按内置规则跳过了 ${builtinSkipped} 个目录，执行 kh sync --dry-run 查看`);
   return `${lines.join("\n")}\n`;
 }
 
@@ -309,7 +314,13 @@ export async function pushDocs(
         const counts = attempt.skippedUnchanged
           ? { added: 0, modified: 0, removed: 0, unchanged: scan.files.length }
           : attempt.counts;
-        return { ...counts, skipped: scan.skipped, ignoredLinks: scan.ignoredLinks, skippedUnchanged: attempt.skippedUnchanged };
+        return {
+          ...counts,
+          skipped: scan.skipped,
+          ignoredLinks: scan.ignoredLinks,
+          skippedDirs: scan.skippedDirs,
+          skippedUnchanged: attempt.skippedUnchanged,
+        };
       } catch (err) {
         if (err instanceof NoRetryError) throw err.cliError;
         lastErr = err;

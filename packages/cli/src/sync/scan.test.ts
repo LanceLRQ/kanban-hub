@@ -257,6 +257,18 @@ describe("scanSyncFiles：忽略规则", () => {
     expect(result.skippedDirs).toEqual([]);
   });
 
+  it("! 加回只对标记目录自身生效：祖先目录的 ! 不放行其下的虚拟环境", async () => {
+    const root = await tempDir();
+    await write(root, "docs/env1/pyvenv.cfg");
+    await write(root, "docs/env1/readme.md");
+    await write(root, "docs/ok.md");
+    const viaAncestor = await scanSyncFiles(root, scope(), ["!docs/"]);
+    expect(paths(viaAncestor)).toEqual(["docs/ok.md"]);
+    expect(viaAncestor.skippedDirs).toEqual([{ path: "docs/env1", category: "marker", reason: "Python 虚拟环境" }]);
+    const viaSelf = await scanSyncFiles(root, scope(), ["!docs/env1/"]);
+    expect(paths(viaSelf)).toEqual(["docs/env1/pyvenv.cfg", "docs/env1/readme.md", "docs/ok.md"]);
+  });
+
   it("优先级：sync.exclude 命中的目录，忽略文件 ! 加回后同步", async () => {
     const root = await tempDir();
     await write(root, "docs/keep/a.md");

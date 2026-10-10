@@ -25,8 +25,8 @@ export type PathVerdict = { synced: true } | { synced: false; category: ExcludeC
 export interface DirVerdict {
   /** 目录被规则表排除（或硬排除）时给出原因；否则为 null */
   excluded: { category: "hard" | "builtin" | "ignoreFile"; rule?: string } | null;
-  /** 目录自身或某一级父目录被 ! 明确加回；标记识别据此放行 */
-  reinstated: boolean;
+  /** 目录自身被 ! 明确加回；标记识别据此放行（祖先目录的 ! 不算） */
+  selfReinstated: boolean;
 }
 
 export interface SyncRules {
@@ -57,7 +57,7 @@ export async function readIgnoreLines(root: string): Promise<string[]> {
     if (isNoEntError(err)) return [];
     throw err;
   }
-  const lines = text.split(/\r?\n/);
+  const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   if (lines[lines.length - 1] === "") lines.pop();
   return lines;
 }
@@ -92,19 +92,30 @@ export function createSyncRules(scope: SyncScope, ignoreLines: readonly string[]
   }
 
   /** 逐级检查父目录（带结尾 /）和路径自身；isDir 为 false 时最后一级按文件处理 */
-  function walkTable(relPath: string, isDir: boolean): DirVerdict {
+  function walkTable(
+    relPath: string,
+    isDir: boolean,
+  ): { excluded: DirVerdict["excluded"]; reinstated: boolean; selfReinstated: boolean } {
     const segs = relPath.split("/");
     let reinstated = false;
+    let selfReinstated = false;
     for (let i = 1; i <= segs.length; i++) {
       const key = segs.slice(0, i).join("/") + (i < segs.length || isDir ? "/" : "");
       const result = test(key);
       if (result.ignored) {
         const rule = result.rule?.pattern;
-        return { excluded: { category: categoryOf(result.rule), ...(rule !== undefined ? { rule } : {}) }, reinstated };
+        return {
+          excluded: { category: categoryOf(result.rule), ...(rule !== undefined ? { rule } : {}) },
+          reinstated,
+          selfReinstated: false,
+        };
       }
-      if (result.unignored) reinstated = true;
+      if (result.unignored) {
+        reinstated = true;
+        if (i === segs.length) selfReinstated = true;
+      }
     }
-    return { excluded: null, reinstated };
+    return { excluded: null, reinstated, selfReinstated };
   }
 
   function explain(relPath: string): PathVerdict {
@@ -126,8 +137,9 @@ export function createSyncRules(scope: SyncScope, ignoreLines: readonly string[]
     isSynced: (relPath) => explain(relPath).synced,
     explain,
     dirDecision(relDir) {
-      if (hasHardSegment(relDir)) return { excluded: { category: "hard" }, reinstated: false };
-      return walkTable(relDir, true);
+      if (hasHardSegment(relDir)) return { excluded: { category: "hard" }, selfReinstated: false };
+      const { excluded, selfReinstated } = walkTable(relDir, true);
+      return { excluded, selfReinstated };
     },
   };
 }

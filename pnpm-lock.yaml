@@ -149,10 +149,6 @@ importers:
         version: 1.4.0
 
   packages/cli:
-    dependencies:
-      ignore:
-        specifier: ^7.0.12
-        version: 7.0.12
     devDependencies:
       '@kanban-hub/core':
         specifier: workspace:*
@@ -166,6 +162,9 @@ importers:
       esbuild:
         specifier: ^0.28.2
         version: 0.28.2
+      ignore:
+        specifier: ^7.0.12
+        version: 7.0.12
       picomatch:
         specifier: ^4.0.7
         version: 4.0.7

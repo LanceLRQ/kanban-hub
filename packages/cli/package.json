@@ -23,10 +23,8 @@
     "@types/picomatch": "^4.0.3",
     "commander": "^15.0.0",
     "esbuild": "^0.28.2",
+    "ignore": "^7.0.12",
     "picomatch": "^4.0.7",
     "yaml": "^2.9.1"
-  },
-  "dependencies": {
-    "ignore": "^7.0.12"
   }
 }

@@ -40,6 +40,15 @@ describe("readIgnoreLines", () => {
     expect(rules.isSynced("docs/a.md")).toBe(true);
   });
 
+  it("文件开头的 UTF-8 BOM 被去掉，第一行规则照常生效", async () => {
+    const root = await tempDir();
+    await fs.mkdir(path.join(root, ".kanban-hub"));
+    await fs.writeFile(path.join(root, ".kanban-hub", "ignore"), "\uFEFFdocs/tmp/\n*.log\n");
+    const lines = await readIgnoreLines(root);
+    expect(lines).toEqual(["docs/tmp/", "*.log"]);
+    expect(createSyncRules(scope(), lines).isSynced("docs/tmp/a.md")).toBe(false);
+  });
+
   it("读取出错（不是不存在）时抛出，不当成空", async () => {
     const root = await tempDir();
     // ignore 是目录：读取会报 EISDIR
@@ -133,14 +142,15 @@ describe("createSyncRules：忽略文件", () => {
 describe("createSyncRules：目录判定", () => {
   it("内置规则排除的目录给出原因与规则；其他目录不排除", () => {
     const rules = createSyncRules(scope(), ["docs/tmp/"]);
-    expect(rules.dirDecision("docs/x/venv")).toEqual({ excluded: { category: "builtin", rule: "venv/" }, reinstated: false });
-    expect(rules.dirDecision("docs/tmp")).toEqual({ excluded: { category: "ignoreFile", rule: "docs/tmp/" }, reinstated: false });
-    expect(rules.dirDecision("docs/sub")).toEqual({ excluded: null, reinstated: false });
+    expect(rules.dirDecision("docs/x/venv")).toEqual({ excluded: { category: "builtin", rule: "venv/" }, selfReinstated: false });
+    expect(rules.dirDecision("docs/tmp")).toEqual({ excluded: { category: "ignoreFile", rule: "docs/tmp/" }, selfReinstated: false });
+    expect(rules.dirDecision("docs/sub")).toEqual({ excluded: null, selfReinstated: false });
   });
 
-  it("被 ! 加回的目录标记为 reinstated，其子目录继承", () => {
+  it("目录自身被 ! 加回才标记 selfReinstated，祖先目录被加回不传给子目录", () => {
     const rules = createSyncRules(scope(), ["!docs/env1/"]);
-    expect(rules.dirDecision("docs/env1")).toEqual({ excluded: null, reinstated: true });
-    expect(rules.dirDecision("docs/env1/sub")).toEqual({ excluded: null, reinstated: true });
+    expect(rules.dirDecision("docs/env1")).toEqual({ excluded: null, selfReinstated: true });
+    expect(rules.dirDecision("docs/env1/sub")).toEqual({ excluded: null, selfReinstated: false });
+    expect(createSyncRules(scope(), ["!docs/"]).dirDecision("docs/env1")).toEqual({ excluded: null, selfReinstated: false });
   });
 });

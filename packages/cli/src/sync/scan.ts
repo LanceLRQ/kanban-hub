@@ -134,7 +134,7 @@ export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines:
         if (category !== "hard") skippedDirs.set(dirRel, { path: dirRel, category, reason: rule ?? "" });
         return;
       }
-      reinstated = verdict.reinstated;
+      reinstated = verdict.selfReinstated;
     }
 
     let entries: Dirent[];
@@ -144,7 +144,7 @@ export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines:
       return; // 目录不存在或读不了：安静地跳过，调用方不需要因此中断
     }
 
-    // 标记识别：非仓库根的目录里有标记文件，且没有被忽略文件加回，整个目录跳过
+    // 标记识别：非仓库根的目录里有标记文件，且没有被忽略文件的 ! 直接加回该目录，整个目录跳过
     if (dirRel !== "" && !reinstated) {
       const marker = SYNC_BUILTIN_MARKERS.find((m) => entries.some((e) => e.name === m.name));
       if (marker !== undefined) {

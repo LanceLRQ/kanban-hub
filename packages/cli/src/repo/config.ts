@@ -11,6 +11,8 @@ import { isNoEntError, writeFileAtomic } from "../fs-utils";
 
 export const REPO_CONFIG_DIR = ".kanban-hub";
 const REPO_CONFIG_FILE = "config.yaml";
+/** 仓库内的同步忽略文件，位于 .kanban-hub/ 下，gitignore 语法 */
+export const REPO_IGNORE_FILE = "ignore";
 const CONFIG_HEADER = [
   "# kanban-hub 的仓库配置文件",
   "# 默认不会被提交到 git；想让它入库时执行：git add -f .kanban-hub",

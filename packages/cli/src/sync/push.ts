@@ -22,6 +22,7 @@ import { CliError, EXIT } from "../errors";
 import type { ApiClient } from "../http/client";
 import { formatByteSize } from "../repo/config";
 import { collectGitState, listTrackedPaths } from "./git-state";
+import { readIgnoreLines } from "./ignore";
 import { withSyncLock } from "./lock";
 import { scanSyncFiles, type ScanResult } from "./scan";
 import { openSyncState, type SyncState } from "./state";
@@ -162,7 +163,7 @@ async function runAttempt(
   skipWindowMs: number | undefined,
 ): Promise<AttemptResult> {
   const scope = toSyncScope(repo.config);
-  const scan = await scanSyncFiles(repo.root, scope);
+  const scan = await scanSyncFiles(repo.root, scope, await readIgnoreLines(repo.root));
   const state = await openSyncState(ctx, projectId, repo.root);
 
   const shaByPath = new Map<string, string>();

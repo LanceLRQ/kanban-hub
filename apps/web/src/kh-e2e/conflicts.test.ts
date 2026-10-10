@@ -139,6 +139,16 @@ describe("kh conflicts", () => {
     expect((await B.state()).conflicts["notes/a.md"]).toBeDefined();
   });
 
+  it("resolve --take-remote：路径被 .kanban-hub/ignore 排除时同样不写入（退出码 5）", async () => {
+    await makeTextConflict();
+    await B.write(".kanban-hub/ignore", "/notes/a.md\n");
+    const result = await B.kh(["conflicts", "resolve", "notes/a.md", "--take-remote"]);
+    expect(result.code).toBe(5);
+    expect(result.stderr).toContain("--take-local");
+    expect(await B.read("notes/a.md")).toBe(FROM_B);
+    expect((await B.state()).conflicts["notes/a.md"]).toBeDefined();
+  });
+
   it("resolve --take-remote：父目录是指向仓库外的软链接时拒绝写入", async () => {
     await A.write("notes/sub/a.md", BASE);
     expectOk(await A.kh(["sync"]));

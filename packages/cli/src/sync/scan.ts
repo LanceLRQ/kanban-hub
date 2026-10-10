@@ -1,11 +1,11 @@
 import type { Dirent, Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import picomatch from "picomatch";
 import type { SyncScope } from "@kanban-hub/core/schema";
-import { SYNC_BUILTIN_IGNORE, SYNC_HARD_EXCLUDE_DIR_NAMES } from "@kanban-hub/core/sync";
+import { SYNC_BUILTIN_MARKERS } from "@kanban-hub/core/sync";
 import { KH_TMP_PATTERN } from "../fs-utils";
 import { REPO_CONFIG_DIR } from "../repo/config";
+import { createSyncRules, type SkippedDir } from "./ignore";
 
 export interface ScanFile {
   path: string;
@@ -18,48 +18,21 @@ export interface ScanResult {
   files: ScanFile[];
   skipped: { path: string; size: number }[];
   ignoredLinks: string[];
-}
-
-// 过渡期：规则接入前保持原有行为，只沿用内置规则里原来就有的两个目录
-const LEGACY_DIR_RULES = SYNC_BUILTIN_IGNORE.filter((rule) => rule === "node_modules/" || rule === ".next/");
-
-type Matcher = (input: string) => boolean;
-interface Matchers {
-  include: Matcher[];
-  exclude: Matcher[];
-}
-
-function buildMatchers(scope: SyncScope): Matchers {
-  // dot: true 让 docs/** 这类模式也能匹配 docs/.hidden；* 默认不跨目录分隔符，这一点
-  // 由 picomatch 的默认行为保证，不需要额外配置
-  const opts = { dot: true };
-  return {
-    include: scope.include.map((pattern) => picomatch(pattern, opts)),
-    exclude: [
-      ...SYNC_HARD_EXCLUDE_DIR_NAMES.map((name) => `**/${name}/**`),
-      ...LEGACY_DIR_RULES.map((rule) => `**/${rule}**`),
-      ...scope.exclude,
-    ].map((pattern) => picomatch(pattern, opts)),
-  };
-}
-
-function isMatch(relPath: string, matchers: Matchers): boolean {
-  if (matchers.exclude.some((m) => m(relPath))) return false;
-  return matchers.include.some((m) => m(relPath));
+  /** 整个被跳过（剪枝）的目录，按路径排序；只记规则表与标记造成的，不记单个文件 */
+  skippedDirs: SkippedDir[];
 }
 
 /**
- * 单个路径是否在同步范围内：命中始终排除或 exclude 的一律排除，其余再看是否命中 include。
- * 每次调用都会重新编译 glob，不适合在循环里反复调用；循环里用 createSyncScopeMatcher。
+ * 单个路径是否在同步范围内（只按路径判定，不做标记识别）。
+ * 每次调用都会重新编译规则，不适合在循环里反复调用；循环里用 createSyncScopeMatcher。
  */
-export function matchesSyncScope(relPath: string, scope: SyncScope): boolean {
-  return isMatch(relPath, buildMatchers(scope));
+export function matchesSyncScope(relPath: string, scope: SyncScope, ignoreLines: readonly string[] = []): boolean {
+  return createSyncRules(scope, ignoreLines).isSynced(relPath);
 }
 
-/** 与 matchesSyncScope 同样的判定，但 glob 只编译一次，适合逐个判断一批路径 */
-export function createSyncScopeMatcher(scope: SyncScope): (relPath: string) => boolean {
-  const matchers = buildMatchers(scope);
-  return (relPath) => isMatch(relPath, matchers);
+/** 与 matchesSyncScope 同样的判定，但规则只编译一次，适合逐个判断一批路径 */
+export function createSyncScopeMatcher(scope: SyncScope, ignoreLines: readonly string[] = []): (relPath: string) => boolean {
+  return createSyncRules(scope, ignoreLines).isSynced;
 }
 
 function isLiteralSegment(seg: string): boolean {
@@ -92,12 +65,6 @@ function dedupePrefixes(prefixes: string[]): string[] {
   return kept;
 }
 
-// 始终排除的目录名；扫描据此在遇到这些目录时直接剪枝，不需要进去看内容
-const ALWAYS_EXCLUDE_DIR_NAMES = new Set<string>([
-  ...SYNC_HARD_EXCLUDE_DIR_NAMES,
-  ...LEGACY_DIR_RULES.map((rule) => rule.slice(0, -1)),
-]);
-
 /** 仓库根的 .kanban-hub/ 是 kh 自己的配置目录，与 kh 的临时文件一样不参与同步（比较不区分大小写） */
 function isRepoConfigPath(relPath: string): boolean {
   return relPath.split("/")[0]!.toLowerCase() === REPO_CONFIG_DIR.toLowerCase();
@@ -107,15 +74,16 @@ function isRepoConfigPath(relPath: string): boolean {
  * 扫描仓库内符合同步范围的文件。只从 include 各模式的静态前缀开始遍历（例如 docs/** 只从
  * docs/ 开始），前缀之外即使有读不了的目录也不会被访问到，因此不会抛错。
  */
-export async function scanSyncFiles(root: string, scope: SyncScope): Promise<ScanResult> {
-  const matchers = buildMatchers(scope);
+export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines: readonly string[] = []): Promise<ScanResult> {
+  const rules = createSyncRules(scope, ignoreLines);
+  const skippedDirs = new Map<string, SkippedDir>();
   const files = new Map<string, ScanFile>();
   const skipped = new Map<string, { path: string; size: number }>();
   const ignoredLinks = new Set<string>();
 
   function classify(relPath: string, absPath: string, size: number, mtimeMs: number): void {
     if (KH_TMP_PATTERN.test(path.basename(relPath)) || isRepoConfigPath(relPath)) return;
-    if (!isMatch(relPath, matchers)) return;
+    if (!rules.isSynced(relPath)) return;
     if (size > scope.maxFileSize) {
       skipped.set(relPath, { path: relPath, size });
       return;
@@ -157,11 +125,32 @@ export async function scanSyncFiles(root: string, scope: SyncScope): Promise<Sca
   }
 
   async function visitDir(dirAbs: string, dirRel: string): Promise<void> {
+    let reinstated = false;
+    if (dirRel !== "") {
+      if (isRepoConfigPath(dirRel)) return;
+      const verdict = rules.dirDecision(dirRel);
+      if (verdict.excluded !== null) {
+        const { category, rule } = verdict.excluded;
+        if (category !== "hard") skippedDirs.set(dirRel, { path: dirRel, category, reason: rule ?? "" });
+        return;
+      }
+      reinstated = verdict.reinstated;
+    }
+
     let entries: Dirent[];
     try {
       entries = await fs.readdir(dirAbs, { withFileTypes: true });
     } catch {
       return; // 目录不存在或读不了：安静地跳过，调用方不需要因此中断
+    }
+
+    // 标记识别：非仓库根的目录里有标记文件，且没有被忽略文件加回，整个目录跳过
+    if (dirRel !== "" && !reinstated) {
+      const marker = SYNC_BUILTIN_MARKERS.find((m) => entries.some((e) => e.name === m.name));
+      if (marker !== undefined) {
+        skippedDirs.set(dirRel, { path: dirRel, category: "marker", reason: marker.reason });
+        return;
+      }
     }
 
     for (const entry of entries) {
@@ -173,7 +162,6 @@ export async function scanSyncFiles(root: string, scope: SyncScope): Promise<Sca
         continue;
       }
       if (entry.isDirectory()) {
-        if (ALWAYS_EXCLUDE_DIR_NAMES.has(entry.name) || isRepoConfigPath(rel)) continue;
         await visitDir(abs, rel);
         continue;
       }
@@ -195,5 +183,6 @@ export async function scanSyncFiles(root: string, scope: SyncScope): Promise<Sca
     files: [...files.values()].sort(byPath),
     skipped: [...skipped.values()].sort(byPath),
     ignoredLinks: [...ignoredLinks].sort(),
+    skippedDirs: [...skippedDirs.values()].sort(byPath),
   };
 }

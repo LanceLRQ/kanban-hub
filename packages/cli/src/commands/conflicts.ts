@@ -21,6 +21,7 @@ import { diff3Text, diffNoIndex } from "../sync/merge";
 import { listTrackedPaths } from "../sync/git-state";
 import { isReservedPath } from "../sync/pull";
 import { assertValidScope } from "../sync/push";
+import { readIgnoreLines } from "../sync/ignore";
 import { createSyncScopeMatcher } from "../sync/scan";
 import { openSyncState, type ConflictRecord, type SyncState } from "../sync/state";
 import { formatUpdatedAt } from "./docs";
@@ -173,7 +174,7 @@ async function runResolve(ctx: CliContext, input: string, mode: ResolveMode): Pr
       if (local.kind === "file") finalSha = sha256Hex(await fs.readFile(local.absPath));
     } else {
       assertValidScope(repo.config);
-      if (!createSyncScopeMatcher(toSyncScope(repo.config))(relPath)) {
+      if (!createSyncScopeMatcher(toSyncScope(repo.config), await readIgnoreLines(repo.root))(relPath)) {
         throw new CliError(
           EXIT.DATA,
           `路径不在本机的同步范围内，不写入：${relPath}`,

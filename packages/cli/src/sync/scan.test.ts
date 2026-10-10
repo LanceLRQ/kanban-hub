@@ -1,9 +1,9 @@
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SyncScope } from "@kanban-hub/core/schema";
-import { matchesSyncScope, scanSyncFiles } from "./scan";
+import { createSyncScopeMatcher, matchesSyncScope, scanSyncFiles } from "./scan";
 
 const dirs: string[] = [];
 
@@ -180,5 +180,124 @@ describe("scanSyncFiles", () => {
     await write(root, "docs/nested.md");
     const result = await scanSyncFiles(root, scope({ include: ["*.md"] }));
     expect(result.files.map((f) => f.path)).toEqual(["README.md"]);
+  });
+});
+
+describe("scanSyncFiles：忽略规则", () => {
+  const paths = (r: { files: { path: string }[] }): string[] => r.files.map((f) => f.path);
+
+  it("内置规则：虚拟环境、缓存目录与 .DS_Store 不同步，build、dist 同步", async () => {
+    const root = await tempDir();
+    await write(root, "docs/x/venv/lib/a.py");
+    await write(root, "docs/__pycache__/a.pyc");
+    await write(root, "docs/.DS_Store");
+    await write(root, "docs/build/guide.md");
+    await write(root, "docs/dist/a.html");
+    const result = await scanSyncFiles(root, scope());
+    expect(paths(result)).toEqual(["docs/build/guide.md", "docs/dist/a.html"]);
+  });
+
+  it("标记：pyvenv.cfg 所在目录整个跳过，并记入明细", async () => {
+    const root = await tempDir();
+    await write(root, "docs/env1/pyvenv.cfg");
+    await write(root, "docs/env1/readme.md");
+    await write(root, "docs/ok.md");
+    const result = await scanSyncFiles(root, scope());
+    expect(paths(result)).toEqual(["docs/ok.md"]);
+    expect(result.skippedDirs).toEqual([{ path: "docs/env1", category: "marker", reason: "Python 虚拟环境" }]);
+  });
+
+  it("标记：嵌套仓库（.git 目录）与工作树（.git 文件）所在目录整个跳过；仓库根自己的 .git 不触发", async () => {
+    const root = await tempDir();
+    await write(root, ".git/HEAD");
+    await write(root, "docs/ref-repo/.git/HEAD");
+    await write(root, "docs/ref-repo/a.md");
+    await write(root, "docs/wt/.git", "gitdir: ../x");
+    await write(root, "docs/wt/b.md");
+    await write(root, "docs/ok.md");
+    const result = await scanSyncFiles(root, scope({ include: ["**"] }));
+    expect(paths(result)).toEqual(["docs/ok.md"]);
+    expect(result.skippedDirs.map((d) => [d.path, d.category])).toEqual([
+      ["docs/ref-repo", "marker"],
+      ["docs/wt", "marker"],
+    ]);
+  });
+
+  it("忽略文件追加排除：目录、通配与锚定写法；明细区分内置规则与忽略文件", async () => {
+    const root = await tempDir();
+    await write(root, "docs/tmp/x.md");
+    await write(root, "docs/sub/y.log");
+    await write(root, "docs/a.md");
+    await write(root, "docs/sub/a.md");
+    await write(root, "docs/venv/z.md");
+    const result = await scanSyncFiles(root, scope(), ["docs/tmp/", "*.log", "/docs/a.md"]);
+    expect(paths(result)).toEqual(["docs/sub/a.md"]);
+    expect(result.skippedDirs).toEqual([
+      { path: "docs/tmp", category: "ignoreFile", reason: "docs/tmp/" },
+      { path: "docs/venv", category: "builtin", reason: "venv/" },
+    ]);
+  });
+
+  it("! 加回：内置规则排除的目录其下文件同步，其中的 __pycache__ 仍不同步", async () => {
+    const root = await tempDir();
+    await write(root, "docs/x/venv/readme.md");
+    await write(root, "docs/x/venv/__pycache__/a.pyc");
+    const result = await scanSyncFiles(root, scope(), ["!docs/x/venv/"]);
+    expect(paths(result)).toEqual(["docs/x/venv/readme.md"]);
+  });
+
+  it("! 加回标记目录后内容同步；嵌套仓库被加回后其 .git 仍不同步", async () => {
+    const root = await tempDir();
+    await write(root, "docs/env1/pyvenv.cfg");
+    await write(root, "docs/env1/readme.md");
+    await write(root, "docs/ref/.git/HEAD");
+    await write(root, "docs/ref/a.md");
+    const result = await scanSyncFiles(root, scope(), ["!docs/env1/", "!docs/ref/"]);
+    expect(paths(result)).toEqual(["docs/env1/pyvenv.cfg", "docs/env1/readme.md", "docs/ref/a.md"]);
+    expect(result.skippedDirs).toEqual([]);
+  });
+
+  it("优先级：sync.exclude 命中的目录，忽略文件 ! 加回后同步", async () => {
+    const root = await tempDir();
+    await write(root, "docs/keep/a.md");
+    expect(paths(await scanSyncFiles(root, scope({ exclude: ["docs/keep/**"] })))).toEqual([]);
+    expect(paths(await scanSyncFiles(root, scope({ exclude: ["docs/keep/**"] }), ["!docs/keep/"]))).toEqual(["docs/keep/a.md"]);
+  });
+
+  it("include 之外的路径即使写了 ! 也不同步", async () => {
+    const root = await tempDir();
+    await write(root, "src/venv/a.md");
+    await write(root, "docs/a.md");
+    const result = await scanSyncFiles(root, scope(), ["!src/venv/"]);
+    expect(paths(result)).toEqual(["docs/a.md"]);
+  });
+
+  it("被规则排除的目录直接剪枝，不读取它", async () => {
+    const root = await tempDir();
+    await write(root, "docs/venv/a.py");
+    await write(root, "docs/tmp/b.md");
+    await write(root, "docs/a.md");
+    const spy = vi.spyOn(fs, "readdir");
+    try {
+      await scanSyncFiles(root, scope(), ["docs/tmp/"]);
+      const read = spy.mock.calls.map((c) => String(c[0]));
+      expect(read).toEqual([path.join(root, "docs")]);
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
+  it("没有被剪枝的目录时 skippedDirs 为空", async () => {
+    const root = await tempDir();
+    await write(root, "docs/a.md");
+    expect((await scanSyncFiles(root, scope())).skippedDirs).toEqual([]);
+  });
+
+  it("路径判定函数：忽略文件的行参与判定，但不做标记识别", () => {
+    const s = scope();
+    expect(matchesSyncScope("docs/tmp/a.md", s, ["docs/tmp/"])).toBe(false);
+    expect(createSyncScopeMatcher(s, ["docs/tmp/"])("docs/ok/a.md")).toBe(true);
+    expect(createSyncScopeMatcher(s)("docs/x/venv/a.py")).toBe(false);
+    expect(createSyncScopeMatcher(s)("docs/env1/readme.md")).toBe(true);
   });
 });

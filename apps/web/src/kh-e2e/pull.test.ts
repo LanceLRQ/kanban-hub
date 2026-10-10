@@ -430,6 +430,17 @@ describe("kh pull", () => {
   });
 
   describe("安全", () => {
+    it("被 .kanban-hub/ignore 排除的路径不拉取", async () => {
+      await A.write("notes/mylib/a.md", "a\n");
+      await A.write("notes/b.md", "b\n");
+      expectOk(await A.kh(["sync"]));
+      await B.write(".kanban-hub/ignore", "mylib/\n");
+
+      expectOk(await B.kh(["pull"]));
+      expect(await B.exists("notes/mylib/a.md")).toBe(false);
+      expect(await B.read("notes/b.md")).toBe("b\n");
+    });
+
     it("父目录是指向仓库外的软链接：不经过它写入，计为不安全", async () => {
       const outside = await fs.realpath(await fs.mkdtemp(path.join(os.tmpdir(), "kh-e2e-outside-")));
       try {

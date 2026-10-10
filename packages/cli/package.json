@@ -25,5 +25,8 @@
     "esbuild": "^0.28.2",
     "picomatch": "^4.0.7",
     "yaml": "^2.9.1"
+  },
+  "dependencies": {
+    "ignore": "^7.0.12"
   }
 }

@@ -26,6 +26,7 @@ import type { RegisteredRepo } from "../repo/root";
 import { listTrackedPaths, pathKey } from "./git-state";
 import { inspectLocalPath, LocalChangedError, writeLocalFile, type LocalEntry } from "./local";
 import { withSyncLock } from "./lock";
+import { readIgnoreLines } from "./ignore";
 import { mergeText } from "./merge";
 import { assertValidScope } from "./push";
 import { fetchLatestRemote, fetchMachineManifest, fetchRemoteFile, resolveMachineRef } from "./remote";
@@ -431,7 +432,7 @@ export async function pullDocs(ctx: CliContext, repo: RegisteredRepo, client: Ap
   const selfId = await requireSelfMachineId(ctx);
   const remote = await selectRemote(client, projectId, selfId, opts.from);
 
-  const inScope = createSyncScopeMatcher(toSyncScope(repo.config));
+  const inScope = createSyncScopeMatcher(toSyncScope(repo.config), await readIgnoreLines(repo.root));
   const matchesPath = opts.pathGlob !== undefined ? picomatch(opts.pathGlob, { dot: true }) : () => true;
   const files = remote.files
     .filter((file) => inScope(file.path) && matchesPath(file.path))

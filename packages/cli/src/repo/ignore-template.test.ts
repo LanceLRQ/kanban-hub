@@ -38,6 +38,7 @@ describe("忽略文件模板", () => {
     expect(IGNORE_TEMPLATE).toContain("pyvenv.cfg");
     expect(IGNORE_TEMPLATE).toMatch(/^#.*!docs\//m);
     expect(IGNORE_TEMPLATE).toContain("git add -f .kanban-hub/ignore");
+    expect(IGNORE_TEMPLATE).toContain("匹配不分大小写");
   });
 
   it("不存在时写出并创建 .kanban-hub/，返回 true；已存在时不动，返回 false", async () => {

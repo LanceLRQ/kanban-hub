@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 import type { SyncScope } from "@kanban-hub/core/schema";
+import { CliError, EXIT } from "../errors";
 import { createSyncRules, readIgnoreLines } from "./ignore";
 
 const dirs: string[] = [];
@@ -53,7 +54,11 @@ describe("readIgnoreLines", () => {
     const root = await tempDir();
     // ignore 是目录：读取会报 EISDIR
     await fs.mkdir(path.join(root, ".kanban-hub", "ignore"), { recursive: true });
-    await expect(readIgnoreLines(root)).rejects.toThrow();
+    const err = await readIgnoreLines(root).catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(CliError);
+    expect((err as CliError).exitCode).toBe(EXIT.USAGE);
+    expect((err as CliError).message).toContain("无法读取忽略文件");
+    expect((err as CliError).message).toContain(path.join(root, ".kanban-hub", "ignore"));
   });
 
   it("按行返回文本", async () => {
@@ -101,6 +106,12 @@ describe("createSyncRules：硬排除", () => {
 });
 
 describe("createSyncRules：忽略文件", () => {
+  it("匹配不分大小写：docs/Drafts/ 排除 docs/drafts/a.md", () => {
+    const rules = createSyncRules(scope(), ["docs/Drafts/"]);
+    expect(rules.isSynced("docs/drafts/a.md")).toBe(false);
+    expect(rules.isSynced("docs/DRAFTS/a.md")).toBe(false);
+  });
+
   it("追加排除：目录规则、通配、锚定写法", () => {
     const rules = createSyncRules(scope(), ["docs/tmp/", "*.log", "/docs/a.md"]);
     expect(rules.isSynced("docs/tmp/x.md")).toBe(false);

@@ -9,6 +9,7 @@ const markerLines = SYNC_BUILTIN_MARKERS.map((m) => `#   含 ${m.name} 的目录
 
 /** .kanban-hub/ignore 的初始内容：全是注释，写出后不改变任何同步结果 */
 export const IGNORE_TEMPLATE = `# kanban-hub 同步忽略规则，写法与 .gitignore 相同。
+# 匹配不分大小写（docs/Drafts/ 也会排除 docs/drafts/）。
 # 每行一条规则：# 开头是注释，空行忽略；以 / 结尾表示目录；开头的 / 表示从仓库根开始匹配；
 # 以 ! 开头表示把已被排除的路径加回来。后面的规则覆盖前面的。
 #
@@ -16,7 +17,7 @@ export const IGNORE_TEMPLATE = `# kanban-hub 同步忽略规则，写法与 .git
 ${builtinLines}
 # 扫描时，下面这类目录也整个跳过：
 ${markerLines}
-# 运行 kh sync --dry-run 可以查看将同步哪些文件、哪些目录被跳过了。
+# 运行 kh sync --dry-run 可以预览将上传的文件数与按目录的汇总，以及哪些目录被跳过了。
 #
 # 例子：
 #   追加排除一个目录：      docs/drafts/

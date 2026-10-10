@@ -24,7 +24,7 @@ import { formatByteSize } from "../repo/config";
 import { collectGitState, listTrackedPaths } from "./git-state";
 import { readIgnoreLines, type SkippedDir } from "./ignore";
 import { withSyncLock } from "./lock";
-import { scanSyncFiles, type ScanResult } from "./scan";
+import { renderIgnoredLinkLines, scanSyncFiles, type ScanResult } from "./scan";
 import { openSyncState, type SyncState } from "./state";
 
 export interface PushResult {
@@ -281,10 +281,7 @@ function renderSummary(result: PushResult): string {
     lines.push("超过大小限制，已跳过：");
     for (const item of result.skipped) lines.push(`  ${item.path}（${formatByteSize(item.size)}）`);
   }
-  if (result.ignoredLinks.length > 0) {
-    lines.push("指向仓库外或已失效，已跳过的软链接：");
-    for (const link of result.ignoredLinks) lines.push(`  ${link}`);
-  }
+  lines.push(...renderIgnoredLinkLines(result.ignoredLinks));
   // 只数内置规则与标记造成的：用户自己写在忽略文件里的排除不需要再提醒
   const builtinSkipped = result.skippedDirs.filter((d) => d.category === "builtin" || d.category === "marker").length;
   if (builtinSkipped > 0) lines.push(`按内置规则跳过了 ${builtinSkipped} 个目录，执行 kh sync --dry-run 查看`);

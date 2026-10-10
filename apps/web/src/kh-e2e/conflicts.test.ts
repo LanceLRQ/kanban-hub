@@ -134,6 +134,7 @@ describe("kh conflicts", () => {
     });
     const result = await B.kh(["conflicts", "resolve", "notes/a.md", "--take-remote"]);
     expect(result.code).toBe(5);
+    expect(result.stderr).toContain(".kanban-hub/ignore");
     expect(result.stderr).toContain("--take-local");
     expect(await B.read("notes/a.md")).toBe(FROM_B);
     expect((await B.state()).conflicts["notes/a.md"]).toBeDefined();
@@ -144,6 +145,7 @@ describe("kh conflicts", () => {
     await B.write(".kanban-hub/ignore", "/notes/a.md\n");
     const result = await B.kh(["conflicts", "resolve", "notes/a.md", "--take-remote"]);
     expect(result.code).toBe(5);
+    expect(result.stderr).toContain(".kanban-hub/ignore");
     expect(result.stderr).toContain("--take-local");
     expect(await B.read("notes/a.md")).toBe(FROM_B);
     expect((await B.state()).conflicts["notes/a.md"]).toBeDefined();

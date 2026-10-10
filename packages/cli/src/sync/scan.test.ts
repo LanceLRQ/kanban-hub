@@ -37,29 +37,29 @@ async function write(root: string, relPath: string, content = "x"): Promise<stri
 
 describe("matchesSyncScope", () => {
   it("命中 include 且不在 exclude 里时为 true", () => {
-    expect(matchesSyncScope("docs/a.md", scope())).toBe(true);
+    expect(matchesSyncScope("docs/a.md", scope(), [])).toBe(true);
   });
 
   it("不在任何 include 里时为 false", () => {
-    expect(matchesSyncScope("src/a.ts", scope())).toBe(false);
+    expect(matchesSyncScope("src/a.ts", scope(), [])).toBe(false);
   });
 
   it("命中 exclude 时即使匹配 include 也为 false", () => {
-    expect(matchesSyncScope("docs/draft/a.md", scope({ include: ["docs/**"], exclude: ["docs/draft/**"] }))).toBe(false);
+    expect(matchesSyncScope("docs/draft/a.md", scope({ include: ["docs/**"], exclude: ["docs/draft/**"] }), [])).toBe(false);
   });
 
   it("始终排除 node_modules，即使被 include 覆盖", () => {
-    expect(matchesSyncScope("docs/node_modules/a.md", scope({ include: ["**"] }))).toBe(false);
+    expect(matchesSyncScope("docs/node_modules/a.md", scope({ include: ["**"] }), [])).toBe(false);
   });
 
   it("* 不跨目录：根目录的 *.md 不匹配子目录里的文件", () => {
     const s = scope({ include: ["*.md"] });
-    expect(matchesSyncScope("a.md", s)).toBe(true);
-    expect(matchesSyncScope("docs/a.md", s)).toBe(false);
+    expect(matchesSyncScope("a.md", s, [])).toBe(true);
+    expect(matchesSyncScope("docs/a.md", s, [])).toBe(false);
   });
 
   it("dot: true 让 include 也能匹配隐藏文件", () => {
-    expect(matchesSyncScope("docs/.hidden.md", scope())).toBe(true);
+    expect(matchesSyncScope("docs/.hidden.md", scope(), [])).toBe(true);
   });
 });
 
@@ -71,7 +71,7 @@ describe("scanSyncFiles", () => {
     await write(root, "docs/draft/c.md");
     await write(root, "src/ignored.ts");
 
-    const result = await scanSyncFiles(root, scope({ include: ["docs/**"], exclude: ["docs/draft/**"] }));
+    const result = await scanSyncFiles(root, scope({ include: ["docs/**"], exclude: ["docs/draft/**"] }), []);
     expect(result.files.map((f) => f.path)).toEqual(["docs/a.md", "docs/b.md"]);
     expect(result.files[0]?.absPath).toBe(path.join(root, "docs", "a.md"));
   });
@@ -84,7 +84,7 @@ describe("scanSyncFiles", () => {
     await write(root, "secret/x.md");
     await fs.chmod(secret, 0); // 去掉所有权限：如果扫描误入这个目录，readdir 会失败
     try {
-      const result = await scanSyncFiles(root, scope({ include: ["docs/**"] }));
+      const result = await scanSyncFiles(root, scope({ include: ["docs/**"] }), []);
       expect(result.files.map((f) => f.path)).toEqual(["docs/a.md"]);
     } finally {
       await fs.chmod(secret, 0o700); // 恢复权限，afterEach 的递归删除才能进得去
@@ -94,7 +94,7 @@ describe("scanSyncFiles", () => {
   it("隐藏文件被纳入", async () => {
     const root = await tempDir();
     await write(root, "docs/.hidden.md");
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(result.files.map((f) => f.path)).toEqual(["docs/.hidden.md"]);
   });
 
@@ -103,7 +103,7 @@ describe("scanSyncFiles", () => {
     await write(root, "docs/real/a.md");
     await fs.symlink(path.join(root, "docs", "real"), path.join(root, "docs", "link-dir"), "dir");
 
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(result.files.map((f) => f.path)).toEqual(["docs/real/a.md"]);
     expect(result.ignoredLinks).toEqual([]);
   });
@@ -114,7 +114,7 @@ describe("scanSyncFiles", () => {
     await fs.mkdir(path.join(root, "docs"), { recursive: true });
     await fs.symlink(target, path.join(root, "docs", "linked.md"));
 
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(result.files.map((f) => f.path)).toEqual(["docs/linked.md"]);
     expect(result.files[0]?.size).toBe(5);
   });
@@ -126,7 +126,7 @@ describe("scanSyncFiles", () => {
     await fs.mkdir(path.join(root, "docs"), { recursive: true });
     await fs.symlink(path.join(outside, "external.md"), path.join(root, "docs", "linked.md"));
 
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(result.files).toEqual([]);
     expect(result.ignoredLinks).toEqual(["docs/linked.md"]);
   });
@@ -136,7 +136,7 @@ describe("scanSyncFiles", () => {
     await fs.mkdir(path.join(root, "docs"), { recursive: true });
     await fs.symlink(path.join(root, "docs", "does-not-exist.md"), path.join(root, "docs", "broken.md"));
 
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(result.files).toEqual([]);
     expect(result.ignoredLinks).toEqual(["docs/broken.md"]);
   });
@@ -144,7 +144,7 @@ describe("scanSyncFiles", () => {
   it("超过大小上限的文件进入 skipped，不进入 files", async () => {
     const root = await tempDir();
     await write(root, "docs/big.md", "x".repeat(100));
-    const result = await scanSyncFiles(root, scope({ maxFileSize: 10 }));
+    const result = await scanSyncFiles(root, scope({ maxFileSize: 10 }), []);
     expect(result.files).toEqual([]);
     expect(result.skipped).toEqual([{ path: "docs/big.md", size: 100 }]);
   });
@@ -153,7 +153,7 @@ describe("scanSyncFiles", () => {
     const root = await tempDir();
     await write(root, "docs/a.md");
     await write(root, "docs/.a.md.kh-tmp-12345-1");
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(result.files.map((f) => f.path)).toEqual(["docs/a.md"]);
   });
 
@@ -163,14 +163,14 @@ describe("scanSyncFiles", () => {
     await write(root, ".KANBAN-HUB/other.md");
     await write(root, "docs/a.md");
     await write(root, "docs/.kanban-hub/b.md");
-    const result = await scanSyncFiles(root, scope({ include: ["**"] }));
+    const result = await scanSyncFiles(root, scope({ include: ["**"] }), []);
     const paths = result.files.map((f) => f.path);
     expect(paths).not.toContain(".kanban-hub/config.yaml");
     expect(paths.some((p) => p.toLowerCase().startsWith(".kanban-hub/"))).toBe(false);
     expect(paths).toContain("docs/a.md");
     expect(paths).toContain("docs/.kanban-hub/b.md");
 
-    const direct = await scanSyncFiles(root, scope({ include: [".kanban-hub/**"] }));
+    const direct = await scanSyncFiles(root, scope({ include: [".kanban-hub/**"] }), []);
     expect(direct.files).toEqual([]);
   });
 
@@ -178,7 +178,7 @@ describe("scanSyncFiles", () => {
     const root = await tempDir();
     await write(root, "README.md");
     await write(root, "docs/nested.md");
-    const result = await scanSyncFiles(root, scope({ include: ["*.md"] }));
+    const result = await scanSyncFiles(root, scope({ include: ["*.md"] }), []);
     expect(result.files.map((f) => f.path)).toEqual(["README.md"]);
   });
 });
@@ -193,7 +193,7 @@ describe("scanSyncFiles：忽略规则", () => {
     await write(root, "docs/.DS_Store");
     await write(root, "docs/build/guide.md");
     await write(root, "docs/dist/a.html");
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(paths(result)).toEqual(["docs/build/guide.md", "docs/dist/a.html"]);
   });
 
@@ -202,7 +202,7 @@ describe("scanSyncFiles：忽略规则", () => {
     await write(root, "docs/env1/pyvenv.cfg");
     await write(root, "docs/env1/readme.md");
     await write(root, "docs/ok.md");
-    const result = await scanSyncFiles(root, scope());
+    const result = await scanSyncFiles(root, scope(), []);
     expect(paths(result)).toEqual(["docs/ok.md"]);
     expect(result.skippedDirs).toEqual([{ path: "docs/env1", category: "marker", reason: "Python 虚拟环境" }]);
   });
@@ -215,7 +215,7 @@ describe("scanSyncFiles：忽略规则", () => {
     await write(root, "docs/wt/.git", "gitdir: ../x");
     await write(root, "docs/wt/b.md");
     await write(root, "docs/ok.md");
-    const result = await scanSyncFiles(root, scope({ include: ["**"] }));
+    const result = await scanSyncFiles(root, scope({ include: ["**"] }), []);
     expect(paths(result)).toEqual(["docs/ok.md"]);
     expect(result.skippedDirs.map((d) => [d.path, d.category])).toEqual([
       ["docs/ref-repo", "marker"],
@@ -272,7 +272,7 @@ describe("scanSyncFiles：忽略规则", () => {
   it("优先级：sync.exclude 命中的目录，忽略文件 ! 加回后同步", async () => {
     const root = await tempDir();
     await write(root, "docs/keep/a.md");
-    expect(paths(await scanSyncFiles(root, scope({ exclude: ["docs/keep/**"] })))).toEqual([]);
+    expect(paths(await scanSyncFiles(root, scope({ exclude: ["docs/keep/**"] }), []))).toEqual([]);
     expect(paths(await scanSyncFiles(root, scope({ exclude: ["docs/keep/**"] }), ["!docs/keep/"]))).toEqual(["docs/keep/a.md"]);
   });
 
@@ -302,14 +302,14 @@ describe("scanSyncFiles：忽略规则", () => {
   it("没有被剪枝的目录时 skippedDirs 为空", async () => {
     const root = await tempDir();
     await write(root, "docs/a.md");
-    expect((await scanSyncFiles(root, scope())).skippedDirs).toEqual([]);
+    expect((await scanSyncFiles(root, scope(), [])).skippedDirs).toEqual([]);
   });
 
   it("路径判定函数：忽略文件的行参与判定，但不做标记识别", () => {
     const s = scope();
     expect(matchesSyncScope("docs/tmp/a.md", s, ["docs/tmp/"])).toBe(false);
     expect(createSyncScopeMatcher(s, ["docs/tmp/"])("docs/ok/a.md")).toBe(true);
-    expect(createSyncScopeMatcher(s)("docs/x/venv/a.py")).toBe(false);
-    expect(createSyncScopeMatcher(s)("docs/env1/readme.md")).toBe(true);
+    expect(createSyncScopeMatcher(s, [])("docs/x/venv/a.py")).toBe(false);
+    expect(createSyncScopeMatcher(s, [])("docs/env1/readme.md")).toBe(true);
   });
 });

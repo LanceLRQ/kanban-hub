@@ -59,7 +59,7 @@ description: 在多项目进度看板 kanban-hub 里查看和上报开发进度�
 - \`kh log <内容>\`：写一条时间线日志
 - \`kh pull\`：手动拉取其他机器同步过来的文档
 - \`kh sync\`：手动推送本机文档
-- \`kh sync --dry-run\`：预览将上传哪些文件、哪些目录被跳过，不上传
+- \`kh sync --dry-run\`：预览将上传的文件数与按目录的汇总、被跳过的目录和文件类型建议，不上传
 - \`kh docs ls\`、\`kh docs cat <路径>\`：查看跨机器文档
 - \`kh conflicts show <路径>\`、\`kh conflicts resolve <路径> --edited\`：处理同步冲突
 

@@ -26,13 +26,19 @@ export interface ScanResult {
  * 单个路径是否在同步范围内（只按路径判定，不做标记识别）。
  * 每次调用都会重新编译规则，不适合在循环里反复调用；循环里用 createSyncScopeMatcher。
  */
-export function matchesSyncScope(relPath: string, scope: SyncScope, ignoreLines: readonly string[] = []): boolean {
+export function matchesSyncScope(relPath: string, scope: SyncScope, ignoreLines: readonly string[]): boolean {
   return createSyncRules(scope, ignoreLines).isSynced(relPath);
 }
 
 /** 与 matchesSyncScope 同样的判定，但规则只编译一次，适合逐个判断一批路径 */
-export function createSyncScopeMatcher(scope: SyncScope, ignoreLines: readonly string[] = []): (relPath: string) => boolean {
+export function createSyncScopeMatcher(scope: SyncScope, ignoreLines: readonly string[]): (relPath: string) => boolean {
   return createSyncRules(scope, ignoreLines).isSynced;
+}
+
+/** 摘要里“被跳过的软链接”一节的各行；没有软链接时返回空数组。kh sync 与 --dry-run 共用 */
+export function renderIgnoredLinkLines(links: readonly string[]): string[] {
+  if (links.length === 0) return [];
+  return ["指向仓库外或已失效，已跳过的软链接：", ...links.map((link) => `  ${link}`)];
 }
 
 function isLiteralSegment(seg: string): boolean {
@@ -74,7 +80,7 @@ function isRepoConfigPath(relPath: string): boolean {
  * 扫描仓库内符合同步范围的文件。只从 include 各模式的静态前缀开始遍历（例如 docs/** 只从
  * docs/ 开始），前缀之外即使有读不了的目录也不会被访问到，因此不会抛错。
  */
-export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines: readonly string[] = []): Promise<ScanResult> {
+export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines: readonly string[]): Promise<ScanResult> {
   const rules = createSyncRules(scope, ignoreLines);
   const skippedDirs = new Map<string, SkippedDir>();
   const files = new Map<string, ScanFile>();

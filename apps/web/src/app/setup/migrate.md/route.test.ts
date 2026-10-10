@@ -48,6 +48,8 @@ describe("GET /setup/migrate.md", () => {
     for (const piece of ["只放文档、网页 demo 和图片", "首次同步预览", "正式注册会立即做首次同步", ".kanban-hub/ignore"]) {
       expect(body, piece).toContain(piece);
     }
+    // 预览说明必须出现在正式注册命令之前，逐步执行的 agent 才会先看预览
+    expect(body.indexOf("首次同步预览")).toBeLessThan(body.indexOf('kh register --name "<项目名称>" --new --yes'));
   });
 
   it("第一个 yaml 示例能通过导入文件的 schema，且覆盖主要字段", async () => {

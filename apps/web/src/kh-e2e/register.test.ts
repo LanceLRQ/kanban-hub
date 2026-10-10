@@ -374,6 +374,23 @@ describe("kh register", () => {
       expect(server.api.store.listProjects().length).toBe(before);
     });
 
+    it("交互确认前也附首次同步预览，--yes 时不附", async () => {
+      const repo = await tempRepo();
+      await fs.mkdir(path.join(repo.dir, "docs"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, "docs", "a.md"), "hello");
+      const home = await loginHome();
+
+      const asked = await runKh(["register", "--new"], { cwd: repo.dir, khHome: home.dir, isTTY: true, stdin: "n\n" });
+      expect(asked.code).toBe(0);
+      expect(asked.stdout).toContain("首次同步预览：");
+      expect(asked.stdout).toContain("将同步 1 个文件");
+      expect(asked.stdout.indexOf("首次同步预览：")).toBeLessThan(asked.stdout.indexOf("是否执行以上计划"));
+
+      const yes = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir, isTTY: true });
+      expect(yes.code).toBe(0);
+      expect(yes.stdout).not.toContain("首次同步预览");
+    });
+
     it("交互环境输入 y：照常执行", async () => {
       const repo = await tempRepo();
       const home = await loginHome();

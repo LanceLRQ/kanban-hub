@@ -95,6 +95,16 @@ describe("renderSyncPlan：超过大小上限的文件", () => {
   });
 });
 
+describe("renderSyncPlan：被跳过的软链接", () => {
+  it("列出指向仓库外或已失效的软链接；没有时省略", () => {
+    const out = renderSyncPlan(scan({ ignoredLinks: ["docs/out", "docs/dead"] }), scope());
+    expect(out).toContain("指向仓库外或已失效，已跳过的软链接：");
+    expect(out).toContain("  docs/out");
+    expect(out).toContain("  docs/dead");
+    expect(renderSyncPlan(scan(), scope())).not.toContain("软链接");
+  });
+});
+
 describe("renderSyncPlan：文件类型建议", () => {
   it("建议集合外的扩展名按数量列出并给一个示例；说明建议只同步文档、网页和图片", () => {
     const out = renderSyncPlan(

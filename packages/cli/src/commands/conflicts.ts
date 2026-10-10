@@ -178,7 +178,7 @@ async function runResolve(ctx: CliContext, input: string, mode: ResolveMode): Pr
         throw new CliError(
           EXIT.DATA,
           `路径不在本机的同步范围内，不写入：${relPath}`,
-          "先调整 .kanban-hub/config.yaml 里的同步范围，或者改用 --take-local",
+          "先调整 .kanban-hub/config.yaml 里的同步范围或 .kanban-hub/ignore 里的规则，或者改用 --take-local",
         );
       }
       const remote = await requireRemoteBlob(state, relPath, record);

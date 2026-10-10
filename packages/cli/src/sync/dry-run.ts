@@ -5,7 +5,7 @@ import { formatByteSize, REPO_CONFIG_DIR, REPO_IGNORE_FILE, toSyncScope } from "
 import type { RegisteredRepo } from "../repo/root";
 import { readIgnoreLines, type SkippedDir } from "./ignore";
 import { assertValidScope } from "./push";
-import { scanSyncFiles, type ScanResult } from "./scan";
+import { renderIgnoredLinkLines, scanSyncFiles, type ScanResult } from "./scan";
 
 /** 建议同步的扩展名（小写、不带点）：文档、网页、图片、图表源，另含 yaml */
 export const SUGGESTED_EXTENSIONS: ReadonlySet<string> = new Set([
@@ -95,6 +95,8 @@ export function renderSyncPlan(scan: ScanResult, scope: SyncScope): string {
     lines.push(`超过大小上限（${formatByteSize(scope.maxFileSize)}），已跳过：`);
     for (const item of scan.skipped) lines.push(`  ${item.path}（${formatByteSize(item.size)}）`);
   }
+
+  lines.push(...renderIgnoredLinkLines(scan.ignoredLinks));
 
   const extLines = summarizeExtensions(scan.files);
   if (extLines.length > 0) {

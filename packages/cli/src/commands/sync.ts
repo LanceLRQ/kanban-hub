@@ -27,7 +27,7 @@ export function registerSync(program: Command, ctx: CliContext): void {
       .command("sync")
       .description("把本机同步范围内的文档推送到 kanban-hub")
       .option("--quiet", "成功时不输出内容")
-      .option("--dry-run", "只在本机扫描并列出将同步的内容，不联网、不要求登录"),
+      .option("--dry-run", "只在本机扫描并预览将上传的文件数与汇总，不联网、不要求登录"),
   ).action(async (opts: SyncOptions, cmd: Command) => {
     await runSync(ctx, opts, globalAgentFlag(cmd));
   });

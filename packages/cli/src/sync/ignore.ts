@@ -4,6 +4,7 @@ import ignore from "ignore";
 import picomatch from "picomatch";
 import type { SyncScope } from "@kanban-hub/core/schema";
 import { SYNC_BUILTIN_IGNORE, SYNC_HARD_EXCLUDE_DIR_NAMES } from "@kanban-hub/core/sync";
+import { CliError, EXIT } from "../errors";
 import { isNoEntError } from "../fs-utils";
 import { REPO_CONFIG_DIR, REPO_IGNORE_FILE } from "../repo/config";
 
@@ -48,14 +49,16 @@ function hasHardSegment(relPath: string): boolean {
   return relPath.split("/").some((seg) => HARD_DIR_NAMES.has(seg.toLowerCase()));
 }
 
-/** 读取仓库根下 .kanban-hub/ignore 的各行文本；文件不存在返回空数组，其他读取错误照常抛出 */
+/** 读取仓库根下 .kanban-hub/ignore 的各行文本；文件不存在返回空数组，其他读取错误包成带路径的用法错误 */
 export async function readIgnoreLines(root: string): Promise<string[]> {
+  const filePath = path.join(root, REPO_CONFIG_DIR, REPO_IGNORE_FILE);
   let text: string;
   try {
-    text = await fs.readFile(path.join(root, REPO_CONFIG_DIR, REPO_IGNORE_FILE), "utf8");
+    text = await fs.readFile(filePath, "utf8");
   } catch (err) {
     if (isNoEntError(err)) return [];
-    throw err;
+    const reason = err instanceof Error ? err.message : String(err);
+    throw new CliError(EXIT.USAGE, `无法读取忽略文件：${filePath}（${reason}）`);
   }
   const lines = text.replace(/^\uFEFF/, "").split(/\r?\n/);
   if (lines[lines.length - 1] === "") lines.pop();
@@ -73,7 +76,8 @@ export function createSyncRules(scope: SyncScope, ignoreLines: readonly string[]
   const include = scope.include.map((pattern) => picomatch(pattern, opts));
   const exclude = scope.exclude.map((pattern) => picomatch(pattern, opts));
 
-  const table = ignore();
+  // 匹配不分大小写是有意的：macOS 默认文件系统不分大小写，写成 Drafts/ 的人也想排除 drafts/；出错的方向是多排除
+  const table = ignore({ ignorecase: true });
   for (const pattern of SYNC_BUILTIN_IGNORE) table.add({ pattern, mark: MARK_BUILTIN });
   for (const pattern of ignoreLines) table.add({ pattern, mark: MARK_IGNORE_FILE });
 

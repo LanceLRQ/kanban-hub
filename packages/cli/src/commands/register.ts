@@ -3,7 +3,7 @@ import { Command } from "commander";
 import type { z } from "zod";
 import { projectCreatedResponse, projectListResponse, type ProjectView } from "@kanban-hub/core/api";
 import { formatZodError } from "@kanban-hub/core/errors";
-import { locationInput, projectCreateInput, projectSchema, type Project } from "@kanban-hub/core/schema";
+import { locationInput, projectCreateInput, projectSchema, type Project, type SyncScope } from "@kanban-hub/core/schema";
 import { SYNC_DEFAULT_MAX_FILE_SIZE, validateSyncGlob } from "@kanban-hub/core/sync";
 import type { CliContext } from "../context";
 import { resolveKhHome } from "../config/home";
@@ -318,13 +318,10 @@ async function registerFresh(
     warning,
   });
 
-  // 正式注册会立即做首次同步，等上传完再看就晚了：--dry-run 时把同样的扫描结果附在计划后面
-  if (opts.dryRun && include.length > 0) {
-    const scope = toSyncScope({
-      projectId: "",
-      sync: { include, exclude: [], maxFileSize: formatByteSize(SYNC_DEFAULT_MAX_FILE_SIZE) },
-      pull: { auto: true },
-    });
+  // 正式注册会立即做首次同步，等上传完再看就晚了：只要会停下来（--dry-run，或没有 --yes 的交互确认），
+  // 就把同样的扫描结果附在计划后面
+  if ((opts.dryRun || !opts.yes) && include.length > 0) {
+    const scope: SyncScope = { include, exclude: [], maxFileSize: SYNC_DEFAULT_MAX_FILE_SIZE };
     const scan = await scanSyncFiles(root, scope, await readIgnoreLines(root));
     planLines.push("首次同步预览：", renderSyncPlan(scan, scope).trimEnd());
   }
@@ -343,7 +340,7 @@ async function registerFresh(
     project = action.project.project;
   }
 
-  // 项目建好之后，第 2-4 步任何一步失败都不能悄无声息：agent 很可能原样重试 --new --yes，
+  // 项目建好之后，第 2-5 步任何一步失败都不能悄无声息：agent 很可能原样重试 --new --yes，
   // 那样会把同一个仓库重复建成两个项目（服务端没有删除项目的途径，只能归档）。这里把失败
   // 包成同样退出码的 CliError，hint 告诉重试时改用 --bind 绑定刚建好的项目。
   try {

@@ -81,6 +81,7 @@ describe("SKILL_MD", () => {
         "kh sync --dry-run",
         ".kanban-hub/ignore",
         "只放文档、网页 demo",
+        "在同步范围内但不该上传时",
         "一律不要放进同步范围",
         "!<目录>/",
         "先征得用户同意",
@@ -92,6 +93,8 @@ describe("SKILL_MD", () => {
 
     it("注册流程", () => {
       expect(SKILL_MD).toContain("kh register --dry-run");
+      expect(SKILL_MD).toContain("首次同步预览");
+      expect(SKILL_MD).toContain("正式注册会立即做首次同步");
     });
 
     it("导入流程的每一步", () => {

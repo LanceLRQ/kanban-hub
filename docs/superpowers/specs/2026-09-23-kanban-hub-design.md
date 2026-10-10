@@ -338,7 +338,7 @@ pull:
 5. 扫描常见的文档位置（`docs/`、`doc/`、`design/`、根目录下的 `*.md`、`CLAUDE.local.md`），给出建议的同步范围。
 6. 写入 `config.yaml`、`.git/info/exclude`，以及不存在时的 `.kanban-hub/ignore` 模板（8.1），向服务端登记这个位置，然后做一次首次同步（文档同步见第 9 节）。
 
-供 agent 使用的非交互写法：`kh register --name <名称> (--bind <ID> | --new) [--include <glob>…] --yes`。先用 `--dry-run` 只显示计划、不执行。
+供 agent 使用的非交互写法：`kh register --name <名称> (--bind <ID> | --new) [--include <glob>…] --yes`。先用 `--dry-run` 只显示计划、不执行；新建配置时，计划末尾附首次同步预览（同步范围非空时，按计划里的 include、空的 `exclude`、默认大小上限和已有的 `.kanban-hub/ignore` 扫描，格式同 `kh sync --dry-run`），因为正式注册会立即做首次同步。
 
 ## 9. 文档同步
 

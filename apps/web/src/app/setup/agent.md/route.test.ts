@@ -68,7 +68,8 @@ describe("GET /setup/agent.md", () => {
       from = at;
     }
     expect(body).toContain("只放文档、网页 demo 和图片");
-    expect(body).toContain("kh sync --dry-run");
+    expect(body).toContain("kh register --dry-run");
+    expect(body).toContain("首次同步预览");
     expect(body).toContain("sudo");
     expect(body).toContain("原样告诉用户");
   });

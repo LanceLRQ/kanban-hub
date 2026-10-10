@@ -45,7 +45,7 @@ describe("GET /setup/migrate.md", () => {
   it("注册步骤写明同步范围的原则和 --dry-run 预览", async () => {
     api = await setupTestApi();
     const body = await (await get({ host: "kanban.example.com" })).text();
-    for (const piece of ["只放文档、网页 demo 和图片", "kh sync --dry-run", ".kanban-hub/ignore"]) {
+    for (const piece of ["只放文档、网页 demo 和图片", "首次同步预览", "正式注册会立即做首次同步", ".kanban-hub/ignore"]) {
       expect(body, piece).toContain(piece);
     }
   });

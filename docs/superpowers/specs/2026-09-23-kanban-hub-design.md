@@ -323,7 +323,7 @@ pull:
   4. **`sync.exclude`**：命中的不同步。
 - 内置规则：`node_modules/`、`.next/`、`.venv/`、`venv/`、`__pycache__/`、`site-packages/`、`.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`、`.tox/`、`.gradle/`、`.idea/`、`.DS_Store`。
 - 标记识别（仅推送扫描时做）：非仓库根的目录里有 `pyvenv.cfg`（Python 虚拟环境），或有 `.git`（目录或文件，嵌套的 git 仓库或工作树），整个目录跳过。只有该目录**自身**被忽略文件里的 `!<目录>/` 命中才放行，祖先目录的 `!` 不放行；而 `!` 对 `sync.exclude` 的跳过沿祖先继承。加回的目录里，内容继续按规则表逐条判定。
-- `.kanban-hub/ignore`：gitignore 语法，文件不存在等同于空。位于 `.kanban-hub/` 内，默认不进 git，跨机器共享时 `git add -f .kanban-hub/ignore`。`kh register` 新建配置时生成一份全是注释的模板（已存在则不动，已注册的仓库不补生成）。
+- `.kanban-hub/ignore`：gitignore 语法，文件不存在等同于空。匹配不分大小写（macOS 默认文件系统不分大小写，方向是多排除）。位于 `.kanban-hub/` 内，默认不进 git，跨机器共享时 `git add -f .kanban-hub/ignore`。`kh register` 新建配置时生成一份全是注释的模板（已存在则不动，已注册的仓库不补生成）。
 - 拉取（`kh pull`）和 `kh conflicts resolve --take-remote` 只按路径判定（硬排除、include、规则表、`sync.exclude`），不做标记识别。
 - 文件类型不做硬性限制：`kh sync --dry-run` 对文档、网页、图片之外的扩展名给出建议，由用户决定是否排除。
 - 仓库根的 `.kanban-hub/` 目录本身不参与同步：即使 `include` 覆盖了它，推送时也会跳过，拉取时也不会写入。
@@ -367,7 +367,7 @@ pull:
 
 ### 9.3 跨机器读取、拉取与冲突处理
 
-进了 git 的文件靠 `git pull` 在机器间流转。**拉取一律跳过被 git 跟踪的文件**（以本机 `git ls-files` 的结果为准），避免把其他机器上尚未提交的改动写进本机的工作区。下面的机制只处理没进 git 的文档，比如 `docs/_internal/`、`CLAUDE.local.md`。拉取范围是本机 `sync.include` 与对方快照的交集。
+进了 git 的文件靠 `git pull` 在机器间流转。**拉取一律跳过被 git 跟踪的文件**（以本机 `git ls-files` 的结果为准），避免把其他机器上尚未提交的改动写进本机的工作区。下面的机制只处理没进 git 的文档，比如 `docs/_internal/`、`CLAUDE.local.md`。拉取范围是本机的同步范围与对方快照的交集；本机的同步范围按 8.1 的规则判定，被忽略规则排除的路径不拉取。
 
 **命令**
 
@@ -453,7 +453,7 @@ pull:
 | 排序 | `kh task reorder <容器> <任务…>`：调整容器内任务的先后顺序 |
 | | `kh container reorder <容器…>`：调整阶段、特性容器之间的先后顺序 |
 | 时间线 | `kh log "<正文>"` |
-| 同步 | `kh sync [--quiet]`（推送）；`kh sync --dry-run`：只在本机扫描，输出将同步的文件、被跳过的目录、超过大小上限的文件和文件类型建议，不联网、不要求登录 |
+| 同步 | `kh sync [--quiet]`（推送）；`kh sync --dry-run`：只在本机扫描，输出将上传的文件数与按目录的汇总、被跳过的目录、超过大小上限的文件、被跳过的软链接和文件类型建议，不逐个列出文件，不联网、不要求登录 |
 | 跨机器文档 | `kh docs ls`、`kh docs cat`、`kh pull`、`kh conflicts [show \| resolve]`，见 9.3 |
 | 迁移 | `kh import <文件> [--dry-run]`、`kh export [--md] [-o <文件>]` |
 | 管理 | `kh backup [--no-history]`：交互式输入密码 |
@@ -609,7 +609,7 @@ skill 里只写 `kh` 命令和规则，不引用任何一家 agent 特有的工�
   - 干活时发现的新问题，用 `kh task add misc …` 记下来，不打断手头的任务。
   - 完成一批工作后，用 `kh log` 写一条时间线日志。
   - 项目周期、健康度、当前焦点有变化时，用 `kh project set` 更新。
-- **哪些东西可以同步**：同步范围里只放文档、网页 demo（连同它引用的样式、脚本、图片）和图片；验证环境、克隆来的参考仓库、依赖目录、构建产物、数据集、模型文件、日志一律不放进去，需要时建在范围之外；确实要放在范围内的，先在 `.kanban-hub/ignore` 里排除再同步；新建目录或批量生成文件后先执行 `kh sync --dry-run`；确实要上传被内置规则跳过的目录时写 `!<目录>/`，之前先征得用户同意。
+- **哪些东西可以同步**：同步范围里只放文档、网页 demo（连同它引用的样式、脚本、图片）和图片；验证环境、克隆来的参考仓库、依赖目录、构建产物、数据集、模型文件、日志一律不放进去，需要时建在范围之外；在同步范围内但不该上传的目录，先在 `.kanban-hub/ignore` 里排除再同步；新建目录或批量生成文件后先执行 `kh sync --dry-run`；确实要上传被内置规则跳过的目录时写 `!<目录>/`，之前先征得用户同意。
 - **跨机器文档**：需要参考另一台机器上没进 git 的文档时，用 `kh docs ls` 和 `kh docs cat` 读取。
 - **冲突处理**：会话开始时的进度摘要会列出未解决的冲突。**有冲突时先处理冲突，再开始任务**：
   1. 对每个冲突执行 `kh conflicts show <路径>`，查看三方差异。

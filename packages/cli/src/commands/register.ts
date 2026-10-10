@@ -16,7 +16,10 @@ import { planIgnoreTemplate, writeIgnoreTemplate } from "../repo/ignore-template
 import { fingerprint } from "../repo/fingerprint";
 import { collidesWithKhHome, findRegisteredRepoInGit, inspectRepo, type RegisteredRepo, type RepoInspection } from "../repo/root";
 import { suggestSyncInclude } from "../repo/scope";
+import { renderSyncPlan } from "../sync/dry-run";
+import { readIgnoreLines } from "../sync/ignore";
 import { pushDocs } from "../sync/push";
+import { scanSyncFiles } from "../sync/scan";
 import { globalAgentFlag, loadProjectOrFail, requireLogin, withAgentOption } from "./shared";
 
 /** 校验 --include 里每一条 glob 的写法，不合法时抛用法错误（2），并指出是哪一条 */
@@ -314,6 +317,17 @@ async function registerFresh(
     ignorePath: await planIgnoreTemplate(root),
     warning,
   });
+
+  // 正式注册会立即做首次同步，等上传完再看就晚了：--dry-run 时把同样的扫描结果附在计划后面
+  if (opts.dryRun && include.length > 0) {
+    const scope = toSyncScope({
+      projectId: "",
+      sync: { include, exclude: [], maxFileSize: formatByteSize(SYNC_DEFAULT_MAX_FILE_SIZE) },
+      pull: { auto: true },
+    });
+    const scan = await scanSyncFiles(root, scope, await readIgnoreLines(root));
+    planLines.push("首次同步预览：", renderSyncPlan(scan, scope).trimEnd());
+  }
 
   const proceed = await confirmPlan(ctx, opts, planLines);
   if (!proceed) return;

@@ -264,6 +264,69 @@ describe("kh register", () => {
       expect(result.stdout).toContain(`  - ${path.join(repo.dir, ".kanban-hub", "ignore")}`);
     });
 
+    it("计划末尾带首次同步预览：文件数、被跳过的目录、文件类型建议，且不写任何文件、不建项目", async () => {
+      const repo = await tempRepo();
+      await fs.mkdir(path.join(repo.dir, "docs", "pyenv"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, "docs", "a.md"), "hello");
+      await fs.writeFile(path.join(repo.dir, "docs", "tool.py"), "x = 1\n");
+      await fs.writeFile(path.join(repo.dir, "docs", "pyenv", "pyvenv.cfg"), "home = /usr/bin\n");
+      const home = await loginHome();
+      const before = server.api.store.listProjects().length;
+
+      const result = await runKh(["register", "--new", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).toContain("首次同步预览：");
+      expect(result.stdout).toContain("将同步 2 个文件");
+      expect(result.stdout).toContain("被跳过的目录：");
+      expect(result.stdout).toContain("docs/pyenv");
+      expect(result.stdout).toContain("文件类型建议：");
+      expect(result.stdout.indexOf("将要调用的接口")).toBeLessThan(result.stdout.indexOf("首次同步预览："));
+      expect(server.api.store.listProjects().length).toBe(before);
+      await expect(fs.stat(path.join(repo.dir, ".kanban-hub"))).rejects.toThrow();
+    });
+
+    it("同步范围为空时不打印首次同步预览", async () => {
+      const repo = await tempRepo();
+      const home = await loginHome();
+      const result = await runKh(["register", "--new", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).not.toContain("首次同步预览");
+    });
+
+    it("正式注册不打印首次同步预览", async () => {
+      const repo = await tempRepo();
+      await fs.mkdir(path.join(repo.dir, "docs"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, "docs", "a.md"), "hello");
+      const home = await loginHome();
+      const result = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(result.stdout).not.toContain("首次同步预览");
+    });
+
+    it("注册前手写的忽略文件：预览按它排除，正式注册不覆盖它，首次同步也按它排除", async () => {
+      const repo = await tempRepo();
+      await fs.mkdir(path.join(repo.dir, "docs", "drafts"), { recursive: true });
+      await fs.writeFile(path.join(repo.dir, "docs", "a.md"), "hello");
+      await fs.writeFile(path.join(repo.dir, "docs", "drafts", "b.md"), "draft");
+      await fs.mkdir(path.join(repo.dir, ".kanban-hub"), { recursive: true });
+      const ignorePath = path.join(repo.dir, ".kanban-hub", "ignore");
+      await fs.writeFile(ignorePath, "docs/drafts/\n");
+      const home = await loginHome();
+
+      const preview = await runKh(["register", "--new", "--dry-run"], { cwd: repo.dir, khHome: home.dir });
+      expect(preview.code).toBe(0);
+      expect(preview.stdout).toContain("将同步 1 个文件");
+      expect(preview.stdout).toContain("docs/drafts");
+
+      const result = await runKh(["register", "--new", "--yes"], { cwd: repo.dir, khHome: home.dir });
+      expect(result.code).toBe(0);
+      expect(await fs.readFile(ignorePath, "utf8")).toBe("docs/drafts/\n");
+      const project = server.api.store.listProjects()[0]!;
+      const cfg = await readMachineConfig(home.dir);
+      const manifest = server.api.store.getSnapshotManifest(project.id, cfg!.machineId!);
+      expect((manifest?.files ?? []).map((f) => f.path)).toEqual(["docs/a.md"]);
+    });
+
     it("忽略文件已经存在时，计划里不再列出它", async () => {
       const repo = await tempRepo();
       const home = await loginHome();

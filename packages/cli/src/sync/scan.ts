@@ -3,7 +3,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import picomatch from "picomatch";
 import type { SyncScope } from "@kanban-hub/core/schema";
-import { SYNC_ALWAYS_EXCLUDE } from "@kanban-hub/core/sync";
+import { SYNC_BUILTIN_IGNORE, SYNC_HARD_EXCLUDE_DIR_NAMES } from "@kanban-hub/core/sync";
 import { KH_TMP_PATTERN } from "../fs-utils";
 import { REPO_CONFIG_DIR } from "../repo/config";
 
@@ -20,6 +20,9 @@ export interface ScanResult {
   ignoredLinks: string[];
 }
 
+// 过渡期：规则接入前保持原有行为，只沿用内置规则里原来就有的两个目录
+const LEGACY_DIR_RULES = SYNC_BUILTIN_IGNORE.filter((rule) => rule === "node_modules/" || rule === ".next/");
+
 type Matcher = (input: string) => boolean;
 interface Matchers {
   include: Matcher[];
@@ -32,7 +35,11 @@ function buildMatchers(scope: SyncScope): Matchers {
   const opts = { dot: true };
   return {
     include: scope.include.map((pattern) => picomatch(pattern, opts)),
-    exclude: [...SYNC_ALWAYS_EXCLUDE, ...scope.exclude].map((pattern) => picomatch(pattern, opts)),
+    exclude: [
+      ...SYNC_HARD_EXCLUDE_DIR_NAMES.map((name) => `**/${name}/**`),
+      ...LEGACY_DIR_RULES.map((rule) => `**/${rule}**`),
+      ...scope.exclude,
+    ].map((pattern) => picomatch(pattern, opts)),
   };
 }
 
@@ -85,13 +92,11 @@ function dedupePrefixes(prefixes: string[]): string[] {
   return kept;
 }
 
-// 无论仓库配置怎么写都始终排除的目录名，从 SYNC_ALWAYS_EXCLUDE 里形如 "任意深度/名字/任意深度"
-// 的写法中提取出来；扫描据此在遇到这些目录时直接剪枝，不需要进去看内容
-const ALWAYS_EXCLUDE_DIR_NAMES = new Set(
-  SYNC_ALWAYS_EXCLUDE.map((pattern) => /^\*\*\/([^*/]+)\/\*\*$/.exec(pattern)?.[1]).filter(
-    (name): name is string => name !== undefined,
-  ),
-);
+// 始终排除的目录名；扫描据此在遇到这些目录时直接剪枝，不需要进去看内容
+const ALWAYS_EXCLUDE_DIR_NAMES = new Set<string>([
+  ...SYNC_HARD_EXCLUDE_DIR_NAMES,
+  ...LEGACY_DIR_RULES.map((rule) => rule.slice(0, -1)),
+]);
 
 /** 仓库根的 .kanban-hub/ 是 kh 自己的配置目录，与 kh 的临时文件一样不参与同步（比较不区分大小写） */
 function isRepoConfigPath(relPath: string): boolean {

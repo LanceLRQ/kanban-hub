@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import {
-  SYNC_ALWAYS_EXCLUDE,
+  SYNC_BUILTIN_IGNORE,
+  SYNC_BUILTIN_MARKERS,
   SYNC_DEFAULT_MAX_FILE_SIZE,
+  SYNC_HARD_EXCLUDE_DIR_NAMES,
   SYNC_MAX_FILE_SIZE_LIMIT,
   SYNC_MAX_MANIFEST_FILES,
   applyManifestDiff,
@@ -60,8 +62,33 @@ describe("同步常量", () => {
     expect(SYNC_DEFAULT_MAX_FILE_SIZE).toBeLessThan(SYNC_MAX_FILE_SIZE_LIMIT);
   });
 
-  it("始终排除 node_modules、.git、.next", () => {
-    expect(SYNC_ALWAYS_EXCLUDE).toEqual(["**/node_modules/**", "**/.git/**", "**/.next/**"]);
+  it("硬排除的目录名只有 .git", () => {
+    expect(SYNC_HARD_EXCLUDE_DIR_NAMES).toEqual([".git"]);
+  });
+
+  it("内置忽略规则按约定顺序列出，并包含原来的 node_modules/ 与 .next/", () => {
+    expect(SYNC_BUILTIN_IGNORE).toEqual([
+      "node_modules/",
+      ".next/",
+      ".venv/",
+      "venv/",
+      "__pycache__/",
+      "site-packages/",
+      ".pytest_cache/",
+      ".mypy_cache/",
+      ".ruff_cache/",
+      ".tox/",
+      ".gradle/",
+      ".idea/",
+      ".DS_Store",
+    ]);
+  });
+
+  it("内置标记文件对应的中文说明", () => {
+    expect(SYNC_BUILTIN_MARKERS).toEqual([
+      { name: "pyvenv.cfg", reason: "Python 虚拟环境" },
+      { name: ".git", reason: "嵌套的 git 仓库或工作树" },
+    ]);
   });
 
   it("清单文件数上限是 20000", () => {

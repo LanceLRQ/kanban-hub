@@ -37,8 +37,29 @@ export const repoPathSchema = z
 export const SYNC_DEFAULT_MAX_FILE_SIZE = 5 * 1024 * 1024;
 /** sync.maxFileSize 允许的硬上限：20MB。超过这个值，登记位置时服务端也会拒绝 */
 export const SYNC_MAX_FILE_SIZE_LIMIT = 20 * 1024 * 1024;
-/** 无论仓库配置怎么写，这些 glob 始终被排除在同步范围之外 */
-export const SYNC_ALWAYS_EXCLUDE = ["**/node_modules/**", "**/.git/**", "**/.next/**"] as const;
+/** 硬排除的目录名：路径里任意一段与它相同（不分大小写）就不同步，忽略文件也无法加回 */
+export const SYNC_HARD_EXCLUDE_DIR_NAMES = [".git"] as const;
+/** 内置忽略规则（gitignore 写法）：排在 .kanban-hub/ignore 之前，后者可以用 ! 加回 */
+export const SYNC_BUILTIN_IGNORE: readonly string[] = [
+  "node_modules/",
+  ".next/",
+  ".venv/",
+  "venv/",
+  "__pycache__/",
+  "site-packages/",
+  ".pytest_cache/",
+  ".mypy_cache/",
+  ".ruff_cache/",
+  ".tox/",
+  ".gradle/",
+  ".idea/",
+  ".DS_Store",
+];
+/** 标记文件：目录里存在这些文件名之一时，整个目录视为不该同步（扫描时识别，可被忽略文件加回） */
+export const SYNC_BUILTIN_MARKERS: readonly { name: string; reason: string }[] = [
+  { name: "pyvenv.cfg", reason: "Python 虚拟环境" },
+  { name: ".git", reason: "嵌套的 git 仓库或工作树" },
+];
 
 /**
  * 快照路径：在 repoPathSchema 的基础上，额外拒绝反斜杠、控制字符（\x00-\x1f），

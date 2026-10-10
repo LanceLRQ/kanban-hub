@@ -1,8 +1,10 @@
 import { z } from "zod";
 import { idSchema } from "./ids";
 import {
-  SYNC_ALWAYS_EXCLUDE,
+  SYNC_BUILTIN_IGNORE,
+  SYNC_BUILTIN_MARKERS,
   SYNC_DEFAULT_MAX_FILE_SIZE,
+  SYNC_HARD_EXCLUDE_DIR_NAMES,
   SYNC_MAX_FILE_SIZE_LIMIT,
   sha256HexSchema,
   snapshotPathSchema,
@@ -10,9 +12,17 @@ import {
   type Event,
 } from "./schema";
 
-// 这三个常量的定义搬到了 schema.ts（syncScopeSchema 需要用到 SYNC_MAX_FILE_SIZE_LIMIT），
+// 这些常量的定义搬到了 schema.ts（syncScopeSchema 需要用到 SYNC_MAX_FILE_SIZE_LIMIT），
 // 这里转出，保持原来的导入路径不变。
-export { SYNC_ALWAYS_EXCLUDE, SYNC_DEFAULT_MAX_FILE_SIZE, SYNC_MAX_FILE_SIZE_LIMIT, sha256HexSchema, snapshotPathSchema };
+export {
+  SYNC_BUILTIN_IGNORE,
+  SYNC_BUILTIN_MARKERS,
+  SYNC_DEFAULT_MAX_FILE_SIZE,
+  SYNC_HARD_EXCLUDE_DIR_NAMES,
+  SYNC_MAX_FILE_SIZE_LIMIT,
+  sha256HexSchema,
+  snapshotPathSchema,
+};
 
 /** 一次同步清单最多容纳的文件数 */
 export const SYNC_MAX_MANIFEST_FILES = 20000;

@@ -75,6 +75,21 @@ describe("SKILL_MD", () => {
       expect(SKILL_MD).toContain("kh sync");
     });
 
+    it("哪些东西可以同步一节", () => {
+      for (const kw of [
+        "## 哪些东西可以同步",
+        "kh sync --dry-run",
+        ".kanban-hub/ignore",
+        "只放文档、网页 demo",
+        "一律不要放进同步范围",
+        "!<目录>/",
+        "先征得用户同意",
+      ]) {
+        expect(SKILL_MD, `应包含 ${kw}`).toContain(kw);
+      }
+      expect(SKILL_MD.indexOf("## 哪些东西可以同步")).toBeLessThan(SKILL_MD.indexOf("## 跨机器文档"));
+    });
+
     it("注册流程", () => {
       expect(SKILL_MD).toContain("kh register --dry-run");
     });

@@ -59,8 +59,19 @@ description: 在多项目进度看板 kanban-hub 里查看和上报开发进度�
 - \`kh log <内容>\`：写一条时间线日志
 - \`kh pull\`：手动拉取其他机器同步过来的文档
 - \`kh sync\`：手动推送本机文档
+- \`kh sync --dry-run\`：预览将上传哪些文件、哪些目录被跳过，不上传
 - \`kh docs ls\`、\`kh docs cat <路径>\`：查看跨机器文档
 - \`kh conflicts show <路径>\`、\`kh conflicts resolve <路径> --edited\`：处理同步冲突
+
+## 哪些东西可以同步
+
+同步范围里只放文档、网页 demo（连同它引用的样式、脚本、图片）和图片。
+
+- 验证用的环境（venv、conda 环境、容器数据）、克隆下来做参考或验证的仓库、依赖目录、构建产物、数据集、模型文件、日志，一律不要放进同步范围。需要这类目录时，建在同步范围之外。
+- 确实要放在同步范围内时，先在 \`.kanban-hub/ignore\` 里加一行排除（写法同 \`.gitignore\`，例如 \`docs/experiments/\`），再执行 \`kh sync\`。
+- 新建目录或批量生成文件之后，先执行 \`kh sync --dry-run\` 看将上传什么。有不属于文档、网页、图片的内容，先排除再同步。
+- kh 已内置排除 \`node_modules/\`、\`.venv/\`、\`venv/\`、\`__pycache__/\`、\`site-packages/\` 和各类缓存目录，扫描时还会跳过含 \`pyvenv.cfg\` 的目录和嵌套的 git 仓库。\`kh sync --dry-run\` 会列出被跳过的目录。
+- 确实要上传被内置规则跳过的目录，在 \`.kanban-hub/ignore\` 里写一行 \`!<目录>/\`。这样做之前先征得用户同意。
 
 ## 跨机器文档
 

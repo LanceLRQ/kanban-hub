@@ -67,6 +67,8 @@ kh setup --yes
 
 当前目录是一个 git 仓库时，**先问用户**要不要接着把这个仓库接入 kanban-hub。用户同意的话，读取并按 \`${server}/setup/migrate.md\` 的步骤继续。
 
+同步范围里只放文档、网页 demo 和图片；不需要的目录在 \`.kanban-hub/ignore\` 里加一行排除，同步前先用 \`kh sync --dry-run\` 预览将上传什么。
+
 ## 常见退出码
 
 | 退出码 | 含义 | 处理 |

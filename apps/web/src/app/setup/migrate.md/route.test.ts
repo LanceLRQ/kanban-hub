@@ -42,6 +42,14 @@ describe("GET /setup/migrate.md", () => {
     }
   });
 
+  it("注册步骤写明同步范围的原则和 --dry-run 预览", async () => {
+    api = await setupTestApi();
+    const body = await (await get({ host: "kanban.example.com" })).text();
+    for (const piece of ["只放文档、网页 demo 和图片", "kh sync --dry-run", ".kanban-hub/ignore"]) {
+      expect(body, piece).toContain(piece);
+    }
+  });
+
   it("第一个 yaml 示例能通过导入文件的 schema，且覆盖主要字段", async () => {
     api = await setupTestApi();
     const body = await (await get({ host: "kanban.example.com" })).text();

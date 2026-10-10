@@ -1,6 +1,7 @@
 import type { Dirent, Stats } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import picomatch from "picomatch";
 import type { SyncScope } from "@kanban-hub/core/schema";
 import { SYNC_BUILTIN_MARKERS } from "@kanban-hub/core/sync";
 import { KH_TMP_PATTERN } from "../fs-utils";
@@ -60,6 +61,42 @@ function staticPrefix(pattern: string): string {
   return literal.join("/");
 }
 
+/** 括号配对不平衡，说明模式里有括号包着 /（如 {a/b,c}），按 / 拆段会拆坏 */
+function hasBalancedGroups(segs: string[]): boolean {
+  return segs.every((seg) => {
+    for (const [open, close] of [["{", "}"], ["(", ")"], ["[", "]"]] as const) {
+      if (seg.split(open).length !== seg.split(close).length) return false;
+    }
+    return true;
+  });
+}
+
+/**
+ * 判断目录之下是否可能有 include 命中的文件（保守：宁可多判可能，不可漏）。按路径段逐段比较：
+ * ** 段视为可能；目录的段用完而模式还有剩余段视为可能；否则该段用 picomatch 匹配，不匹配则这条模式不可能；
+ * 模式的段先用完（没有 **）则不可能。无法按段拆的模式（括号里带 /）直接视为可能。
+ */
+export function createDirMayContainMatcher(include: readonly string[]): (relDir: string) => boolean {
+  const compiled = include.map((pattern) => {
+    const segs = pattern.split("/");
+    if (!hasBalancedGroups(segs)) return null;
+    return segs.map((seg) => (seg === "**" ? null : picomatch(seg, { dot: true })));
+  });
+  return (relDir) => {
+    const dirSegs = relDir.split("/");
+    return compiled.some((segs) => {
+      if (segs === null) return true;
+      for (let i = 0; i < dirSegs.length; i++) {
+        if (i >= segs.length) return false;
+        const matcher = segs[i]!;
+        if (matcher === null) return true;
+        if (!matcher(dirSegs[i]!)) return false;
+      }
+      return segs.length > dirSegs.length;
+    });
+  };
+}
+
 /** 去掉被其他前缀覆盖的前缀（自身或祖先目录已经在列表里，再单独遍历就是重复工作） */
 function dedupePrefixes(prefixes: string[]): string[] {
   const sorted = [...new Set(prefixes)].sort((a, b) => a.length - b.length);
@@ -82,6 +119,7 @@ function isRepoConfigPath(relPath: string): boolean {
  */
 export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines: readonly string[]): Promise<ScanResult> {
   const rules = createSyncRules(scope, ignoreLines);
+  const mayContain = createDirMayContainMatcher(scope.include);
   const skippedDirs = new Map<string, SkippedDir>();
   const files = new Map<string, ScanFile>();
   const skipped = new Map<string, { path: string; size: number }>();
@@ -134,6 +172,8 @@ export async function scanSyncFiles(root: string, scope: SyncScope, ignoreLines:
     let reinstated = false;
     if (dirRel !== "") {
       if (isRepoConfigPath(dirRel)) return;
+      // 不可能含范围内文件的目录不进入，也不记入明细（include 为 *.md 这类前缀为空的模式时，遍历从仓库根开始）
+      if (!mayContain(dirRel)) return;
       const verdict = rules.dirDecision(dirRel);
       if (verdict.excluded !== null) {
         const { category, rule } = verdict.excluded;

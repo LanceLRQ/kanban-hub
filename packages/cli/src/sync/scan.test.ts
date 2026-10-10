@@ -3,7 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { SyncScope } from "@kanban-hub/core/schema";
-import { createSyncScopeMatcher, matchesSyncScope, scanSyncFiles } from "./scan";
+import { createDirMayContainMatcher, createSyncScopeMatcher, matchesSyncScope, scanSyncFiles } from "./scan";
 
 const dirs: string[] = [];
 
@@ -311,5 +311,61 @@ describe("scanSyncFiles：忽略规则", () => {
     expect(createSyncScopeMatcher(s, ["docs/tmp/"])("docs/ok/a.md")).toBe(true);
     expect(createSyncScopeMatcher(s, [])("docs/x/venv/a.py")).toBe(false);
     expect(createSyncScopeMatcher(s, [])("docs/env1/readme.md")).toBe(true);
+  });
+});
+
+describe("createDirMayContainMatcher", () => {
+  const may = (include: string[], dir: string): boolean => createDirMayContainMatcher(include)(dir);
+
+  it("*.md 只匹配根下的文件，任何子目录都不可能含范围内的文件", () => {
+    expect(may(["*.md"], "node_modules")).toBe(false);
+    expect(may(["*.md"], "apps/web/.next")).toBe(false);
+  });
+
+  it("docs/** 只对 docs 及其子目录可能", () => {
+    expect(may(["docs/**"], "docs/x/venv")).toBe(true);
+    expect(may(["docs/**"], "docs")).toBe(true);
+    expect(may(["docs/**"], "src/x")).toBe(false);
+  });
+
+  it("模式比目录深时可能；段不匹配时不可能", () => {
+    expect(may(["docs/*/notes/*.md"], "docs/a")).toBe(true);
+    expect(may(["docs/*/notes/*.md"], "docs/a/notes")).toBe(true);
+    expect(may(["docs/*/notes/*.md"], "docs/a/notes/deeper")).toBe(false);
+    expect(may(["docs/*/notes/*.md"], "src/a")).toBe(false);
+  });
+
+  it("**/*.md 对任何目录都可能；多条模式只要一条可能就可能", () => {
+    expect(may(["**/*.md"], "a/b/c")).toBe(true);
+    expect(may(["docs/**", "*.md"], "node_modules")).toBe(false);
+    expect(may(["docs/**", "*.md"], "docs/x")).toBe(true);
+  });
+
+  it("花括号里带 / 的模式无法按段拆，视为可能；不带 / 的花括号按段匹配", () => {
+    expect(may(["{a/b,c}/**"], "zzz")).toBe(true);
+    expect(may(["{docs,design}/**"], "design/x")).toBe(true);
+    expect(may(["{docs,design}/**"], "src")).toBe(false);
+  });
+
+  it("段匹配带 dot: true：*.md 之类以点开头的目录也按规则比较", () => {
+    expect(may(["docs/*/x.md"], "docs/.hidden")).toBe(true);
+  });
+});
+
+describe("scanSyncFiles：skippedDirs 只记可能含范围内文件的目录", () => {
+  const paths = (r: { files: { path: string }[] }): string[] => r.files.map((f) => f.path);
+
+  it("include 为 docs/** 与 *.md 时，范围之外的 node_modules、.next、嵌套仓库不记明细", async () => {
+    const root = await tempDir();
+    await write(root, "README.md");
+    await write(root, "node_modules/x.js");
+    await write(root, "apps/web/.next/a");
+    await write(root, "docs/env1/pyvenv.cfg");
+    await write(root, "docs/__pycache__/a.pyc");
+    await write(root, "other/.git/HEAD");
+    await write(root, "docs/a.md");
+    const result = await scanSyncFiles(root, scope({ include: ["docs/**", "*.md"] }), []);
+    expect(paths(result)).toEqual(["README.md", "docs/a.md"]);
+    expect(result.skippedDirs.map((d) => d.path)).toEqual(["docs/__pycache__", "docs/env1"]);
   });
 });

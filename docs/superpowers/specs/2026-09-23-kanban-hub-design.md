@@ -309,13 +309,23 @@ kanban-hub/
 projectId: k3v9x2m7qa
 sync:
   include: [docs/**, CLAUDE.local.md]
-  exclude: []            # 另外始终排除 **/node_modules/**、**/.git/**、**/.next/**
+  exclude: []            # picomatch glob；另有内置忽略规则与 .kanban-hub/ignore（见下）
   maxFileSize: 5MB       # 服务端硬上限 20MB
 pull:
   auto: true             # 会话开始时自动拉取其他机器的更新（9.3、12.3）
 ```
 
 - 同步范围**不参考 `.gitignore`**，因为被忽略的私有文档目录恰恰需要同步。
+- 一个路径是否同步，按下面的顺序判定：
+  1. **硬排除**，不可覆盖：路径任意一段是 `.git`（不分大小写）；仓库根的 `.kanban-hub/`；kh 的临时文件。
+  2. **`sync.include`**：不命中的不同步。忽略规则只能在 include 范围内往外剔，范围之外写 `!` 也不同步。
+  3. **忽略规则表**：内置规则在前、`.kanban-hub/ignore` 的内容在后，合成一份 gitignore 语义的规则表（后面的覆盖前面的，`!` 反选，父目录被排除时子路径一律排除）。结果是“被排除”则不同步；结果是“被 `!` 明确加回”则同步，并跳过第 4 步；没有规则命中则进入第 4 步。
+  4. **`sync.exclude`**：命中的不同步。
+- 内置规则：`node_modules/`、`.next/`、`.venv/`、`venv/`、`__pycache__/`、`site-packages/`、`.pytest_cache/`、`.mypy_cache/`、`.ruff_cache/`、`.tox/`、`.gradle/`、`.idea/`、`.DS_Store`。
+- 标记识别（仅推送扫描时做）：非仓库根的目录里有 `pyvenv.cfg`（Python 虚拟环境），或有 `.git`（目录或文件，嵌套的 git 仓库或工作树），整个目录跳过。只有该目录**自身**被忽略文件里的 `!<目录>/` 命中才放行，祖先目录的 `!` 不放行；而 `!` 对 `sync.exclude` 的跳过沿祖先继承。加回的目录里，内容继续按规则表逐条判定。
+- `.kanban-hub/ignore`：gitignore 语法，文件不存在等同于空。位于 `.kanban-hub/` 内，默认不进 git，跨机器共享时 `git add -f .kanban-hub/ignore`。`kh register` 新建配置时生成一份全是注释的模板（已存在则不动，已注册的仓库不补生成）。
+- 拉取（`kh pull`）和 `kh conflicts resolve --take-remote` 只按路径判定（硬排除、include、规则表、`sync.exclude`），不做标记识别。
+- 文件类型不做硬性限制：`kh sync --dry-run` 对文档、网页、图片之外的扩展名给出建议，由用户决定是否排除。
 - 仓库根的 `.kanban-hub/` 目录本身不参与同步：即使 `include` 覆盖了它，推送时也会跳过，拉取时也不会写入。
 - 这个目录默认写进 `.git/info/exclude`（worktree 场景下写到 `git rev-parse --git-common-dir` 所指目录下的 `info/exclude`），不改仓库的 `.gitignore`，也不会被提交。想入库时执行 `git add -f .kanban-hub`。
 
@@ -326,7 +336,7 @@ pull:
 3. 计算指纹：`git rev-list --max-parents=0 HEAD` 的结果，有多个时取排序后的第一个。
 4. 向服务端查询指纹相同的项目。找到了，就建议作为已有项目的另一个位置关联起来（`--bind <项目ID>`）；否则新建（`--new`）。
 5. 扫描常见的文档位置（`docs/`、`doc/`、`design/`、根目录下的 `*.md`、`CLAUDE.local.md`），给出建议的同步范围。
-6. 写入 `config.yaml` 和 `.git/info/exclude`，向服务端登记这个位置，然后做一次首次同步（文档同步见第 9 节）。
+6. 写入 `config.yaml`、`.git/info/exclude`，以及不存在时的 `.kanban-hub/ignore` 模板（8.1），向服务端登记这个位置，然后做一次首次同步（文档同步见第 9 节）。
 
 供 agent 使用的非交互写法：`kh register --name <名称> (--bind <ID> | --new) [--include <glob>…] --yes`。先用 `--dry-run` 只显示计划、不执行。
 
@@ -349,6 +359,7 @@ pull:
 
 - 同一项目在不同机器上的快照分开存放，互不覆盖。网页默认显示最近同步的那一份，可以切换。
 - 超过 `maxFileSize` 的文件不上传，记进位置的 `skippedFiles`。
+- 扫描时，被规则表排除的目录直接剪枝，不进入、不逐个读取；非仓库根且含 `pyvenv.cfg` 或 `.git` 的目录按 8.1 的标记识别整个跳过。`sync.exclude` 不用于剪枝。被内置规则或标记跳过的目录，`kh sync` 的摘要末尾给出一行提示，`kh sync --dry-run` 列出详情。
 - 路径统一成相对于仓库根目录的 POSIX 形式，拒绝 `..` 和绝对路径；服务端写入前再校验一次，保证目标路径落在快照目录内。
 - 软链接：指向目录的软链接一律不同步；指向文件的软链接，链接目标在仓库内时，以链接自身的路径同步目标内容，目标在仓库外或已经失效时跳过，`kh sync` 的输出里会列出。
 - 一份清单里，两个路径只差大小写或 Unicode 规范化形式（同一个文件名的不同写法），或者一个路径是另一个路径的上级目录，服务端一律拒绝这份清单，`kh` 提示出冲突的两个路径。
@@ -442,7 +453,7 @@ pull:
 | 排序 | `kh task reorder <容器> <任务…>`：调整容器内任务的先后顺序 |
 | | `kh container reorder <容器…>`：调整阶段、特性容器之间的先后顺序 |
 | 时间线 | `kh log "<正文>"` |
-| 同步 | `kh sync [--quiet]`（推送） |
+| 同步 | `kh sync [--quiet]`（推送）；`kh sync --dry-run`：只在本机扫描，输出将同步的文件、被跳过的目录、超过大小上限的文件和文件类型建议，不联网、不要求登录 |
 | 跨机器文档 | `kh docs ls`、`kh docs cat`、`kh pull`、`kh conflicts [show \| resolve]`，见 9.3 |
 | 迁移 | `kh import <文件> [--dry-run]`、`kh export [--md] [-o <文件>]` |
 | 管理 | `kh backup [--no-history]`：交互式输入密码 |
@@ -598,6 +609,7 @@ skill 里只写 `kh` 命令和规则，不引用任何一家 agent 特有的工�
   - 干活时发现的新问题，用 `kh task add misc …` 记下来，不打断手头的任务。
   - 完成一批工作后，用 `kh log` 写一条时间线日志。
   - 项目周期、健康度、当前焦点有变化时，用 `kh project set` 更新。
+- **哪些东西可以同步**：同步范围里只放文档、网页 demo（连同它引用的样式、脚本、图片）和图片；验证环境、克隆来的参考仓库、依赖目录、构建产物、数据集、模型文件、日志一律不放进去，需要时建在范围之外；确实要放在范围内的，先在 `.kanban-hub/ignore` 里排除再同步；新建目录或批量生成文件后先执行 `kh sync --dry-run`；确实要上传被内置规则跳过的目录时写 `!<目录>/`，之前先征得用户同意。
 - **跨机器文档**：需要参考另一台机器上没进 git 的文档时，用 `kh docs ls` 和 `kh docs cat` 读取。
 - **冲突处理**：会话开始时的进度摘要会列出未解决的冲突。**有冲突时先处理冲突，再开始任务**：
   1. 对每个冲突执行 `kh conflicts show <路径>`，查看三方差异。

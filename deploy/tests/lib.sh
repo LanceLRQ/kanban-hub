@@ -11,6 +11,13 @@ KH_TEST_SCRIPT="$DEPLOY_DIR/kanban-hub.sh"
 export KH_TEST_SCRIPT
 STUBS_DIR="$TESTS_DIR/fixtures/stubs"
 
+# 仓库脚本当前的版本号，与升级用例里“要升到的目标版本”配套使用。
+# 目标版本不能写死具体数字：发版递增后它会与脚本自身版本相等，cmd_upgrade 会按
+# “已是最新”跳过自更新，用例随之失效；统一用 KH_NEXT_VERSION（patch 位 +1）。
+KH_SCRIPT_VERSION_CURRENT="$(sed -n 's/^KH_SCRIPT_VERSION="\(.*\)"$/\1/p' "$KH_TEST_SCRIPT")"
+KH_NEXT_VERSION="$(printf '%s' "$KH_SCRIPT_VERSION_CURRENT" | awk -F. 'BEGIN { OFS = "." } { $NF = $NF + 1; print }')"
+export KH_SCRIPT_VERSION_CURRENT KH_NEXT_VERSION
+
 pass() { ASSERT_PASS=$((ASSERT_PASS + 1)); printf '  ok   %s\n' "$1"; }
 fail() { ASSERT_FAIL=$((ASSERT_FAIL + 1)); printf '  FAIL %s\n' "$1"; }
 

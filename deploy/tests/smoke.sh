@@ -257,12 +257,12 @@ r=$(kh_run "KH_HOME=$KH3; wizard_defaults; W_PASSWORD=secret-pass-1; W_TZ=Asia/S
 assert_eq "upgrade 用例的安装目录就绪" "rc=0" "$r"
 cp "$KH_TEST_SCRIPT" "$KH3/kanban-hub.sh"
 NEW3="$ROOT/kh-new.sh"
-sed "s/^KH_SCRIPT_VERSION=.*/KH_SCRIPT_VERSION=\"0.2.0\"/" "$KH_TEST_SCRIPT" >"$NEW3"
+sed "s/^KH_SCRIPT_VERSION=.*/KH_SCRIPT_VERSION=\"$KH_NEXT_VERSION\"/" "$KH_TEST_SCRIPT" >"$NEW3"
 : >"$LOG"
-r=$(printf 'y\n' | PATH=$(path_with "$BIN") STUB_CURL_FILE="$NEW3" kh_run "KH_HOME=$KH3; unset KH_SOURCE_ONLY; OPT_TO=0.2.0; cmd_upgrade >/dev/null 2>&1")
+r=$(printf 'y\n' | PATH=$(path_with "$BIN") STUB_CURL_FILE="$NEW3" kh_run "KH_HOME=$KH3; unset KH_SOURCE_ONLY; OPT_TO=$KH_NEXT_VERSION; cmd_upgrade >/dev/null 2>&1")
 assert_rc "upgrade 两阶段完成（旧脚本 exec 新脚本续跑）" 0 "$?"
-assert_eq ".env 版本已更新到目标版本" "0.2.0" "$(env_get "$KH3/.env" KH_VERSION)"
-assert_contains "替换后安装目录里的脚本是新版本" 'KH_SCRIPT_VERSION="0.2.0"' "$(cat "$KH3/kanban-hub.sh")"
+assert_eq ".env 版本已更新到目标版本" "$KH_NEXT_VERSION" "$(env_get "$KH3/.env" KH_VERSION)"
+assert_contains "替换后安装目录里的脚本是新版本" "KH_SCRIPT_VERSION=\"$KH_NEXT_VERSION\"" "$(cat "$KH3/kanban-hub.sh")"
 assert_eq "自更新前的旧脚本备份了一份" "1" "$(count_entries "$KH3/backups" "kanban-hub.sh.")"
 assert_contains "旧脚本备份内容是原版本" "KH_SCRIPT_VERSION=\"$KH_SCRIPT_VERSION\"" "$(cat "$KH3"/backups/kanban-hub.sh.*)"
 assert_contains "第二阶段拉取了镜像" "docker compose pull" "$(cat "$LOG")"

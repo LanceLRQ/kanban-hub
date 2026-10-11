@@ -92,7 +92,7 @@ assert_eq "非法版本不动 .env" "$KH_SCRIPT_VERSION" "$(env_get "$D/.env" KH
 r=$(printf '' | PATH=$(path_with "$BIN") kh_run "KH_HOME=$D; OPT_TO=1.2.3-rc.1; parse_args upgrade --to \"\$OPT_TO\"; valid_version \"\$OPT_TO\"; printf 'rc=%s' \"\$?\"")
 assert_eq "合法预发布版本通过校验" "rc=0" "$r"
 
-# --- _upgrade_apply：降级警告与拒绝 ---（目标版本必须低于 KH_SCRIPT_VERSION，当前 0.1.2）
+# --- _upgrade_apply：降级警告与拒绝 ---（目标版本必须低于 KH_SCRIPT_VERSION，当前 0.2.0）
 D=$(make_install)
 r=$(printf 'n\n' | PATH=$(path_with "$BIN") kh_run "KH_HOME=$D; OPT_TO=0.0.1; _upgrade_apply 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$UPGRADE_OUTCOME\"")
 assert_contains "降级被拒绝则 declined 且不算失败" "rc=0|declined" "$r"
@@ -102,7 +102,7 @@ assert_eq "拒绝后 .env 版本未动" "$KH_SCRIPT_VERSION" "$(env_get "$D/.env
 # --- _upgrade_apply：自更新失败且拒绝"仅更新镜像" ---
 D=$(make_install)
 : >"$LOG"
-r=$(printf 'y\nn\n' | PATH=$(path_with "$BIN") STUB_CURL_EXIT=7 kh_run "KH_HOME=$D; OPT_TO=0.2.0; _upgrade_apply 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$UPGRADE_OUTCOME\"")
+r=$(printf 'y\nn\n' | PATH=$(path_with "$BIN") STUB_CURL_EXIT=7 kh_run "KH_HOME=$D; OPT_TO=$KH_NEXT_VERSION; _upgrade_apply 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$UPGRADE_OUTCOME\"")
 assert_contains "自更新失败且拒绝仅更新镜像：rolled_back" "rc=1|rolled_back" "$r"
 assert_contains "自更新失败给出原因" "下载" "$r"
 assert_eq "自更新失败时 .env 版本未动" "$KH_SCRIPT_VERSION" "$(env_get "$D/.env" KH_VERSION)"
@@ -193,13 +193,13 @@ assert_not_contains "非仓库目录不出现重建选项" "重新构建" "$r"
 
 # --- self_update：下载-校验-备份-替换序列 ---
 NEW="$(temp_dir)/new.sh"
-make_remote_script "$NEW" 0.2.0
+make_remote_script "$NEW" "$KH_NEXT_VERSION"
 D=$(make_install)
 : >"$LOG"
-r=$(PATH=$(path_with "$BIN") STUB_CURL_FILE="$NEW" kh_run "KH_HOME=$D; self_update 0.2.0 >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
+r=$(PATH=$(path_with "$BIN") STUB_CURL_FILE="$NEW" kh_run "KH_HOME=$D; self_update $KH_NEXT_VERSION >/dev/null 2>&1; printf 'rc=%s' \"\$?\"")
 assert_eq "self_update 成功" "rc=0" "$r"
-assert_contains "下载走 raw 的 v 标签地址" "v0.2.0/deploy/kanban-hub.sh" "$(cat "$LOG")"
-assert_contains "替换后的脚本是目标版本" 'KH_SCRIPT_VERSION="0.2.0"' "$(cat "$D/kanban-hub.sh")"
+assert_contains "下载走 raw 的 v 标签地址" "v$KH_NEXT_VERSION/deploy/kanban-hub.sh" "$(cat "$LOG")"
+assert_contains "替换后的脚本是目标版本" "KH_SCRIPT_VERSION=\"$KH_NEXT_VERSION\"" "$(cat "$D/kanban-hub.sh")"
 assert_eq "旧脚本备份进 backups/ 一份" "1" "$(backup_count "$D")"
 assert_contains "备份内容是旧版本" "KH_SCRIPT_VERSION=\"$KH_SCRIPT_VERSION\"" "$(cat "$D"/backups/kanban-hub.sh.*)"
 assert_no_cond "临时文件已清理" test -e "$D/.kanban-hub.sh.upgrade"
@@ -212,21 +212,21 @@ assert_rc "替换后的脚本语法有效" 0 "$?"
 BAD="$(temp_dir)/bad.sh"
 make_remote_script "$BAD" 9.9.9
 D=$(make_install)
-r=$(PATH=$(path_with "$BIN") STUB_CURL_FILE="$BAD" kh_run "KH_HOME=$D; self_update 0.2.0 >/dev/null 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$SELF_UPDATE_REASON\"")
+r=$(PATH=$(path_with "$BIN") STUB_CURL_FILE="$BAD" kh_run "KH_HOME=$D; self_update $KH_NEXT_VERSION >/dev/null 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$SELF_UPDATE_REASON\"")
 assert_eq "版本行不符则失败" "rc=1|self_version_mismatch" "$r"
 assert_contains "版本不符时原脚本未被替换" "KH_SCRIPT_VERSION=\"$KH_SCRIPT_VERSION\"" "$(cat "$D/kanban-hub.sh")"
 assert_eq "版本不符不产生备份" "0" "$(backup_count "$D")"
 
 # 语法不过：原因 self_syntax_failed
 D=$(make_install)
-r=$(PATH=$(path_with "$BIN") STUB_CURL_BODY='then fi' kh_run "KH_HOME=$D; self_update 0.2.0 >/dev/null 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$SELF_UPDATE_REASON\"")
+r=$(PATH=$(path_with "$BIN") STUB_CURL_BODY='then fi' kh_run "KH_HOME=$D; self_update $KH_NEXT_VERSION >/dev/null 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$SELF_UPDATE_REASON\"")
 assert_eq "下载内容语法不过则失败" "rc=1|self_syntax_failed" "$r"
 assert_contains "语法不过时原脚本未被替换" "KH_SCRIPT_VERSION=\"$KH_SCRIPT_VERSION\"" "$(cat "$D/kanban-hub.sh")"
 
 # 下载失败：原因 self_download_failed，原脚本不动
 D=$(make_install)
 : >"$LOG"
-r=$(PATH=$(path_with "$BIN") STUB_CURL_EXIT=7 kh_run "KH_HOME=$D; self_update 0.2.0 >/dev/null 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$SELF_UPDATE_REASON\"")
+r=$(PATH=$(path_with "$BIN") STUB_CURL_EXIT=7 kh_run "KH_HOME=$D; self_update $KH_NEXT_VERSION >/dev/null 2>&1; printf 'rc=%s|%s' \"\$?\" \"\$SELF_UPDATE_REASON\"")
 assert_eq "下载失败则失败" "rc=1|self_download_failed" "$r"
 assert_contains "下载失败时原脚本未被替换" "KH_SCRIPT_VERSION=\"$KH_SCRIPT_VERSION\"" "$(cat "$D/kanban-hub.sh")"
 assert_eq "下载失败不产生备份" "0" "$(count_entries "$D/backups")"

@@ -38,8 +38,9 @@ export async function DocsView({ projectId, view }: DocsViewProps) {
 
   return (
     <div className="kh-docs-grid grid gap-5 md:grid-cols-[280px_minmax(0,1fr)]">
-      {/* 宽屏下左栏吸顶，高度不超过视口：文件树占剩余高度、最近更新固定高度，都在面板内滚动 */}
-      <aside className="kh-docs-sidebar flex flex-col gap-3 md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:self-start">
+      {/* 宽屏下左栏吸顶（偏移给悬浮顶栏让位，见 globals.css 的 .kh-sticky-aside），高度不超过视口：
+          文件树占剩余高度、最近更新固定高度，都在面板内滚动 */}
+      <aside className="kh-docs-sidebar kh-sticky-aside flex flex-col gap-3">
         <DocSidebarPanel
           title={t("sidebar.treeTitle")}
           className="kh-doc-tree-box md:min-h-0"

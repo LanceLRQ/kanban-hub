@@ -106,7 +106,7 @@ export function TimelineView({
       ) : (
         <div className="kh-timeline-layout grid gap-5 md:grid-cols-[200px_minmax(0,1fr)]">
           <TimelineDayNav
-            className="hidden md:sticky md:top-4 md:flex md:max-h-[calc(100dvh-2rem)] md:self-start"
+            className="kh-sticky-aside hidden md:flex"
             entries={days.map((day) => ({ key: day.key, label: t("nav.day", dayNavParts(day.key)), count: day.items.length }))}
             ariaLabel={t("nav.ariaLabel")}
             hasMore={cursor !== null}
@@ -118,7 +118,7 @@ export function TimelineView({
           <div className="flex min-w-0 flex-col gap-5">
             <div className="flex flex-col gap-6">
               {days.map((day) => (
-                <section key={day.key} id={dayAnchorId(day.key)} className="flex scroll-mt-4 flex-col gap-2">
+                <section key={day.key} id={dayAnchorId(day.key)} className="kh-scroll-offset flex flex-col gap-2">
                   <h2 className="kh-timeline-day-heading kh-num text-xs font-bold tracking-wide text-muted-foreground">{day.heading}</h2>
                   <div className="flex flex-col gap-2">
                     {day.items.map((item) => (

@@ -43,7 +43,7 @@ export function ContainerSection({ projectId, section, tasks, canCreate, index, 
       id={containerAnchorId(container.id)}
       data-paper={index % 4}
       aria-label={container.title}
-      className={cn("kh-board-section scroll-mt-4 overflow-hidden border bg-card shadow-[var(--shadow-raised)]", RADIUS_CLASSES[index % 4])}
+      className={cn("kh-board-section kh-scroll-offset overflow-hidden border bg-card shadow-[var(--shadow-raised)]", RADIUS_CLASSES[index % 4])}
     >
       <div
         className={cn(

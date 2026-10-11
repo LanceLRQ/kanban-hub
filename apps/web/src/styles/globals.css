@@ -202,6 +202,32 @@
   }
 
   /*
+   * 项目页三个标签共用的左栏吸顶（看板容器导航、时间线日期导航、文档文件树）。
+   * 偏移要引用悬浮顶栏写入 <html> 的 --kh-pinned-bar-h（顶栏出现时把左栏往下推，收起时
+   * 为 0），所以从组件里的 md:sticky md:top-4 md:max-h-[calc(100dvh-2rem)] md:self-start
+   * 一串工具类抽成这里的一条规则；宽屏断点与 Tailwind 的 md 一致。top / max-height 带
+   * 过渡，和顶栏的滑入滑出同步。
+   */
+  .kh-sticky-aside {
+    transition:
+      top 0.2s ease,
+      max-height 0.2s ease;
+  }
+  @media (min-width: 48rem) {
+    .kh-sticky-aside {
+      position: sticky;
+      top: calc(1rem + var(--kh-pinned-bar-h, 0px));
+      max-height: calc(100dvh - 2rem - var(--kh-pinned-bar-h, 0px));
+      align-self: start;
+    }
+  }
+
+  /* 锚点跳转（左栏导航点击定位）的让位偏移，替代原先组件里的 scroll-mt-4 */
+  .kh-scroll-offset {
+    scroll-margin-top: calc(1rem + var(--kh-pinned-bar-h, 0px));
+  }
+
+  /*
    * 实心标签（容器状态、健康度、待你处理）：背景是元素上 `--solid-tone` 指定的语义色按
    * --solid-shade 压暗，字色 --on-solid。语义色与类名的对应见 lib/solid-tone.ts。
    * 用到它的元素不能再带 bg-*、text-* 这类工具类（utilities 层排在后面，会盖掉这里）。
@@ -285,5 +311,11 @@
   [data-theme="collage"] .kh-project-header-divider {
     border-top-style: dashed;
     border-top-color: var(--border-soft);
+  }
+
+  /* 项目页悬浮顶栏：主题 B 的下边框换虚线，与卡片、面板的分隔线一致 */
+  [data-theme="collage"] .kh-pinned-project-bar {
+    border-bottom-style: dashed;
+    border-bottom-color: var(--border-soft);
   }
 }

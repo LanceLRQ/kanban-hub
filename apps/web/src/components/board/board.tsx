@@ -61,7 +61,7 @@ export function Board({ view }: { view: BoardView }) {
   return (
     <div className="kh-board-layout grid gap-5 md:grid-cols-[220px_minmax(0,1fr)]">
       <BoardNav
-        className="hidden md:sticky md:top-4 md:flex md:max-h-[calc(100dvh-2rem)] md:self-start"
+        className="kh-sticky-aside hidden md:flex"
         ariaLabel={t("nav.ariaLabel")}
         entries={sections
           .filter((s) => s.status !== "cancelled")

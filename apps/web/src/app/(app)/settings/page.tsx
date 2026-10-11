@@ -6,12 +6,13 @@ import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/se
 import { AppearanceSection } from "@/components/settings/appearance-section";
 import { BackupSection } from "@/components/settings/backup-section";
 import { ConnectSection } from "@/components/settings/connect-section";
+import { StorageSection } from "@/components/settings/storage-section";
 import { MachineList } from "@/components/setup/machine-list";
 
 export default async function SettingsPage() {
   const t = await getTranslations("settings");
   const { services, user } = await authedPageServices();
-  const view = buildSettingsView(services);
+  const view = await buildSettingsView(services);
 
   const pendingCommitsText =
     view.pendingCommits === 0 ? t("service.pendingCommitsNone") : t("service.pendingCommitsSome", { count: view.pendingCommits });
@@ -39,6 +40,10 @@ export default async function SettingsPage() {
         <SectionRow label={t("service.staleDays")}>
           <span className="kh-num">{t("service.staleDaysValue", { days: view.staleDays })}</span>
         </SectionRow>
+      </SectionCard>
+
+      <SectionCard title={t("storage.title")} subtitle="storage">
+        <StorageSection storage={view.storage} />
       </SectionCard>
 
       <SectionCard title={t("backup.title")} subtitle="backup">

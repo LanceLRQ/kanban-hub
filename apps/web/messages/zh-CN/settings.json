@@ -19,6 +19,21 @@
     "staleDays": "停滞阈值",
     "staleDaysValue": "{days} 天"
   },
+  "storage": {
+    "title": "存储占用",
+    "board": "看板与事件数据",
+    "docs": "文档快照与清单",
+    "auth": "凭据（不进 git）",
+    "git": "git 历史（.git）",
+    "other": "其他（暂存、临时文件）",
+    "total": "合计",
+    "fileCount": "{count} 个文件",
+    "byProject": "各项目占用",
+    "projectColumn": "项目",
+    "boardColumn": "看板与事件",
+    "docsColumn": "文档快照与清单",
+    "noProjects": "还没有项目"
+  },
   "backup": {
     "title": "加密备份",
     "create": "创建备份",

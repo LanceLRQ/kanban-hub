@@ -74,6 +74,7 @@ import {
   snapshotRelDir,
   syncIdSchema,
 } from "./snapshots";
+import { measureStorageUsage, type StorageUsage } from "./usage";
 
 /**
  * 数据目录的 .gitignore，由程序管理，启动时内容不一致就重写：凭据、同步暂存、原子写的临时文件、
@@ -282,6 +283,11 @@ export class Store {
   /** 待提交到 git 的文件数 */
   pendingCommitCount(): number {
     return this.committer.pendingCount();
+  }
+
+  /** 数据目录的存储占用分项（设置页显示）；只读磁盘，不进写入队列 */
+  storageUsage(): Promise<StorageUsage> {
+    return measureStorageUsage(this.dataDir);
   }
 
   subscribe(listener: (change: StoreChange) => void): () => void {

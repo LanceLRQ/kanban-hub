@@ -11,7 +11,9 @@ import { UpgradePromptSection } from "./upgrade-prompt-section";
 vi.mock("sonner", () => ({ toast: { error: vi.fn() } }));
 const { toast } = await import("sonner");
 
-const PROMPT = (settings.upgrade as { prompt: string }).prompt;
+const SERVER = "http://10.0.0.5:38970";
+/** 组件把 {serverUrl} 插进提示词后应得到的正文 */
+const promptFilled = (settings.upgrade as { prompt: string }).prompt.replaceAll("{serverUrl}", SERVER);
 
 let container: HTMLDivElement;
 let root: Root;
@@ -30,11 +32,11 @@ afterEach(() => {
   window.getSelection()?.removeAllRanges();
 });
 
-function mount() {
+function mount(serverUrl = SERVER) {
   act(() => {
     root.render(
       <NextIntlClientProvider locale="zh-CN" messages={{ settings }}>
-        <UpgradePromptSection />
+        <UpgradePromptSection serverUrl={serverUrl} />
       </NextIntlClientProvider>,
     );
   });
@@ -51,21 +53,31 @@ const clickCopy = () =>
     [...container.querySelectorAll("button")].find((b) => b.textContent?.includes("复制提示词"))!.click();
   });
 
-describe("UpgradePromptSection 升级提示词", () => {
-  it("渲染说明与完整提示词", () => {
+describe("UpgradePromptSection 升级 kh 与 skill 提示词", () => {
+  it("渲染说明与完整提示词，服务端地址已插进正文", () => {
     stubClipboard(() => Promise.resolve());
     mount();
     const pre = container.querySelector("pre");
-    expect(pre?.textContent).toBe(PROMPT);
-    expect(container.textContent).toContain("发给部署了看板服务端的那台机器上的 AI 助手");
+    expect(pre?.textContent).toBe(promptFilled);
+    expect(pre?.textContent).toContain(`npm i -g ${SERVER}/setup/kh.tgz`);
+    expect(pre?.textContent).toContain("kh setup --yes");
+    expect(container.textContent).toContain("发给各台开发机上的 AI 助手");
   });
 
-  it("提示词不写死版本号，升级目标由 AI 查最新版得到", () => {
+  it("地址解析不出时用占位符，提示词仍然完整", () => {
+    stubClipboard(() => Promise.resolve());
+    mount("");
+    const text = container.querySelector("pre")?.textContent ?? "";
+    expect(text).toContain("<服务端地址>");
+    expect(text).toContain("npm i -g <服务端地址>/setup/kh.tgz");
+  });
+
+  it("提示词只管升级 kh 与 skill，不含升级服务端的步骤", () => {
     stubClipboard(() => Promise.resolve());
     mount();
-    expect(PROMPT).toContain("releases/latest");
-    // 不含 v0.x.x 或镜像标签式的具体版本（127.0.0.1 这类 IP 不算）
-    expect(PROMPT).not.toMatch(/[v:]0\.\d+\.\d+/);
+    const text = container.querySelector("pre")?.textContent ?? "";
+    expect(text).not.toContain("docker compose");
+    expect(text).not.toContain("kanban-hub.sh upgrade");
   });
 
   it("点击复制：整段提示词进剪贴板，按钮短暂变成已复制", async () => {
@@ -73,7 +85,7 @@ describe("UpgradePromptSection 升级提示词", () => {
     mount();
     await clickCopy();
     expect(writeText).toHaveBeenCalledTimes(1);
-    expect(writeText).toHaveBeenCalledWith(PROMPT);
+    expect(writeText).toHaveBeenCalledWith(promptFilled);
     expect(container.textContent).toContain("已复制");
     expect(toast.error).not.toHaveBeenCalled();
   });
@@ -83,7 +95,7 @@ describe("UpgradePromptSection 升级提示词", () => {
     mount();
     await clickCopy();
     const selected = window.getSelection()?.toString() ?? "";
-    expect(selected).toContain("kanban-hub（看板服务端）");
+    expect(selected).toContain("kanban-hub 命令行 kh");
     expect(container.textContent).not.toContain("已复制");
     expect(toast.error).toHaveBeenCalledTimes(1);
   });

@@ -1,5 +1,7 @@
+import { headers } from "next/headers";
 import { getTranslations } from "next-intl/server";
 import { authedPageServices } from "@/server/web/services";
+import { resolvePublicUrl } from "@/server/web/public-url";
 import { buildSettingsView } from "@/server/views/settings";
 import { listUserMachines } from "@/server/views/setup";
 import { PageTitleCard, SectionCard, SectionRow } from "@/components/settings/section-card";
@@ -14,6 +16,13 @@ export default async function SettingsPage() {
   const t = await getTranslations("settings");
   const { services, user } = await authedPageServices();
   const view = await buildSettingsView(services);
+  const h = await headers();
+  // 提示词里的服务端地址与接入页同源：配置优先，没配置时按本次请求推断；推断不出交给组件用占位符
+  const serverUrl = resolvePublicUrl(services.publicUrl, {
+    forwardedProto: h.get("x-forwarded-proto"),
+    forwardedHost: h.get("x-forwarded-host"),
+    host: h.get("host"),
+  });
 
   const pendingCommitsText =
     view.pendingCommits === 0 ? t("service.pendingCommitsNone") : t("service.pendingCommitsSome", { count: view.pendingCommits });
@@ -60,7 +69,7 @@ export default async function SettingsPage() {
       </SectionCard>
 
       <SectionCard title={t("upgrade.title")} subtitle="upgrade">
-        <UpgradePromptSection />
+        <UpgradePromptSection serverUrl={serverUrl ?? ""} />
       </SectionCard>
     </div>
   );

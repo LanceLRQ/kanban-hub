@@ -7,17 +7,18 @@ import { Button } from "@/components/ui/button";
 import { SectionRow } from "./section-card";
 
 /**
- * 设置页的升级提示词：一段发给「部署了看板服务端的那台机器」上的 AI 助手的完整指令，
- * 由它查明部署方式（一键脚本 / 手动 compose / 源码构建）并升级到最新正式版。提示词本身
- * 不写死版本号——升级目标由 AI 从 GitHub releases 查最新版得到，这段文案不随发版过期。
+ * 设置页的「升级 kh 与 skill」提示词：一段发给各台开发机上的 AI 助手的完整指令，由它把
+ * 那台机器的 kh 命令行、skill 与 hook 升级到服务端当前版本（正文与用户手册《接入》
+ * 「升级 kh 与 skill」一节一致）。服务端地址由页面按「配置优先、请求来源推断」解析后
+ * 传入，推断不出时退回占位符，发给机器前自行替换。
  * 复制走 navigator.clipboard，不可用（非安全上下文、权限被拒）时退回全选文字让用户手动复制，
  * 与接入页 CopyCommand 的兜底一致。
  */
-export function UpgradePromptSection() {
+export function UpgradePromptSection({ serverUrl }: { serverUrl: string }) {
   const t = useTranslations("settings");
   const [copied, setCopied] = useState(false);
   const promptRef = useRef<HTMLPreElement>(null);
-  const prompt = t("upgrade.prompt");
+  const prompt = t("upgrade.prompt", { serverUrl: serverUrl || t("upgrade.serverPlaceholder") });
 
   async function handleCopy(): Promise<void> {
     try {

@@ -53,5 +53,15 @@
     "label": "新仓库",
     "description": "生成配对码，把新机器上的仓库注册进来。",
     "action": "接入引导 →"
+  },
+  "upgrade": {
+    "title": "升级服务端",
+    "hint": "这是什么",
+    "description": "把下面的提示词复制下来，发给部署了看板服务端的那台机器上的 AI 助手，它会把服务端升级到最新正式版。各台开发机上升级 kh 与 skill 的提示词，见用户手册《接入》的“升级 kh 与 skill”一节。",
+    "promptLabel": "提示词",
+    "copy": "复制提示词",
+    "copied": "已复制",
+    "copyFailed": "复制失败，已帮你全选提示词，请手动复制",
+    "prompt": "请帮我把这台机器上自部署的 kanban-hub（看板服务端）升级到最新正式版。按顺序做：\n\n1. 摸清现状：\n   - 确定部署方式：机器上有 kanban-hub.sh（一键脚本安装，在安装目录里）算一种；用 docker compose 部署（目录里有 docker-compose.yml，服务与 kanban-hub 相关）算另一种。不确定就先找到再继续。\n   - 看当前版本：curl -s http://127.0.0.1:端口/api/health（端口看 .env 里的 KH_PORT，默认 28970），记下 JSON 里的 version。\n   - 查最新正式版：curl -s https://api.github.com/repos/LanceLRQ/kanban-hub/releases/latest 里的 tag_name，去掉开头的 v。当前版本已经是最新时告诉我，停在这里不再往下做。\n2. 一键脚本部署的：在安装目录执行 bash kanban-hub.sh upgrade --to 最新版本号。它会先更新脚本自身，再同步 compose 模板；如果我手改过 compose 文件，它会把差异列出来等我确认——把差异给我看，等我同意再继续。需要 sudo 或权限不够时先告诉我，不要自己加 sudo。\n3. 手动 Docker Compose 部署的：\n   - 用的 Docker Hub 镜像：把 compose 或 .env 里的镜像改成 lancelrq/kanban-hub:最新版本号，然后 docker compose pull && docker compose up -d。\n   - 从源码构建的：git fetch --tags && git checkout v最新版本号，然后 docker compose up -d --build。\n4. 验证：docker compose ps 等容器变 healthy，再请求一次 /api/health 确认 version 是最新版本，打开网页确认能登录、项目列表正常。\n5. 说明：升级不碰 data/ 里的数据；如果想先留一手，先在网页设置页创建一个加密备份再升级。\n\n最后用几句话告诉我：部署方式、升级前后的版本号、容器是否健康、有没有遇到问题。另外提醒我：0.x 阶段 kh 与服务端次版本号不一致时无法上报，各台开发机要按服务端 /setup 页面的说明重装 kh，再执行 kh setup --yes 更新 skill。"
   }
 }

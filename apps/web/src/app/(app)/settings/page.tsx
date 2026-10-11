@@ -7,6 +7,7 @@ import { AppearanceSection } from "@/components/settings/appearance-section";
 import { BackupSection } from "@/components/settings/backup-section";
 import { ConnectSection } from "@/components/settings/connect-section";
 import { StorageSection } from "@/components/settings/storage-section";
+import { UpgradePromptSection } from "@/components/settings/upgrade-prompt-section";
 import { MachineList } from "@/components/setup/machine-list";
 
 export default async function SettingsPage() {
@@ -56,6 +57,10 @@ export default async function SettingsPage() {
 
       <SectionCard title={t("connect.title")} subtitle="connect">
         <ConnectSection />
+      </SectionCard>
+
+      <SectionCard title={t("upgrade.title")} subtitle="upgrade">
+        <UpgradePromptSection />
       </SectionCard>
     </div>
   );
